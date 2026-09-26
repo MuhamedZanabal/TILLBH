@@ -816,7 +816,10 @@ export function AiChat({
     if (!cid) return setConv(null);
     void api.ai.conversation(cid).then(setConv, () => setConv(null));
   }, [cid]);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [conv, live, slashResults]);
+  useEffect(() => {
+    // Block body: newer browsers return a Promise here, which is not an effect cleanup.
+    void end.current?.scrollIntoView({ block: "end" });
+  }, [conv, live, slashResults]);
 
   const reloadConv = useCallback(async () => {
     if (conv) setConv(await api.ai.conversation(conv.conversation_id));
@@ -829,7 +832,9 @@ export function AiChat({
     const q = text.slice(1).toLowerCase();
     return SLASH.filter((s) => s.name.startsWith(q)).slice(0, 12);
   }, [text]);
-  useEffect(() => setPaletteIdx(0), [palette.length]);
+  useEffect(() => {
+    setPaletteIdx(0);
+  }, [palette.length]);
 
   const ask = useCallback(
     async (question: string) => {
