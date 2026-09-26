@@ -332,6 +332,9 @@ pub struct PaymentReview {
     pub decided_at: Option<String>,
     pub note: Option<String>,
     pub created_at: String,
+    /// E4: expected vs detected, check by check. Informs the person deciding;
+    /// never settles anything by itself.
+    pub comparison: serde_json::Value,
 }
 
 fn load_review(c: &Connection, id: &str) -> AppResult<PaymentReview> {
@@ -368,10 +371,21 @@ fn load_review(c: &Connection, id: &str) -> AppResult<PaymentReview> {
                 note: r.get(20)?,
                 created_at: r.get(21)?,
                 ocr_status: r.get(22)?,
+                comparison: serde_json::Value::Null,
             })
         },
     )
     .optional()?
+    .map(|mut p| {
+        p.comparison = crate::ai_workspace::payment_comparison(
+            p.expected_minor,
+            p.detected_minor,
+            p.detected_reference.as_deref(),
+            p.ocr_confidence,
+            p.duplicate_of.as_deref(),
+        );
+        p
+    })
     .ok_or_else(|| AppError::not_found("Payment review"))
 }
 

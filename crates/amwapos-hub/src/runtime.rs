@@ -64,6 +64,8 @@ pub struct Runtime {
     /// Override for the hub bind address (tests use 127.0.0.1 and port 0-style ports).
     pub bind_ip: Ipv4Addr,
     pub sync_interval: Duration,
+    /// Live AI question progress, polled by the page (`ai.stream`).
+    pub ai_streams: Arc<crate::ai_stream::StreamHub>,
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + 'static) -> AppResult<T> {
@@ -87,6 +89,7 @@ impl Runtime {
             step_up: Mutex::new(None),
             bind_ip: Ipv4Addr::UNSPECIFIED,
             sync_interval: Duration::from_secs(5),
+            ai_streams: Arc::default(),
         })
     }
 
@@ -102,6 +105,7 @@ impl Runtime {
             step_up: Mutex::new(None),
             bind_ip: ip,
             sync_interval,
+            ai_streams: Arc::default(),
         })
     }
 
@@ -269,6 +273,15 @@ impl Runtime {
                     // Watchdog: restart a WhatsApp or OCR task that died.
                     wa.ensure();
                     ocr.ensure();
+                    // A8: scheduled AI briefings (only while the app is open).
+                    let c = core.clone();
+                    if let Ok(Ok(due)) = tokio::task::spawn_blocking(move || c.ai_briefings_due()).await {
+                        for id in due {
+                            if let Err(e) = crate::ai_client::run_briefing(core.clone(), id, None).await {
+                                tracing::info!(error = %e.message, "scheduled briefing did not run");
+                            }
+                        }
+                    }
                     let c = core.clone();
                     if let Ok(Ok((ok, _))) = tokio::task::spawn_blocking(move || c.receipt_pdf_retry_due()).await {
                         if ok > 0 {
@@ -384,7 +397,50 @@ impl Runtime {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 let conv = args.get("conversation_id").and_then(|v| v.as_str()).map(|s| s.to_string());
                 let locale = args.get("locale").and_then(|v| v.as_str()).filter(|l| *l == "ar").unwrap_or("en").to_string();
-                crate::ai_client::ask(self.clone(), t, conv, arg(&args, "message")?, locale).await
+                let extras = amwapos_core::ai_workspace::AskExtras {
+                    images: args
+                        .get("images")
+                        .and_then(|v| v.as_array())
+                        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+                        .unwrap_or_default(),
+                    context: args.get("context").cloned().filter(|c| c.is_object()),
+                };
+                let stream = match args.get("stream_id").and_then(|v| v.as_str()) {
+                    Some(id) => {
+                        let (c, t2) = (self.core.clone(), t.clone());
+                        let user = blocking(move || c.session(&t2).map(|s| s.user_id)).await?;
+                        Some(self.ai_streams.open(id, &user)?)
+                    }
+                    None => None,
+                };
+                let opts = crate::ai_client::AskOptions { stream, extras };
+                crate::ai_client::ask(self.clone(), t, conv, arg(&args, "message")?, locale, opts).await
+            }
+            "ai.stream" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let c = self.core.clone();
+                let user = blocking(move || {
+                    let s = c.session(&t)?;
+                    s.require("ai.use")?;
+                    Ok(s.user_id)
+                })
+                .await?;
+                let after = args.get("after").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                self.ai_streams.read(&arg(&args, "stream_id")?, &user, after)
+            }
+            "ai.briefing_run" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                crate::ai_client::run_briefing(self.core.clone(), arg(&args, "briefing_id")?, Some(t)).await
+            }
+            "whatsapp.triage_ai" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+                crate::ai_client::triage_ai(self.core.clone(), t, limit).await
+            }
+            "whatsapp.draft_reply" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let instruction = args.get("instruction").and_then(|v| v.as_str()).map(str::to_string);
+                crate::ai_client::draft_reply(self.core.clone(), t, arg(&args, "chat")?, instruction).await
             }
             // A proposal runs the same command the admin page runs, through
             // this dispatcher, so Hello step-up and manager approval apply.

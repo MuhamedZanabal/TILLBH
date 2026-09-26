@@ -300,7 +300,13 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "backup.health" => out(core.backup_health(tk()?)),
         // AI assistant (the question/answer loop itself is "ai.ask" in the runtime)
         "ai.status" => out(core.ai_status(tk()?)),
-        "ai.configure" => out(core.ai_configure(tk()?, req(&args, "settings")?, opt(&args, "api_key")?, opt(&args, "extra_header_value")?)),
+        "ai.configure" => out(core.ai_configure_full(
+            tk()?,
+            req(&args, "settings")?,
+            opt(&args, "api_key")?,
+            opt(&args, "extra_header_value")?,
+            opt(&args, "fallback_api_key")?,
+        )),
         "ai.conversations" => out(core.ai_conversations(tk()?)),
         "ai.conversation" => out(core.ai_conversation(tk()?, &req::<String>(&args, "conversation_id")?)),
         "ai.proposals" => out(core.ai_proposals(tk()?, opt(&args, "status")?)),
@@ -311,6 +317,31 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             &args.get("inputs").cloned().unwrap_or(Value::Null),
         )?),
         "ai.digest" => Ok(core.ai_digest(tk()?, opt(&args, "date")?)?),
+        "ai.attach_image" => Ok(core.ai_attach_image(tk()?, &req::<String>(&args, "media_type")?, &req::<String>(&args, "data")?)?),
+        "ai.attachment" => Ok(core.ai_attachment(tk()?, &req::<String>(&args, "attachment_id")?)?),
+        "ai.conversation_rename" => {
+            Ok(core.ai_conversation_rename(tk()?, &req::<String>(&args, "conversation_id")?, &req::<String>(&args, "title")?)?)
+        }
+        "ai.pin" => Ok(core.ai_pin(
+            tk()?,
+            &req::<String>(&args, "conversation_id")?,
+            &req::<String>(&args, "kind")?,
+            &req::<String>(&args, "id")?,
+        )?),
+        "ai.unpin" => Ok(core.ai_unpin(
+            tk()?,
+            &req::<String>(&args, "conversation_id")?,
+            &req::<String>(&args, "kind")?,
+            &req::<String>(&args, "id")?,
+        )?),
+        "ai.briefings" => out(core.ai_briefings(tk()?)),
+        "ai.briefing_save" => out(core.ai_briefing_save(tk()?, opt(&args, "briefing_id")?, req(&args, "briefing")?)),
+        "ai.briefing_delete" => out(core.ai_briefing_delete(tk()?, &req::<String>(&args, "briefing_id")?)),
+        "ai.notes" => out(core.ai_notes(tk()?, opt(&args, "limit")?)),
+        "ai.note_read" => out(core.ai_note_read(tk()?, &req::<String>(&args, "note_id")?)),
+        "ai.slash" => Ok(core.ai_slash(tk()?, &req::<String>(&args, "command")?, &opt::<String>(&args, "arg")?.unwrap_or_default())?),
+        "whatsapp.triage" => Ok(core.wa_triage(tk()?, opt(&args, "limit")?)?),
+        "whatsapp.triage_set" => Ok(core.wa_triage_set(tk()?, req(&args, "seq")?, &req::<String>(&args, "category")?)?),
         "ai.playbook" => Ok(core.ai_playbook(tk()?, &req::<String>(&args, "name")?)?),
         "ai.proposal_reject" => out(core.ai_proposal_reject(tk()?, &req::<String>(&args, "proposal_id")?)),
         "ai.proposal_undo" => out(core.ai_proposal_undo(tk()?, &req::<String>(&args, "proposal_id")?)),

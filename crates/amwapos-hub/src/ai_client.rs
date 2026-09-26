@@ -24,6 +24,8 @@ use amwapos_core::ai::{AiConnection, AiSettings, AiTurn};
 use amwapos_core::{AppError, AppResult, ErrorCode};
 use serde_json::{json, Value};
 
+use crate::ai_stream::{emit, Emit};
+
 const MAX_ROUNDS: usize = 8;
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + 'static) -> AppResult<T> {
@@ -125,6 +127,41 @@ fn supports_default_fallbacks(model: &str) -> bool {
 }
 
 async fn anthropic(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
+    let (body, req) = anthropic_request(http, turn);
+    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
+    let (status, v) = send(req.json(&body), &secrets).await?;
+    if status != 200 {
+        return Err(provider_error(status, &v, &secrets, true));
+    }
+    Ok(Reply {
+        content: v.get("content").cloned().unwrap_or(json!([])),
+        stop_reason: v.get("stop_reason").and_then(|s| s.as_str()).unwrap_or("end_turn").to_string(),
+        input_tokens: v.pointer("/usage/input_tokens").and_then(|x| x.as_i64()).unwrap_or(0),
+        output_tokens: v.pointer("/usage/output_tokens").and_then(|x| x.as_i64()).unwrap_or(0),
+    })
+}
+
+/// Blocks Anthropic accepts back: display-only blocks from other providers
+/// (`reasoning`) are dropped; thinking blocks are replayed unchanged.
+fn anthropic_messages(messages: &[Value]) -> Vec<Value> {
+    messages
+        .iter()
+        .map(|m| {
+            let blocks: Vec<Value> = m["content"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|b| b["type"] != "reasoning")
+                .filter(|b| b["type"] != "thinking" || b["signature"].as_str().is_some_and(|s| !s.is_empty()))
+                .collect();
+            json!({ "role": m["role"], "content": blocks })
+        })
+        .filter(|m| m["content"].as_array().is_some_and(|a| !a.is_empty()))
+        .collect()
+}
+
+fn anthropic_request(http: &reqwest::Client, turn: &AiTurn) -> (Value, reqwest::RequestBuilder) {
     let st = &turn.settings;
     let base = st.effective_base();
     let mut body = json!({
@@ -132,11 +169,12 @@ async fn anthropic(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
         "max_tokens": st.max_output_tokens,
         "system": turn.system,
         "tools": turn.tools,
-        "messages": turn.messages,
+        "messages": anthropic_messages(&turn.messages),
         "cache_control": { "type": "ephemeral" },
     });
     if supports_adaptive_thinking(&st.model_id) {
-        body["thinking"] = json!({ "type": "adaptive" });
+        // Summarized thinking is shown to the user (C8: nothing hidden).
+        body["thinking"] = json!({ "type": "adaptive", "display": "summarized" });
     }
     let mut req = http
         .post(format!("{base}/v1/messages"))
@@ -147,17 +185,7 @@ async fn anthropic(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
         body["fallbacks"] = json!("default");
         req = req.header("anthropic-beta", "server-side-fallback-2026-07-01");
     }
-    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
-    let (status, v) = send(with_header(req, &turn.extra_header).json(&body), &secrets).await?;
-    if status != 200 {
-        return Err(provider_error(status, &v, &secrets, true));
-    }
-    Ok(Reply {
-        content: v.get("content").cloned().unwrap_or(json!([])),
-        stop_reason: v.get("stop_reason").and_then(|s| s.as_str()).unwrap_or("end_turn").to_string(),
-        input_tokens: v.pointer("/usage/input_tokens").and_then(|x| x.as_i64()).unwrap_or(0),
-        output_tokens: v.pointer("/usage/output_tokens").and_then(|x| x.as_i64()).unwrap_or(0),
-    })
+    (body, with_header(req, &turn.extra_header))
 }
 
 /// Offline test model. Understands a few phrasings and otherwise explains
@@ -191,14 +219,16 @@ fn fake(turn: &AiTurn) -> Reply {
         Some((name.trim().to_string(), amount))
     });
     let n = turn.messages.len();
+    // Shown as the model's thinking (C8): the fake explains what it matched.
+    let why = |what: &str| json!({ "type": "reasoning", "text": format!("Offline test model: {what}.") });
     let call = |name: &str, input: Value| Reply {
-        content: json!([{ "type": "tool_use", "id": format!("fake_{n}"), "name": name, "input": input }]),
+        content: json!([why(&format!("calling {name}")), { "type": "tool_use", "id": format!("fake_{n}"), "name": name, "input": input }]),
         stop_reason: "tool_use".into(),
         input_tokens: 0,
         output_tokens: 0,
     };
     let say = |text: String| Reply {
-        content: json!([{ "type": "text", "text": text }]),
+        content: json!([why("answering"), { "type": "text", "text": text }]),
         stop_reason: "end_turn".into(),
         input_tokens: 0,
         output_tokens: 0,
@@ -302,9 +332,27 @@ fn to_openai_messages(system: &str, messages: &[Value]) -> Vec<Value> {
             }
             out.push(msg);
         } else {
+            // Images and text of one user turn go together (vision models).
+            let images: Vec<Value> = blocks
+                .iter()
+                .filter(|b| b["type"] == "image")
+                .map(|b| {
+                    let url = format!(
+                        "data:{};base64,{}",
+                        b.pointer("/source/media_type").and_then(|x| x.as_str()).unwrap_or("image/jpeg"),
+                        b.pointer("/source/data").and_then(|x| x.as_str()).unwrap_or("")
+                    );
+                    json!({ "type": "image_url", "image_url": { "url": url } })
+                })
+                .collect();
             for b in &blocks {
                 match b["type"].as_str() {
                     Some("tool_result") => out.push(json!({ "role": "tool", "tool_call_id": b["tool_use_id"], "content": b["content"] })),
+                    Some("text") if !images.is_empty() => {
+                        let mut parts = vec![json!({ "type": "text", "text": b["text"] })];
+                        parts.extend(images.iter().cloned());
+                        out.push(json!({ "role": "user", "content": parts }));
+                    }
                     Some("text") => out.push(json!({ "role": "user", "content": b["text"] })),
                     _ => {}
                 }
@@ -314,7 +362,7 @@ fn to_openai_messages(system: &str, messages: &[Value]) -> Vec<Value> {
     out
 }
 
-async fn openai_compatible(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
+fn openai_request(http: &reqwest::Client, turn: &AiTurn, stream: bool) -> (Value, reqwest::RequestBuilder) {
     let st = &turn.settings;
     let tools: Vec<Value> = turn
         .tools
@@ -326,14 +374,32 @@ async fn openai_compatible(http: &reqwest::Client, turn: &AiTurn) -> AppResult<R
     if !tools.is_empty() {
         body["tools"] = json!(tools);
     }
-    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
+    if stream {
+        body["stream"] = json!(true);
+        if st.provider != "custom" {
+            body["stream_options"] = json!({ "include_usage": true });
+        }
+    }
+    if st.provider == "openrouter" {
+        // Reasoning text, when the model has any, is shown to the user.
+        body["include_reasoning"] = json!(true);
+    }
     let req = with_header(http.post(format!("{}/chat/completions", st.effective_base())).bearer_auth(&turn.api_key), &turn.extra_header);
+    (body, req)
+}
+
+async fn openai_compatible(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
+    let (body, req) = openai_request(http, turn, false);
+    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
     let (status, v) = send(req.json(&body), &secrets).await?;
     if status != 200 {
         return Err(provider_error(status, &v, &secrets, true));
     }
     let msg = v.pointer("/choices/0/message").cloned().unwrap_or(Value::Null);
     let mut content = vec![];
+    if let Some(r) = msg["reasoning"].as_str().or(msg["reasoning_content"].as_str()).filter(|t| !t.is_empty()) {
+        content.push(json!({ "type": "reasoning", "text": r }));
+    }
     if let Some(t) = msg["content"].as_str().filter(|t| !t.is_empty()) {
         content.push(json!({ "type": "text", "text": t }));
     }
@@ -342,19 +408,23 @@ async fn openai_compatible(http: &reqwest::Client, turn: &AiTurn) -> AppResult<R
             c.pointer("/function/arguments").and_then(|a| a.as_str()).and_then(|a| serde_json::from_str(a).ok()).unwrap_or(json!({}));
         content.push(json!({ "type": "tool_use", "id": c["id"], "name": c.pointer("/function/name"), "input": input }));
     }
-    let stop = match v.pointer("/choices/0/finish_reason").and_then(|f| f.as_str()) {
-        Some("tool_calls") => "tool_use",
-        Some("length") => "max_tokens",
-        Some("content_filter") => "refusal",
-        _ if content.iter().any(|b| b["type"] == "tool_use") => "tool_use",
-        _ => "end_turn",
-    };
+    let stop = openai_stop(v.pointer("/choices/0/finish_reason").and_then(|f| f.as_str()), &content);
     Ok(Reply {
         content: json!(content),
         stop_reason: stop.to_string(),
         input_tokens: v.pointer("/usage/prompt_tokens").and_then(|x| x.as_i64()).unwrap_or(0),
         output_tokens: v.pointer("/usage/completion_tokens").and_then(|x| x.as_i64()).unwrap_or(0),
     })
+}
+
+fn openai_stop(finish: Option<&str>, content: &[Value]) -> &'static str {
+    match finish {
+        Some("tool_calls") => "tool_use",
+        Some("length") => "max_tokens",
+        Some("content_filter") => "refusal",
+        _ if content.iter().any(|b| b["type"] == "tool_use") => "tool_use",
+        _ => "end_turn",
+    }
 }
 
 /// JSON schema subset Gemini accepts (no additionalProperties).
@@ -378,6 +448,9 @@ fn to_gemini_contents(messages: &[Value]) -> Vec<Value> {
         for b in &blocks {
             match b["type"].as_str() {
                 Some("text") => parts.push(json!({ "text": b["text"] })),
+                Some("image") => parts.push(json!({ "inlineData": {
+                    "mimeType": b.pointer("/source/media_type").cloned().unwrap_or(json!("image/jpeg")),
+                    "data": b.pointer("/source/data").cloned().unwrap_or(json!("")) } })),
                 Some("tool_use") => {
                     names.insert(b["id"].as_str().unwrap_or_default().to_string(), b["name"].clone());
                     parts.push(json!({ "functionCall": { "name": b["name"], "args": b["input"] } }));
@@ -397,7 +470,7 @@ fn to_gemini_contents(messages: &[Value]) -> Vec<Value> {
     out
 }
 
-async fn google(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
+fn google_request(http: &reqwest::Client, turn: &AiTurn, stream: bool) -> (Value, reqwest::RequestBuilder) {
     let st = &turn.settings;
     let decls: Vec<Value> = turn
         .tools
@@ -410,43 +483,70 @@ async fn google(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
             d
         })
         .collect();
+    let model = st.model_id.trim_start_matches("models/").to_string();
     let mut body = json!({
         "systemInstruction": { "parts": [{ "text": turn.system }] },
         "contents": to_gemini_contents(&turn.messages),
         "generationConfig": { "maxOutputTokens": st.max_output_tokens },
     });
+    if model.starts_with("gemini-2.5") || model.starts_with("gemini-3") {
+        // Thought summaries are shown to the user.
+        body["generationConfig"]["thinkingConfig"] = json!({ "includeThoughts": true });
+    }
     if !decls.is_empty() {
         body["tools"] = json!([{ "functionDeclarations": decls }]);
     }
-    let model = st.model_id.trim_start_matches("models/");
+    let url = if stream {
+        format!("{}/models/{model}:streamGenerateContent?alt=sse", st.effective_base())
+    } else {
+        format!("{}/models/{model}:generateContent", st.effective_base())
+    };
+    let req = with_header(http.post(url).header("x-goog-api-key", &turn.api_key), &turn.extra_header);
+    (body, req)
+}
+
+/// Gemini parts → neutral blocks (thought parts become display-only reasoning).
+fn gemini_blocks(parts: &[Value], seq: usize, content: &mut Vec<Value>) {
+    for (i, p) in parts.iter().enumerate() {
+        if let Some(t) = p["text"].as_str().filter(|t| !t.is_empty()) {
+            let kind = if p["thought"] == true { "reasoning" } else { "text" };
+            match content.last_mut() {
+                Some(last) if last["type"] == kind => {
+                    let joined = format!("{}{t}", last["text"].as_str().unwrap_or(""));
+                    last["text"] = json!(joined);
+                }
+                _ => content.push(json!({ "type": kind, "text": t })),
+            }
+        }
+        if let Some(fc) = p.get("functionCall") {
+            content.push(json!({ "type": "tool_use", "id": format!("g{seq}_{}_{i}", content.len()), "name": fc["name"],
+                                 "input": fc.get("args").cloned().unwrap_or(json!({})) }));
+        }
+    }
+}
+
+fn gemini_stop(finish: Option<&str>, content: &[Value]) -> &'static str {
+    if content.iter().any(|b| b["type"] == "tool_use") {
+        return "tool_use";
+    }
+    match finish {
+        Some("MAX_TOKENS") => "max_tokens",
+        Some("SAFETY") | Some("PROHIBITED_CONTENT") | Some("BLOCKLIST") => "refusal",
+        _ => "end_turn",
+    }
+}
+
+async fn google(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
+    let (body, req) = google_request(http, turn, false);
     let secrets = secrets_of(&turn.api_key, &turn.extra_header);
-    let req = with_header(
-        http.post(format!("{}/models/{model}:generateContent", st.effective_base())).header("x-goog-api-key", &turn.api_key),
-        &turn.extra_header,
-    );
     let (status, v) = send(req.json(&body), &secrets).await?;
     if status != 200 {
         return Err(provider_error(status, &v, &secrets, true));
     }
     let parts = v.pointer("/candidates/0/content/parts").and_then(|p| p.as_array()).cloned().unwrap_or_default();
     let mut content = vec![];
-    for (i, p) in parts.iter().enumerate() {
-        if let Some(t) = p["text"].as_str().filter(|t| !t.is_empty()) {
-            content.push(json!({ "type": "text", "text": t }));
-        }
-        if let Some(fc) = p.get("functionCall") {
-            content.push(json!({ "type": "tool_use", "id": format!("g{}_{i}", turn.messages.len()), "name": fc["name"], "input": fc.get("args").cloned().unwrap_or(json!({})) }));
-        }
-    }
-    let stop = if content.iter().any(|b| b["type"] == "tool_use") {
-        "tool_use"
-    } else {
-        match v.pointer("/candidates/0/finishReason").and_then(|f| f.as_str()) {
-            Some("MAX_TOKENS") => "max_tokens",
-            Some("SAFETY") | Some("PROHIBITED_CONTENT") | Some("BLOCKLIST") => "refusal",
-            _ => "end_turn",
-        }
-    };
+    gemini_blocks(&parts, turn.messages.len(), &mut content);
+    let stop = gemini_stop(v.pointer("/candidates/0/finishReason").and_then(|f| f.as_str()), &content);
     Ok(Reply {
         content: json!(content),
         stop_reason: stop.to_string(),
@@ -469,6 +569,294 @@ async fn call_provider(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply
         "anthropic" => anthropic(http, turn).await,
         "google" => google(http, turn).await,
         _ => Err(AppError::new(ErrorCode::AiProviderError, "Unknown AI provider.")),
+    }
+}
+
+/// With a sink, every provider streams: text and thinking reach the page as
+/// they are generated. Without one, a plain request.
+async fn call_provider_live(turn: &AiTurn, sink: &Option<Emit>) -> AppResult<Reply> {
+    if sink.is_none() {
+        return call_provider(&http_client(&turn.settings)?, turn).await;
+    }
+    match turn.settings.provider.as_str() {
+        "fake" => {
+            let r = fake(turn);
+            for b in r.content.as_array().cloned().unwrap_or_default() {
+                match b["type"].as_str() {
+                    Some("reasoning") => emit(sink, json!({ "type": "thinking", "delta": b["text"] })),
+                    Some("text") => {
+                        let t: Vec<char> = b["text"].as_str().unwrap_or("").chars().collect();
+                        for chunk in t.chunks(24) {
+                            emit(sink, json!({ "type": "text", "delta": chunk.iter().collect::<String>() }));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Ok(r)
+        }
+        "openai" | "openrouter" | "custom" => openai_stream(turn, sink).await,
+        "anthropic" => anthropic_stream(turn, sink).await,
+        "google" => google_stream(turn, sink).await,
+        _ => Err(AppError::new(ErrorCode::AiProviderError, "Unknown AI provider.")),
+    }
+}
+
+/// Streaming client: a connect timeout, and the settings timeout between
+/// chunks (a long answer is not cut off while it keeps arriving).
+fn stream_client() -> AppResult<reqwest::Client> {
+    reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).build().map_err(|e| AppError::internal(e.to_string()))
+}
+
+fn timeout_error() -> AppError {
+    AppError::new(ErrorCode::AiTimeout, "The AI provider did not answer in time. Try again, or raise the timeout in Settings → AI.")
+        .with_details(json!({ "kind": "ai_timeout" }))
+}
+
+/// Send a streaming request (one retry on 429/502/503 before any byte).
+async fn start_stream(req: reqwest::RequestBuilder, secrets: &[&str], model_call: bool) -> AppResult<reqwest::Response> {
+    let retry = req.try_clone();
+    let mut resp = req.send().await.map_err(|e| net_error(e, secrets))?;
+    if matches!(resp.status().as_u16(), 429 | 502 | 503) {
+        if let Some(r) = retry {
+            tokio::time::sleep(Duration::from_millis(800)).await;
+            resp = r.send().await.map_err(|e| net_error(e, secrets))?;
+        }
+    }
+    let status = resp.status().as_u16();
+    if status != 200 {
+        let v: Value = resp.json().await.unwrap_or(Value::Null);
+        return Err(provider_error(status, &v, secrets, model_call));
+    }
+    Ok(resp)
+}
+
+/// Server-sent events: `on(event_name, data)` for each event.
+async fn read_sse(
+    mut resp: reqwest::Response,
+    idle: Duration,
+    secrets: &[&str],
+    mut on: impl FnMut(&str, &str) -> AppResult<bool>,
+) -> AppResult<()> {
+    let mut buf: Vec<u8> = vec![];
+    loop {
+        let chunk = tokio::time::timeout(idle, resp.chunk()).await.map_err(|_| timeout_error())?.map_err(|e| net_error(e, secrets))?;
+        let Some(bytes) = chunk else { break };
+        buf.extend(bytes.iter().filter(|b| **b != b'\r'));
+        while let Some(pos) = buf.windows(2).position(|w| w == b"\n\n") {
+            let raw: Vec<u8> = buf.drain(..pos + 2).collect();
+            let text = String::from_utf8_lossy(&raw);
+            let (mut name, mut data) = (String::new(), vec![]);
+            for line in text.lines() {
+                if let Some(v) = line.strip_prefix("event:") {
+                    name = v.trim().to_string();
+                } else if let Some(v) = line.strip_prefix("data:") {
+                    data.push(v.strip_prefix(' ').unwrap_or(v).to_string());
+                }
+            }
+            if data.is_empty() {
+                continue;
+            }
+            if !on(&name, &data.join("\n"))? {
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn anthropic_stream(turn: &AiTurn, sink: &Option<Emit>) -> AppResult<Reply> {
+    let http = stream_client()?;
+    let (mut body, req) = anthropic_request(&http, turn);
+    body["stream"] = json!(true);
+    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
+    let resp = start_stream(req.json(&body), &secrets, true).await?;
+    let idle = Duration::from_millis(turn.settings.timeout_ms.max(1000) as u64);
+    let mut blocks: Vec<Value> = vec![];
+    let mut partial: std::collections::HashMap<usize, String> = Default::default();
+    let (mut stop, mut input, mut output) = ("end_turn".to_string(), 0i64, 0i64);
+    let mut failure: Option<AppError> = None;
+    read_sse(resp, idle, &secrets, |_, data| {
+        let v: Value = serde_json::from_str(data).unwrap_or(Value::Null);
+        let idx = v["index"].as_u64().unwrap_or(0) as usize;
+        match v["type"].as_str() {
+            Some("message_start") => {
+                input = v.pointer("/message/usage/input_tokens").and_then(|x| x.as_i64()).unwrap_or(0);
+            }
+            Some("content_block_start") => {
+                while blocks.len() <= idx {
+                    blocks.push(json!({}));
+                }
+                blocks[idx] = v["content_block"].clone();
+                if blocks[idx]["type"] == "tool_use" {
+                    partial.insert(idx, String::new());
+                }
+            }
+            Some("content_block_delta") => {
+                if let Some(b) = blocks.get_mut(idx) {
+                    let d = &v["delta"];
+                    let add = |b: &mut Value, k: &str, x: &str| {
+                        let joined = format!("{}{x}", b[k].as_str().unwrap_or(""));
+                        b[k] = json!(joined);
+                    };
+                    match d["type"].as_str() {
+                        Some("text_delta") => {
+                            let t = d["text"].as_str().unwrap_or("");
+                            add(b, "text", t);
+                            emit(sink, json!({ "type": "text", "delta": t }));
+                        }
+                        Some("thinking_delta") => {
+                            let t = d["thinking"].as_str().unwrap_or("");
+                            add(b, "thinking", t);
+                            emit(sink, json!({ "type": "thinking", "delta": t }));
+                        }
+                        Some("signature_delta") => add(b, "signature", d["signature"].as_str().unwrap_or("")),
+                        Some("input_json_delta") => {
+                            partial.entry(idx).or_default().push_str(d["partial_json"].as_str().unwrap_or(""));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Some("content_block_stop") => {
+                if let (Some(b), Some(p)) = (blocks.get_mut(idx), partial.remove(&idx)) {
+                    b["input"] = if p.trim().is_empty() { json!({}) } else { serde_json::from_str(&p).unwrap_or(json!({})) };
+                }
+            }
+            Some("message_delta") => {
+                if let Some(r) = v.pointer("/delta/stop_reason").and_then(|x| x.as_str()) {
+                    stop = r.to_string();
+                }
+                output = v.pointer("/usage/output_tokens").and_then(|x| x.as_i64()).unwrap_or(output);
+            }
+            Some("error") => {
+                let status = if v.pointer("/error/type").and_then(|x| x.as_str()) == Some("overloaded_error") { 529 } else { 500 };
+                failure = Some(provider_error(status, &v, &secrets, true));
+                return Ok(false);
+            }
+            Some("message_stop") => return Ok(false),
+            _ => {}
+        }
+        Ok(true)
+    })
+    .await?;
+    if let Some(e) = failure {
+        return Err(e);
+    }
+    Ok(Reply { content: json!(blocks), stop_reason: stop, input_tokens: input, output_tokens: output })
+}
+
+async fn openai_stream(turn: &AiTurn, sink: &Option<Emit>) -> AppResult<Reply> {
+    let http = stream_client()?;
+    let (body, req) = openai_request(&http, turn, true);
+    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
+    let resp = start_stream(req.json(&body), &secrets, true).await?;
+    let idle = Duration::from_millis(turn.settings.timeout_ms.max(1000) as u64);
+    let (mut text, mut reasoning) = (String::new(), String::new());
+    let mut calls: std::collections::BTreeMap<u64, (String, String, String)> = Default::default();
+    let (mut finish, mut input, mut output) = (None::<String>, 0i64, 0i64);
+    let mut failure: Option<AppError> = None;
+    read_sse(resp, idle, &secrets, |_, data| {
+        if data.trim() == "[DONE]" {
+            return Ok(false);
+        }
+        let v: Value = serde_json::from_str(data).unwrap_or(Value::Null);
+        if v.get("error").is_some() {
+            failure = Some(provider_error(500, &v, &secrets, true));
+            return Ok(false);
+        }
+        if let Some(u) = v.get("usage").filter(|u| u.is_object()) {
+            input = u["prompt_tokens"].as_i64().unwrap_or(input);
+            output = u["completion_tokens"].as_i64().unwrap_or(output);
+        }
+        let d = &v["choices"][0]["delta"];
+        if let Some(r) = d["reasoning"].as_str().or(d["reasoning_content"].as_str()).filter(|t| !t.is_empty()) {
+            reasoning.push_str(r);
+            emit(sink, json!({ "type": "thinking", "delta": r }));
+        }
+        if let Some(t) = d["content"].as_str().filter(|t| !t.is_empty()) {
+            text.push_str(t);
+            emit(sink, json!({ "type": "text", "delta": t }));
+        }
+        for c in d["tool_calls"].as_array().cloned().unwrap_or_default() {
+            let e = calls.entry(c["index"].as_u64().unwrap_or(0)).or_default();
+            if let Some(id) = c["id"].as_str() {
+                e.0 = id.to_string();
+            }
+            if let Some(n) = c.pointer("/function/name").and_then(|x| x.as_str()) {
+                e.1.push_str(n);
+            }
+            if let Some(a) = c.pointer("/function/arguments").and_then(|x| x.as_str()) {
+                e.2.push_str(a);
+            }
+        }
+        if let Some(f) = v["choices"][0]["finish_reason"].as_str() {
+            finish = Some(f.to_string());
+        }
+        Ok(true)
+    })
+    .await?;
+    if let Some(e) = failure {
+        return Err(e);
+    }
+    let mut content = vec![];
+    if !reasoning.is_empty() {
+        content.push(json!({ "type": "reasoning", "text": reasoning }));
+    }
+    if !text.is_empty() {
+        content.push(json!({ "type": "text", "text": text }));
+    }
+    for (i, (id, name, args)) in calls {
+        let input: Value = if args.trim().is_empty() { json!({}) } else { serde_json::from_str(&args).unwrap_or(json!({})) };
+        let id = if id.is_empty() { format!("call_{i}") } else { id };
+        content.push(json!({ "type": "tool_use", "id": id, "name": name, "input": input }));
+    }
+    let stop = openai_stop(finish.as_deref(), &content);
+    Ok(Reply { content: json!(content), stop_reason: stop.to_string(), input_tokens: input, output_tokens: output })
+}
+
+async fn google_stream(turn: &AiTurn, sink: &Option<Emit>) -> AppResult<Reply> {
+    let http = stream_client()?;
+    let (body, req) = google_request(&http, turn, true);
+    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
+    let resp = start_stream(req.json(&body), &secrets, true).await?;
+    let idle = Duration::from_millis(turn.settings.timeout_ms.max(1000) as u64);
+    let mut content: Vec<Value> = vec![];
+    let (mut finish, mut input, mut output) = (None::<String>, 0i64, 0i64);
+    let seq = turn.messages.len();
+    read_sse(resp, idle, &secrets, |_, data| {
+        let v: Value = serde_json::from_str(data).unwrap_or(Value::Null);
+        let parts = v.pointer("/candidates/0/content/parts").and_then(|p| p.as_array()).cloned().unwrap_or_default();
+        for p in &parts {
+            if let Some(t) = p["text"].as_str().filter(|t| !t.is_empty()) {
+                let kind = if p["thought"] == true { "thinking" } else { "text" };
+                emit(sink, json!({ "type": kind, "delta": t }));
+            }
+        }
+        gemini_blocks(&parts, seq, &mut content);
+        if let Some(f) = v.pointer("/candidates/0/finishReason").and_then(|f| f.as_str()) {
+            finish = Some(f.to_string());
+        }
+        input = v.pointer("/usageMetadata/promptTokenCount").and_then(|x| x.as_i64()).unwrap_or(input);
+        output = v.pointer("/usageMetadata/candidatesTokenCount").and_then(|x| x.as_i64()).unwrap_or(output);
+        Ok(true)
+    })
+    .await?;
+    let stop = gemini_stop(finish.as_deref(), &content);
+    Ok(Reply { content: json!(content), stop_reason: stop.to_string(), input_tokens: input, output_tokens: output })
+}
+
+/// C4: errors that mean "the chosen provider is not available right now"
+/// (timeout, unreachable, rate limit, server error, model not found). An
+/// authentication error or a refusal never falls back.
+pub fn is_unavailable(e: &AppError) -> bool {
+    match e.code {
+        ErrorCode::AiTimeout | ErrorCode::AiModelNotFound => true,
+        ErrorCode::AiProviderError => {
+            let d = e.details.clone().unwrap_or(Value::Null);
+            matches!(d["kind"].as_str(), Some("ai_unreachable") | Some("ai_rate_limited")) || d["status"].as_u64().is_some_and(|s| s >= 500)
+        }
+        _ => false,
     }
 }
 
@@ -538,34 +926,111 @@ pub fn json_object(text: &str) -> Option<Value> {
     serde_json::from_str(text.get(start..=end)?).ok()
 }
 
+/// Options for one question.
+#[derive(Default)]
+pub struct AskOptions {
+    /// Live events for the page (C8).
+    pub stream: Option<Emit>,
+    /// Photos and till cart (A5, F6).
+    pub extras: amwapos_core::ai_workspace::AskExtras,
+}
+
+fn clip(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
+}
+
 /// Ask a question: run the tool loop until the model finishes (or the round
 /// limit), storing every message. Settings are re-read on every round, so a
-/// provider or model change applies to the next request.
+/// provider or model change applies to the next request. With a stream sink,
+/// every step is reported as it happens: text, thinking, each tool call and
+/// its result, nudges and provider fallbacks.
 pub async fn ask(
     rt: Arc<crate::runtime::Runtime>,
     token: String,
     conversation_id: Option<String>,
     text: String,
     locale: String,
+    opts: AskOptions,
+) -> AppResult<Value> {
+    let sink = opts.stream.clone();
+    let r = ask_inner(rt, token, conversation_id, text, locale, opts).await;
+    match &r {
+        Ok(_) => emit(&sink, json!({ "type": "done" })),
+        Err(e) => emit(&sink, json!({ "type": "error", "code": e.code, "message": e.message })),
+    }
+    r
+}
+
+async fn ask_inner(
+    rt: Arc<crate::runtime::Runtime>,
+    token: String,
+    conversation_id: Option<String>,
+    text: String,
+    locale: String,
+    opts: AskOptions,
 ) -> AppResult<Value> {
     let core = rt.core.clone();
+    let sink = opts.stream;
     let mut turn = {
-        let (c, t, l) = (core.clone(), token.clone(), locale.clone());
-        blocking(move || c.ai_begin_locale(&t, conversation_id, &text, &l)).await?
+        let (c, t, l, x) = (core.clone(), token.clone(), locale.clone(), opts.extras);
+        blocking(move || c.ai_begin_extras(&t, conversation_id, &text, &l, &x)).await?
     };
     let cid = turn.conversation_id.clone();
+    emit(
+        &sink,
+        json!({ "type": "start", "conversation_id": cid, "provider": turn.settings.provider, "model": turn.settings.model_id,
+                "tools": turn.tools.len() }),
+    );
     let (mut input, mut output, mut rounds) = (0i64, 0i64, 0i64);
     let mut outcome = "completed".to_string();
     // B1: a reply with figures must be backed by a tool call in this question.
     let (mut tools_called, mut nudged) = (false, false);
+    // C4: once the free fallback answered, the rest of this question uses it.
+    let mut on_fallback: Option<AiTurn> = None;
     for _ in 0..MAX_ROUNDS {
         rounds += 1;
-        let http = http_client(&turn.settings)?;
-        let reply = match call_provider(&http, &turn).await {
+        emit(&sink, json!({ "type": "round", "n": rounds }));
+        let current = match &on_fallback {
+            Some(fb) => AiTurn { messages: turn.messages.clone(), tools: turn.tools.clone(), system: turn.system.clone(), ..fb.clone() },
+            None => turn.clone(),
+        };
+        let reply = match call_provider_live(&current, &sink).await {
             Ok(r) => r,
+            Err(e) if on_fallback.is_none() && is_unavailable(&e) => {
+                let (c, t2) = (core.clone(), current.clone());
+                let fb = blocking(move || c.ai_fallback(&t2)).await?;
+                match fb {
+                    Some(fb) => {
+                        let from = format!("{}/{}", current.settings.provider, current.settings.model_id);
+                        let to = format!("openrouter/{}", fb.settings.model_id);
+                        emit(&sink, json!({ "type": "fallback", "from": from, "to": to, "reason": e.message }));
+                        let (c, t, id, f2, t2, why) =
+                            (core.clone(), token.clone(), cid.clone(), from.clone(), to.clone(), e.message.clone());
+                        let _ = blocking(move || c.ai_audit_fallback(&t, &id, &f2, &t2, &why)).await;
+                        on_fallback = Some(fb.clone());
+                        let retry =
+                            AiTurn { messages: turn.messages.clone(), tools: turn.tools.clone(), system: turn.system.clone(), ..fb };
+                        match call_provider_live(&retry, &sink).await {
+                            Ok(r) => r,
+                            Err(e2) => {
+                                let (c, t, id) = (core.clone(), token.clone(), cid.clone());
+                                let last = format!("error after fallback: {:?} {}", e2.code, clip(&e2.message, 160));
+                                let _ = blocking(move || c.ai_audit_request(&t, &id, rounds, input, output, &last)).await;
+                                return Err(e2);
+                            }
+                        }
+                    }
+                    None => {
+                        let (c, t, id) = (core.clone(), token.clone(), cid.clone());
+                        let last = format!("error: {:?} {}", e.code, clip(&e.message, 160));
+                        let _ = blocking(move || c.ai_audit_request(&t, &id, rounds, input, output, &last)).await;
+                        return Err(e);
+                    }
+                }
+            }
             Err(e) => {
                 let (c, t, id) = (core.clone(), token.clone(), cid.clone());
-                let last = format!("error: {:?} {}", e.code, e.message.chars().take(160).collect::<String>());
+                let last = format!("error: {:?} {}", e.code, clip(&e.message, 160));
                 let _ = blocking(move || c.ai_audit_request(&t, &id, rounds, input, output, &last)).await;
                 return Err(e);
             }
@@ -577,6 +1042,11 @@ pub async fn ask(
             let usage = (reply.input_tokens, reply.output_tokens);
             blocking(move || c.ai_store_reply(&id, &content, Some(usage), &stop)).await?;
         }
+        emit(
+            &sink,
+            json!({ "type": "usage", "input_tokens": reply.input_tokens, "output_tokens": reply.output_tokens,
+                             "stop_reason": reply.stop_reason }),
+        );
         match reply.stop_reason.as_str() {
             "tool_use" => {
                 tools_called = true;
@@ -586,25 +1056,32 @@ pub async fn ask(
                 let mut out = vec![];
                 for call in calls {
                     let name = call["name"].as_str().unwrap_or_default().to_string();
+                    emit(&sink, json!({ "type": "tool_call", "id": call["id"], "name": name, "input": call["input"] }));
                     let (c, t, n, i) = (core.clone(), token.clone(), name.clone(), call["input"].clone());
                     let routed = blocking(move || Ok(c.ai_tool_runtime(&t, &n, &i))).await?;
                     let (v, is_error) = match routed {
                         // Runtime-backed reads (WhatsApp/OCR status, hub addresses, updates).
                         Ok(Some((cmd, args))) => {
                             let r = Box::pin(rt.dispatch(&cmd, Some(token.clone()), args)).await;
-                            let (c, id) = (core.clone(), cid.clone());
-                            blocking(move || Ok(c.ai_tool_runtime_wrap(&id, &name, r))).await?
+                            let (c, id, n) = (core.clone(), cid.clone(), name.clone());
+                            blocking(move || Ok(c.ai_tool_runtime_wrap(&id, &n, r))).await?
                         }
                         Err(e) => {
-                            let (c, id) = (core.clone(), cid.clone());
-                            blocking(move || Ok(c.ai_tool_runtime_wrap(&id, &name, Err(e)))).await?
+                            let (c, id, n) = (core.clone(), cid.clone(), name.clone());
+                            blocking(move || Ok(c.ai_tool_runtime_wrap(&id, &n, Err(e)))).await?
                         }
                         Ok(None) => {
-                            let (c, t, id, i) = (core.clone(), token.clone(), cid.clone(), call["input"].clone());
-                            blocking(move || Ok(c.ai_tool(&t, &id, &name, &i))).await?
+                            let (c, t, id, i, n) = (core.clone(), token.clone(), cid.clone(), call["input"].clone(), name.clone());
+                            blocking(move || Ok(c.ai_tool(&t, &id, &n, &i))).await?
                         }
                     };
-                    out.push(json!({ "type": "tool_result", "tool_use_id": call["id"], "content": v.to_string(), "is_error": is_error }));
+                    let body = v.to_string();
+                    emit(
+                        &sink,
+                        json!({ "type": "tool_result", "id": call["id"], "name": name, "is_error": is_error,
+                                         "content": clip(&body, 6000), "truncated": body.chars().count() > 6000 }),
+                    );
+                    out.push(json!({ "type": "tool_result", "tool_use_id": call["id"], "content": body, "is_error": is_error }));
                 }
                 let (c, id) = (core.clone(), cid.clone());
                 blocking(move || c.ai_store_tool_results(&id, &json!(out))).await?;
@@ -630,10 +1107,12 @@ pub async fn ask(
                 let (c, id) = (core.clone(), cid.clone());
                 if nudged {
                     blocking(move || c.ai_mark_unverified(&id)).await?;
+                    emit(&sink, json!({ "type": "unverified" }));
                     outcome = "unverified".into();
                     break;
                 }
                 nudged = true;
+                emit(&sink, json!({ "type": "nudge" }));
                 blocking(move || c.ai_nudge(&id)).await?;
             }
         }
@@ -643,12 +1122,58 @@ pub async fn ask(
             outcome = "round_limit".into();
         }
     }
+    if on_fallback.is_some() {
+        outcome = format!("{outcome} (fallback)");
+    }
     let (c, t, id) = (core.clone(), token.clone(), cid.clone());
     blocking(move || {
         c.ai_audit_request(&t, &id, rounds, input, output, &outcome)?;
         c.ai_conversation(&t, &id)
     })
     .await
+}
+
+/// A8: run one briefing (scheduled when `token` is None) and write its note.
+pub async fn run_briefing(core: Arc<amwapos_core::AppCore>, briefing_id: String, token: Option<String>) -> AppResult<Value> {
+    let c = core.clone();
+    let run = blocking(move || c.ai_briefing_start(&briefing_id, token.as_deref())).await?;
+    let (summary, err) = match &run.summary_turn {
+        Some(turn) => match complete_once(turn).await {
+            Ok(t) if !t.trim().is_empty() => (Some(t), None),
+            Ok(_) => (None, Some("The AI provider returned an empty summary.".to_string())),
+            Err(e) => (None, Some(e.message)),
+        },
+        None => (None, None),
+    };
+    let c = core.clone();
+    blocking(move || c.ai_briefing_finish(run, summary, err)).await
+}
+
+/// E1: let the provider re-sort messages the rules sorted.
+pub async fn triage_ai(core: Arc<amwapos_core::AppCore>, token: String, limit: i64) -> AppResult<Value> {
+    let (c, t) = (core.clone(), token.clone());
+    let Some((turn, seqs)) = blocking(move || c.wa_triage_ai_turn(&t, limit)).await? else {
+        return Err(AppError::conflict("Sorting with AI needs a real AI provider with consent in Settings → AI; the rules still apply."));
+    };
+    let reply = complete_once(&turn).await?;
+    let v = json_object(&reply).ok_or_else(|| AppError::new(ErrorCode::AiProviderError, "The AI reply was not a JSON object."))?;
+    blocking(move || core.wa_triage_apply_ai(&token, &seqs, &v)).await
+}
+
+/// E2: a draft reply for a person to edit and send.
+pub async fn draft_reply(core: Arc<amwapos_core::AppCore>, token: String, chat: String, instruction: Option<String>) -> AppResult<Value> {
+    let (c, t, ch) = (core.clone(), token.clone(), chat.clone());
+    let (turn, ctx) = blocking(move || c.wa_draft_prepare(&t, &ch, instruction)).await?;
+    let (text, source) = match turn {
+        Some(turn) => match complete_once(&turn).await {
+            Ok(t) if !t.trim().is_empty() => (clip(t.trim(), 1500), "ai"),
+            _ => (ctx["template"].as_str().unwrap_or("").to_string(), "template"),
+        },
+        None => (ctx["template"].as_str().unwrap_or("").to_string(), "template"),
+    };
+    let (c, t, ch) = (core.clone(), token.clone(), chat.clone());
+    blocking(move || c.wa_draft_audit(&t, &ch, source)).await?;
+    Ok(json!({ "chat": chat, "text": text, "source": source, "category": ctx["category"], "lang": ctx["lang"] }))
 }
 
 #[cfg(test)]

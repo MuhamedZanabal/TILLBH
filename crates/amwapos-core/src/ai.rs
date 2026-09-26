@@ -86,7 +86,20 @@ pub struct AiSettings {
     pub consent_at: Option<String>,
     /// Input + output tokens allowed per business day (0 = no cap).
     pub daily_token_cap: i64,
+    /// C4: when the chosen provider is unavailable, retry on OpenRouter with
+    /// `fallback_model` (a free model router by default). Owner opt-in; it
+    /// sends the same data to OpenRouter, so it carries its own consent.
+    pub fallback_free: bool,
+    pub fallback_model: String,
+    /// Optional override of OpenRouter's address (gateways, tests).
+    pub fallback_base_url: String,
+    pub fallback_consent_at: Option<String>,
 }
+
+/// API key and optional extra header (name, value).
+pub type Credentials = (String, Option<(String, String)>);
+
+pub const DEFAULT_FALLBACK_MODEL: &str = "openrouter/free";
 
 impl Default for AiSettings {
     fn default() -> Self {
@@ -103,6 +116,10 @@ impl Default for AiSettings {
             consent_by: None,
             consent_at: None,
             daily_token_cap: 0,
+            fallback_free: false,
+            fallback_model: DEFAULT_FALLBACK_MODEL.into(),
+            fallback_base_url: String::new(),
+            fallback_consent_at: None,
         }
     }
 }
@@ -125,6 +142,9 @@ impl AiSettings {
         }
         self.timeout_ms = self.timeout_ms.clamp(5_000, TIMEOUT_CEILING_MS);
         self.daily_token_cap = self.daily_token_cap.max(0);
+        if self.fallback_model.trim().is_empty() {
+            self.fallback_model = DEFAULT_FALLBACK_MODEL.into();
+        }
         self
     }
 
@@ -638,6 +658,18 @@ fn bump(risk: &str) -> &'static str {
 }
 
 impl AppCore {
+    pub(crate) fn ai_settings_pub(&self) -> AppResult<AiSettings> {
+        self.ai_settings()
+    }
+
+    /// Key and extra header for a one-off request, or None when no key is stored.
+    pub(crate) fn ai_credentials_pub(&self, st: &AiSettings) -> AppResult<Option<Credentials>> {
+        match self.provider_key(&st.provider)? {
+            Some(k) if !st.model_id.trim().is_empty() => Ok(Some((k, self.provider_header(st)?))),
+            _ => Ok(None),
+        }
+    }
+
     fn ai_settings(&self) -> AppResult<AiSettings> {
         Ok(self.db.read(|c| settings::get::<AiSettings>(c, KEY_AI))?.normalized())
     }
@@ -753,6 +785,8 @@ impl AppCore {
             "can_mutate": can_propose(&f, &s),
             "is_owner": owner,
             "tokens_today": self.ai_tokens_today().unwrap_or(0),
+            "fallback_key_configured": self.provider_key("openrouter")?.is_some(),
+            "fallback_ready": st.fallback_free && self.provider_key("openrouter")?.is_some(),
             "daily_token_cap": st.daily_token_cap,
             "ready": f.is_on("ai.enabled") && (st.provider == "fake" || (key && st.consent && !st.model_id.is_empty())),
         }))
@@ -766,6 +800,19 @@ impl AppCore {
         v: AiSettings,
         api_key: Option<String>,
         extra_header_value: Option<String>,
+    ) -> AppResult<Value> {
+        self.ai_configure_full(token, v, api_key, extra_header_value, None)
+    }
+
+    /// As `ai_configure`, plus the OpenRouter key used by the free fallback
+    /// (null keeps it, "" removes it). Keys go to the secret store only.
+    pub fn ai_configure_full(
+        &self,
+        token: &str,
+        v: AiSettings,
+        api_key: Option<String>,
+        extra_header_value: Option<String>,
+        fallback_api_key: Option<String>,
     ) -> AppResult<Value> {
         let s = self.session(token)?;
         s.require("settings.manage")?;
@@ -831,6 +878,33 @@ impl AppCore {
         let provider_switched = before.provider != v.provider && before.provider != "fake" && v.provider != "fake" && before.consent;
         if provider_switched {
             v.consent = false;
+        }
+        v.fallback_model = v.fallback_model.trim().to_string();
+        if v.fallback_model.is_empty() {
+            v.fallback_model = DEFAULT_FALLBACK_MODEL.into();
+        }
+        if v.fallback_model.len() > 200 {
+            return Err(AppError::validation("The fallback model id is too long."));
+        }
+        v.fallback_base_url = v.fallback_base_url.trim().trim_end_matches('/').to_string();
+        if !(v.fallback_base_url.is_empty()
+            || v.fallback_base_url.starts_with("https://")
+            || v.fallback_base_url.starts_with("http://127.0.0.1")
+            || v.fallback_base_url.starts_with("http://localhost"))
+        {
+            return Err(AppError::validation("The fallback address must use https:// (or be on this computer)."));
+        }
+        v.fallback_consent_at = match (v.fallback_free, before_fallback(&self.ai_settings()?)) {
+            (false, _) => None,
+            (true, Some(at)) => Some(at),
+            (true, None) => Some(time::now_str()),
+        };
+        if let Some(k) = fallback_api_key.map(|k| k.trim().to_string()) {
+            if k.is_empty() {
+                self.secrets.delete(&secret_key_slot("openrouter"))?;
+            } else {
+                self.secrets.set(&secret_key_slot("openrouter"), &k)?;
+            }
         }
         if v.daily_token_cap < 0 || v.daily_token_cap > 100_000_000 {
             return Err(AppError::validation("The daily token cap must be between 0 (no cap) and 100000000."));
@@ -899,6 +973,46 @@ impl AppCore {
         })
     }
 
+    /// C4: the same turn sent to OpenRouter's fallback model, when the owner
+    /// turned the fallback on and an OpenRouter key is stored. None otherwise,
+    /// or when the turn already runs on that model.
+    pub fn ai_fallback(&self, turn: &AiTurn) -> AppResult<Option<AiTurn>> {
+        let st = self.ai_settings()?;
+        if !st.fallback_free || st.fallback_consent_at.is_none() {
+            return Ok(None);
+        }
+        if turn.settings.provider == "openrouter" && turn.settings.model_id == st.fallback_model {
+            return Ok(None);
+        }
+        let Some(key) = self.provider_key("openrouter")? else { return Ok(None) };
+        let settings = AiSettings {
+            provider: "openrouter".into(),
+            model_id: st.fallback_model.clone(),
+            base_url: st.fallback_base_url.clone(),
+            extra_header_name: String::new(),
+            ..turn.settings.clone()
+        };
+        Ok(Some(AiTurn { settings, api_key: key, extra_header: None, ..turn.clone() }))
+    }
+
+    /// Audit a fallback (provider names and the reason; no content).
+    pub fn ai_audit_fallback(&self, token: &str, conversation_id: &str, from: &str, to: &str, reason: &str) -> AppResult<()> {
+        let s = self.session(token)?;
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            audit::record(
+                tx,
+                &actor,
+                "ai.fallback",
+                "ai_conversation",
+                Some(conversation_id),
+                None,
+                Some(&json!({ "from": from, "to": to, "reason": reason.chars().take(200).collect::<String>() })),
+            )?;
+            Ok(())
+        })
+    }
+
     /// C5: refuse a new question once today's tokens reach the owner's cap.
     fn check_token_cap(&self, st: &AiSettings) -> AppResult<()> {
         if st.daily_token_cap <= 0 {
@@ -946,6 +1060,18 @@ impl AppCore {
     }
 
     pub fn ai_begin_locale(&self, token: &str, conversation_id: Option<String>, text: &str, locale: &str) -> AppResult<AiTurn> {
+        self.ai_begin_extras(token, conversation_id, text, locale, &crate::ai_workspace::AskExtras::default())
+    }
+
+    /// Start a question with attached photos (A5) and the till cart (F6).
+    pub fn ai_begin_extras(
+        &self,
+        token: &str,
+        conversation_id: Option<String>,
+        text: &str,
+        locale: &str,
+        extras: &crate::ai_workspace::AskExtras,
+    ) -> AppResult<AiTurn> {
         let s = self.session(token)?;
         s.require("ai.use")?;
         if !self.features()?.is_on("ai.enabled") {
@@ -985,7 +1111,13 @@ impl AppCore {
                     c
                 }
             };
-            append_message(tx, &cid, "user", &json!([{ "type": "text", "text": text }]), None)?;
+            let mut content = vec![json!({ "type": "text", "text": text })];
+            content.extend(crate::ai_workspace::extra_blocks(tx, &s.user_id, &cid, extras)?);
+            append_message(tx, &cid, "user", &json!(content), None)?;
+            if !extras.images.is_empty() {
+                // A photo is outside text: after it, every proposal is high risk.
+                tx.execute("UPDATE ai_conversations SET untrusted_seen=1 WHERE conversation_id=?1", [&cid])?;
+            }
             Ok(cid)
         })?;
         self.ai_turn(&s, &cid, st, key, header, locale)
@@ -1053,6 +1185,8 @@ impl AppCore {
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })?;
+        let messages = crate::ai_workspace::resolve_images(self, messages);
+        let pins = crate::ai_workspace::pins_prompt(self, cid)?;
         let question = self.last_user_text(cid)?;
         // A4: a barcode in the question names its product (only if the user may see products).
         let barcode_context = if s.has("products.view") || s.has("pos.sell") {
@@ -1080,7 +1214,7 @@ impl AppCore {
             settings: st,
             api_key: key,
             extra_header,
-            system: system_prompt(&business, &currency, digits, &tz, &today, locale, mutations, &question, &barcode_context),
+            system: system_prompt(&business, &currency, digits, &tz, &today, locale, mutations, &question, &barcode_context) + &pins,
             tools: session_tools(&f, s),
             messages,
         })
@@ -1514,34 +1648,79 @@ impl AppCore {
                 return Err(AppError::forbidden("ai.use"));
             }
             let mut st = c.prepare("SELECT role, content_json, created_at, stop_reason FROM ai_messages WHERE conversation_id=?1 ORDER BY seq")?;
+            let rows: Vec<(String, String, String, Option<String>)> = st
+                .query_map([&cid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<Result<_, _>>()?;
+            // C8: every tool result, keyed by call id, exactly as the model saw it.
+            let mut results: std::collections::HashMap<String, (String, bool)> = Default::default();
+            for (_, content, _, _) in &rows {
+                let blocks: Vec<Value> = serde_json::from_str(content).unwrap_or_default();
+                for b in blocks.iter().filter(|b| b["type"] == "tool_result") {
+                    let body = b["content"].as_str().map(str::to_string).unwrap_or_else(|| b["content"].to_string());
+                    results.insert(
+                        b["tool_use_id"].as_str().unwrap_or_default().to_string(),
+                        (body.chars().take(6000).collect(), b["is_error"] == true),
+                    );
+                }
+            }
             let mut items = vec![];
             // Evidence: every tool call since the person's last question.
             let mut evidence: Vec<Value> = vec![];
-            for r in st.query_map([&cid], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?)))? {
-                let (role, content, at, stop) = r?;
+            for (role, content, at, stop) in rows {
                 let blocks: Vec<Value> = serde_json::from_str(&content).unwrap_or_default();
-                let text: Vec<String> = blocks.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str().map(|x| x.to_string())).collect();
-                if role == "user" && text.iter().any(|t| t.starts_with(NUDGE_PREFIX)) {
-                    continue; // AMWAPOS's own check, not the person's words
+                let all_text: Vec<String> =
+                    blocks.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str().map(|x| x.to_string())).collect();
+                if role == "user" && all_text.iter().any(|t| t.starts_with(NUDGE_PREFIX)) {
+                    // AMWAPOS's own check, not the person's words; shown as a note.
+                    items.push(json!({ "role": "system", "text": "", "tools": [], "at": at, "stop_reason": null, "kind": "nudge",
+                                       "evidence": [], "unverified": false, "calls": [], "thinking": "", "attachments": [] }));
+                    continue;
                 }
+                let has_context = all_text.iter().any(|t| t.starts_with(crate::ai_workspace::CONTEXT_PREFIX));
+                let text: Vec<String> = all_text.into_iter().filter(|t| !t.starts_with(crate::ai_workspace::CONTEXT_PREFIX)).collect();
                 if role == "user" && !text.is_empty() {
                     evidence.clear();
                 }
                 let tools: Vec<String> = blocks.iter().filter(|b| b["type"] == "tool_use").filter_map(|b| b["name"].as_str().map(|x| x.to_string())).collect();
+                let mut calls = vec![];
                 for b in blocks.iter().filter(|b| b["type"] == "tool_use") {
                     evidence.push(json!({ "tool": b["name"], "ids": evidence_ids(&b["input"]), "at": at }));
+                    let id = b["id"].as_str().unwrap_or_default();
+                    let (result, is_error) = results.get(id).cloned().unwrap_or_default();
+                    calls.push(json!({ "id": id, "name": b["name"], "input": b["input"], "result": result, "is_error": is_error }));
                 }
-                if text.is_empty() && tools.is_empty() && stop.as_deref() != Some("refusal") {
+                let thinking: Vec<String> = blocks
+                    .iter()
+                    .filter_map(|b| match b["type"].as_str() {
+                        Some("thinking") => b["thinking"].as_str().map(str::to_string),
+                        Some("reasoning") => b["text"].as_str().map(str::to_string),
+                        _ => None,
+                    })
+                    .filter(|t| !t.is_empty())
+                    .collect();
+                let attachments: Vec<Value> = blocks
+                    .iter()
+                    .filter(|b| b["type"] == "image_ref")
+                    .map(|b| json!({ "attachment_id": b["attachment_id"], "media_type": b["media_type"] }))
+                    .collect();
+                if text.is_empty() && tools.is_empty() && thinking.is_empty() && stop.as_deref() != Some("refusal") {
                     continue; // tool results
                 }
                 let ev = if role == "assistant" && !text.is_empty() { json!(evidence) } else { json!([]) };
                 items.push(json!({ "role": role, "text": text.join("\n\n"), "tools": tools, "at": at, "stop_reason": stop,
-                                   "evidence": ev, "unverified": stop.as_deref() == Some("unverified") }));
+                                   "evidence": ev, "unverified": stop.as_deref() == Some("unverified"),
+                                   "calls": calls, "thinking": thinking.join("\n\n"), "attachments": attachments,
+                                   "has_context": has_context }));
             }
+            let pins: Value = c
+                .query_row("SELECT pins_json FROM ai_conversations WHERE conversation_id=?1", [&cid], |r| r.get::<_, String>(0))
+                .ok()
+                .and_then(|p| serde_json::from_str(&p).ok())
+                .unwrap_or(json!([]));
             let mut st = c.prepare("SELECT proposal_id FROM ai_proposals WHERE conversation_id=?1 ORDER BY created_at")?;
             let ids = st.query_map([&cid], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
             let proposals = ids.iter().map(|id| load_proposal(c, id)).collect::<AppResult<Vec<_>>>()?;
-            Ok(json!({ "conversation_id": cid, "title": title, "untrusted_seen": untrusted != 0, "messages": items, "proposals": proposals }))
+            Ok(json!({ "conversation_id": cid, "title": title, "untrusted_seen": untrusted != 0, "messages": items, "proposals": proposals, "pins": pins }))
         })
     }
 
@@ -1769,6 +1948,14 @@ impl AppCore {
             Ok(())
         })?;
         self.db.read(|c| load_proposal(c, &id))
+    }
+}
+
+fn before_fallback(st: &AiSettings) -> Option<String> {
+    if st.fallback_free {
+        st.fallback_consent_at.clone()
+    } else {
+        None
     }
 }
 
