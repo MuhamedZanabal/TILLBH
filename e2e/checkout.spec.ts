@@ -324,3 +324,63 @@ test("Arabic RTL: cashier sale and admin are usable right-to-left", async ({ pag
   await page.getByTestId("lang-toggle").click();
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
 });
+
+test("AI assistant: live tool steps and thinking, slash commands, shortcuts, and the till assistant", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /Zana/ }).click();
+  await page.getByLabel("PIN").fill("4826");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  const token = await page.evaluate(() => sessionStorage.getItem("amwapos.session"));
+  const features = await rpc(page, "settings.get", { key: "features" }, token);
+  await rpc(page, "settings.save", { key: "features", value: { ...features, "ai.enabled": true } }, token);
+  // The owner lets cashiers use the assistant at the till (read-only for them).
+  const roles = await rpc(page, "roles.list", {}, token);
+  const cashier = roles.find((r: { role_id: string }) => r.role_id === "role_cashier");
+  await rpc(
+    page,
+    "roles.save",
+    { role_id: "role_cashier", name: cashier.name, permissions: [...cashier.permissions, "ai.use"] },
+    token,
+  );
+  await page.getByRole("button", { name: "Logout" }).click();
+
+  // Till (Sara's open shift): the assistant in a drawer, with the cart as context.
+  await page.getByRole("button", { name: /Sara/ }).click();
+  await page.getByLabel("PIN").fill("7391");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByTestId("pos")).toBeVisible();
+  await page.getByTestId("till-ai").click();
+  const composer = page.getByTestId("ai-composer");
+  await composer.fill("what can you do?");
+  await composer.press("Enter");
+  await expect(page.getByTestId("ai-thinking").first()).toBeVisible();
+  await shot(page, "30-till-ai");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /More/ }).click();
+  await page.getByRole("menuitem", { name: "Logout" }).click();
+
+  // Owner → Admin → AI page.
+  await page.getByRole("button", { name: /Zana/ }).click();
+  await page.getByLabel("PIN").fill("4826");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("link", { name: "AI Assistant" }).click();
+  await composer.fill("low stock");
+  await composer.press("Enter");
+  await expect(page.getByTestId("ai-tool-step").first()).toContainText("low_stock");
+  await expect(page.getByTestId("ai-thinking").first()).toBeVisible();
+  // F1: a slash command reads directly, without the model.
+  await composer.fill("/kpi");
+  await expect(page.getByTestId("ai-slash-palette")).toBeVisible();
+  await composer.press("Enter");
+  await expect(page.getByTestId("ai-slash-result")).toContainText("/kpi");
+  await shot(page, "31-ai-page");
+  // F5: "?" opens the shortcut list when not typing.
+  await page.getByRole("heading", { name: "AI Assistant" }).click();
+  await page.keyboard.press("?");
+  await expect(page.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
+});

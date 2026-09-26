@@ -74,7 +74,7 @@ import {
   UpdatesPage,
 } from "./system";
 import { WhatsAppPage, InvoiceScanPage, PaymentReviewsPage } from "./automation";
-import { AiAssistantPage } from "./ai";
+import { AiAssistantPage } from "./aiChat";
 import { MigrationPage } from "./migration";
 import { t } from "../../i18n";
 import { LanguageToggle } from "../../components/LanguageToggle";

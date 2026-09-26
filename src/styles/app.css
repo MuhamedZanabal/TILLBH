@@ -829,3 +829,44 @@ details.tech pre {
     opacity: 0;
   }
 }
+
+/* AI assistant: chat bubbles, visible tool steps, icon buttons, till widget */
+.bubble {
+  padding: 10px 12px;
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.bubble.out {
+  background: var(--brand-soft);
+  border-color: transparent;
+}
+.ai-step {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  background: var(--surface);
+}
+.ai-step > summary,
+details > summary {
+  cursor: pointer;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.icon-btn:hover {
+  background: var(--surface-hover);
+}
+.icon-btn:focus-visible,
+[data-testid="ai-proposal"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}

@@ -189,3 +189,48 @@ never run against a live provider, the live WhatsApp phone or Windows Hello.
 - Consent is per provider: moving between two real providers asks the owner to
   agree again.
 - Tests: `crates/amwapos-hub/tests/ai_admin.rs` (15), `ai_byok.rs` unchanged.
+
+## AI workspace, 2026-09-26
+
+Status: **Partially complete.** Tested with the offline test model and loopback
+provider stubs (Anthropic and OpenAI-style SSE); never run against a live
+provider, OpenRouter, the live WhatsApp phone or a Windows till.
+
+- **C8 streaming and transparency.** With a `stream_id`, every provider streams
+  (Anthropic SSE with `thinking.display: "summarized"`, thinking signatures
+  replayed unchanged; OpenAI-compatible SSE with reasoning and tool-call deltas;
+  Gemini SSE with thought summaries). The page polls `ai.stream` and shows, as
+  they happen: thinking, each tool call with its input, each tool result exactly
+  as the model saw it, nudges, fallbacks, token use. Stored conversations keep the
+  same trace (thinking, calls with results).
+- **C4 free fallback.** Owner opt-in, with its own consent and an OpenRouter key in
+  Credential Manager. Used only when the chosen provider is unavailable (timeout,
+  unreachable, 429, 5xx, unknown model), never for a wrong key or a refusal.
+  Default model `openrouter/free` (editable). Shown on the page and audited
+  (`ai.fallback`).
+- **A5 photos.** Attach a photo for the model (PNG/JPEG/WEBP/GIF, 5 MB, content
+  sniffed, owner-only), or send a supplier invoice / payment screenshot into the
+  existing OCR pipelines from the same button. A photo marks the thread untrusted.
+- **A6 memory.** Rename conversations; pin up to 8 records (product, customer,
+  supplier, order, shift, PO, sale, delivery), read with the user's permissions,
+  labels passed as DATA.
+- **A8 briefings.** A playbook at a time of day and days of the week, run while
+  the app is open with the permissions of whoever saved it (short internal
+  session, ended after the run), once per day; optional AI summary with a real
+  provider. Notes are listed on the AI page (`ai.notes`). Audited.
+- **E1 triage.** Incoming WhatsApp messages sorted into order / payment /
+  complaint / question / spam / other by rules, optionally re-sorted by the AI;
+  a person can correct each one. Suggested next step per category.
+- **E2 draft reply.** AI draft (or a template when no provider) put in the reply
+  box; nothing is queued or sent until a person presses Send. Audited.
+- **E4 payment comparison.** Every payment review carries expected vs detected,
+  the difference, and reference / confidence / duplicate checks. It never settles.
+- **F1 slash commands.** 46 commands with a palette: direct reads (no model),
+  playbooks, pin/rename/new, `/price`, `/explain`, `/goto`, `/attach`, `/model`.
+- **F5 keyboard.** Ctrl+K, `/`, `?`, Alt+N/I/B, Enter/Shift+Enter, ↑ recall, Tab
+  complete, Esc; Ctrl+Enter / Ctrl+Backspace on a focused proposal card.
+- **F6 till assistant.** The full assistant in a drawer from the till header, with
+  the open cart as DATA context (optional). Till shortcuts pause while it is open.
+  Cashiers need `ai.use` (not granted by default).
+- Tests: `crates/amwapos-hub/tests/ai_workspace.rs` (12), unit tests in
+  `ai_workspace.rs` and `ai_stream.rs`, e2e "AI assistant" in `e2e/checkout.spec.ts`.

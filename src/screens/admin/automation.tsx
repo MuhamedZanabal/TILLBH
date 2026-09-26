@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CheckCircle2, CircleAlert, FileScan, Image as ImageIcon, RefreshCw, Send, Upload } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleAlert,
+  FileScan,
+  Image as ImageIcon,
+  RefreshCw,
+  Send,
+  Sparkles,
+  Upload,
+} from "lucide-react";
 import { api } from "../../api";
 import type {
   AutomationStatus,
@@ -22,7 +31,7 @@ import { formatDateTime, relative } from "../../lib/time";
 import { newOperationId } from "../../lib/ids";
 import { t, tb } from "../../i18n";
 import { OrderEditor } from "../orders";
-import type { DigitalOrder } from "../../api/types";
+import type { DigitalOrder, WaTriageItem } from "../../api/types";
 
 // ---------------------------------------------------------------- helpers
 
@@ -179,7 +188,7 @@ function WaAbout() {
 
 // ---------------------------------------------------------------- WhatsApp
 
-type WaTab = "connection" | "conversations" | "outbox" | "templates" | "diagnostics";
+type WaTab = "connection" | "conversations" | "triage" | "outbox" | "templates" | "diagnostics";
 
 export function WhatsAppPage() {
   const [tab, setTab] = useState<WaTab>("connection");
@@ -200,6 +209,7 @@ export function WhatsAppPage() {
             tabs={[
               { key: "connection", label: t("Connection") },
               { key: "conversations", label: t("Conversations") },
+              { key: "triage", label: t("Triage") },
               { key: "outbox", label: t("Sent messages") },
               { key: "templates", label: t("Templates") },
               { key: "diagnostics", label: t("Diagnostics") },
@@ -208,6 +218,7 @@ export function WhatsAppPage() {
           <div style={{ marginTop: 16 }}>
             {tab === "connection" ? <WaConnection /> : null}
             {tab === "conversations" ? <WaConversations /> : null}
+            {tab === "triage" ? <WaTriage /> : null}
             {tab === "outbox" ? <WaOutbox /> : null}
             {tab === "templates" ? <WaTemplates /> : null}
             {tab === "diagnostics" ? <WaDiagnostics /> : null}
@@ -532,6 +543,180 @@ function WaConversations() {
   );
 }
 
+const TRIAGE_LABEL: Record<WaTriageItem["category"], () => string> = {
+  order: () => t("Order"),
+  payment: () => t("Payment"),
+  complaint: () => t("Complaint"),
+  question: () => t("Question"),
+  spam: () => t("Spam"),
+  other: () => t("Other"),
+};
+const TRIAGE_TONE: Record<WaTriageItem["category"], "info" | "success" | "danger" | "warning" | "default"> = {
+  order: "info",
+  payment: "success",
+  complaint: "danger",
+  question: "warning",
+  spam: "default",
+  other: "default",
+};
+const SUGGESTION_LABEL: Record<string, () => string> = {
+  draft_order: () => t("Make a draft order"),
+  review_payment: () => t("Review the payment"),
+  draft_reply: () => t("Draft a reply"),
+  mark_read: () => t("Mark as read"),
+  open_thread: () => t("Open the conversation"),
+};
+
+/** E1: incoming messages sorted by rules (and optionally the AI); a person can correct each one. */
+function WaTriage() {
+  const { data, error, reload } = useLoad(() => api.whatsapp.triage(100), []);
+  const act = useAction();
+  const toast = useToast();
+  const { has } = useSession();
+  const [filter, setFilter] = useState<WaTriageItem["category"] | "all">("all");
+  const items = (data?.items ?? []).filter((i) => filter === "all" || i.category === filter);
+  return (
+    <div className="card card-pad col gap-16" data-testid="wa-triage">
+      <div className="row wrap">
+        <Button variant={filter === "all" ? "primary" : "ghost"} onClick={() => setFilter("all")}>
+          {t("All")}
+        </Button>
+        {(Object.keys(TRIAGE_LABEL) as WaTriageItem["category"][]).map((c) => (
+          <Button key={c} variant={filter === c ? "primary" : "ghost"} onClick={() => setFilter(c)}>
+            {TRIAGE_LABEL[c]()} {data?.counts[c] ? `(${data.counts[c]})` : ""}
+          </Button>
+        ))}
+        <span className="grow" />
+        {has("ai.use") ? (
+          <Button
+            icon={<Sparkles size={16} />}
+            loading={act.busy}
+            onClick={async () => {
+              const r = await act.run(() => api.whatsapp.triageAi(30));
+              if (r) {
+                toast("success", t("{0} messages re-sorted by the AI.", r.updated));
+                void reload();
+              }
+            }}
+          >
+            {t("Sort with AI")}
+          </Button>
+        ) : null}
+      </div>
+      <div className="tiny muted">
+        {t(
+          "Sorted by simple rules first. The AI and people can change a category; nothing is sent or changed automatically.",
+        )}
+      </div>
+      {error ? <Banner tone="danger">{error}</Banner> : null}
+      {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+      {!data ? (
+        <Skeleton />
+      ) : (
+        <table className="table">
+          <tbody>
+            {items.map((i) => (
+              <tr key={i.seq}>
+                <td style={{ width: 150 }}>
+                  <Chip tone={TRIAGE_TONE[i.category]}>{TRIAGE_LABEL[i.category]()}</Chip>
+                  <div className="tiny">
+                    {i.source === "person" ? t("Set by a person") : i.source === "ai" ? t("AI") : t("Rules")} ·{" "}
+                    {i.confidence}%
+                  </div>
+                </td>
+                <td>
+                  <strong>{i.push_name ?? i.phone ?? i.chat}</strong>
+                  <div className="small" style={{ whiteSpace: "pre-wrap" }}>
+                    {i.kind === "image" ? `[${t("Image")}] ` : ""}
+                    {i.preview}
+                  </div>
+                  <div className="tiny">{relative(i.received_at)}</div>
+                </td>
+                <td style={{ width: 170 }}>
+                  <select
+                    className="select"
+                    aria-label={t("Category")}
+                    value={i.category}
+                    onChange={async (e) => {
+                      const r = await act.run(() =>
+                        api.whatsapp.triageSet(i.seq, e.target.value as WaTriageItem["category"]),
+                      );
+                      if (r) void reload();
+                    }}
+                  >
+                    {(Object.keys(TRIAGE_LABEL) as WaTriageItem["category"][]).map((c) => (
+                      <option key={c} value={c}>
+                        {TRIAGE_LABEL[c]()}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ width: 170 }}>
+                  <Link to={i.suggestion.link}>{SUGGESTION_LABEL[i.suggestion.action]?.() ?? i.suggestion.action}</Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+/** E4: the payment screenshot against what is owed, check by check. */
+export function PaymentComparison({ r }: { r: PaymentReview }) {
+  const c = r.comparison;
+  if (!c) return null;
+  const verdict: Record<string, () => string> = {
+    exact: () => t("Amount matches exactly"),
+    overpaid: () => t("Paid more than expected"),
+    underpaid: () => t("Paid less than expected"),
+    amount_not_read: () => t("The amount could not be read"),
+    no_expected_amount: () => t("No expected amount to compare with"),
+  };
+  const check: Record<string, () => string> = {
+    amount: () => t("Amount"),
+    reference: () => t("Transfer reference"),
+    ocr_confidence: () => t("OCR confidence"),
+    not_duplicate: () => t("Not a duplicate"),
+  };
+  return (
+    <div className="card card-pad col gap-8" data-testid="pay-compare">
+      <div className="row">
+        <strong className="grow">{t("Comparison")}</strong>
+        <Chip tone={c.all_checks_pass ? "success" : c.verdict === "exact" ? "warning" : "danger"}>
+          {verdict[c.verdict]?.()}
+        </Chip>
+      </div>
+      <table className="table">
+        <tbody>
+          <tr>
+            <td>{t("Expected")}</td>
+            <td className="num">{c.expected_minor === null ? "—" : formatMoney(c.expected_minor)}</td>
+          </tr>
+          <tr>
+            <td>{t("Detected by OCR")}</td>
+            <td className="num">{c.detected_minor === null ? "—" : formatMoney(c.detected_minor)}</td>
+          </tr>
+          <tr>
+            <td>{t("Difference")}</td>
+            <td className="num">{c.difference_minor === null ? "—" : formatMoney(c.difference_minor)}</td>
+          </tr>
+          {c.checks.map((x) => (
+            <tr key={x.check}>
+              <td>{check[x.check]?.()}</td>
+              <td>{x.ok ? <Chip tone="success">{t("OK")}</Chip> : <Chip tone="warning">{t("Check")}</Chip>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="tiny">
+        {t("This only helps you decide. Nothing is confirmed or settled until a person decides.")}
+      </div>
+    </div>
+  );
+}
+
 function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => void }) {
   const toast = useToast();
   const { data, reload } = useLoad(() => api.whatsapp.thread(chat.chat), [chat.chat]);
@@ -623,6 +808,35 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
             nav("/admin/orders");
           }}
         />
+      ) : null}
+      {has("ai.use") && has("whatsapp.send") ? (
+        <div className="row">
+          <Button
+            variant="ghost"
+            icon={<Sparkles size={16} />}
+            loading={act.busy}
+            data-testid="wa-draft"
+            onClick={async () => {
+              const r = await act.run(() => api.whatsapp.draftReply(chat.chat, text.trim() || null));
+              if (r) {
+                setText(r.text);
+                toast(
+                  "info",
+                  r.source === "ai"
+                    ? t("AI draft ready. Edit it, then press Send.")
+                    : t("Template draft ready. Edit it, then press Send."),
+                );
+              }
+            }}
+          >
+            {t("Draft reply")}
+          </Button>
+          <span className="tiny muted">
+            {t(
+              "Type an instruction first (for example: say it arrives at 6) or leave the box empty. Nothing is sent until you press Send.",
+            )}
+          </span>
+        </div>
       ) : null}
       <div className="row">
         <textarea
@@ -1183,6 +1397,7 @@ function ReviewDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
           ) : (
             <div className="tiny">{t("Image not available.")}</div>
           )}
+          <PaymentComparison r={r} />
           <dl className="kv">
             <dt>{t("Expected")}</dt>
             <dd>{r.expected_minor === null ? "—" : formatMoney(r.expected_minor)}</dd>

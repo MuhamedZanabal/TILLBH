@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bot,
   Banknote,
   CreditCard,
   Lock,
@@ -29,6 +30,10 @@ import { setSoundEnabled, sounds } from "../../lib/sound";
 import { Banner, Button, Chip, Modal } from "../../components/ui";
 import { Logo } from "../../components/Logo";
 import { ConnectionPill } from "./ConnectionPill";
+import { Drawer } from "../admin/common";
+import { AiChat, AiReady } from "../admin/aiChat";
+import { HashRouter } from "react-router-dom";
+import type { AiContext } from "../../api/types";
 import { CartPanel } from "./CartPanel";
 import { PaymentModal, SaleSuccess } from "./PaymentModal";
 import {
@@ -102,6 +107,8 @@ export function PosScreen({
   const toast = useToast();
   const approve = useApproval();
   const [cart, setCart] = useState<Cart>(EMPTY_CART);
+  // The assistant drawer is open: till shortcuts pause while it has the keyboard.
+  const [aiOpen, setAiOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PosSearchRow[] | null>(null);
   const [sel, setSel] = useState(0);
@@ -365,7 +372,7 @@ export function PosScreen({
   // Global shortcuts and scanner capture when focus is outside the scan field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (modal.kind !== "none") return;
+      if (modal.kind !== "none" || aiOpen) return;
       const target = e.target as HTMLElement;
       const inField =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT");
@@ -465,6 +472,27 @@ export function PosScreen({
   };
 
   const selected = useMemo(() => cart.lines.find((l) => l.line_id === selectedLine) ?? null, [cart, selectedLine]);
+  // F6: the full assistant at the till, with the open cart as context.
+  const aiOn = useFeature("ai.enabled") && has("ai.use");
+  const cartContext = useCallback(
+    (): AiContext | null =>
+      cart.lines.length
+        ? {
+            kind: "cart",
+            lines: cart.lines.map((l) => ({
+              product_id: l.product_id,
+              name: l.name,
+              qty_milli: l.qty_milli,
+              unit_price_minor: l.unit_price_minor,
+              line_total_minor: l.line_total_minor,
+            })),
+            total_minor: cart.totals.total_minor,
+            customer: cart.customer?.name ?? null,
+            held_ticket: cart.hold_number ? String(cart.hold_number) : null,
+          }
+        : null,
+    [cart],
+  );
   const printFailed = lastSale?.print?.status === "failed";
 
   return (
@@ -503,6 +531,11 @@ export function PosScreen({
         <div className="hitem num" style={{ fontWeight: 650, color: "#fff" }}>
           {clock}
         </div>
+        {aiOn ? (
+          <Button size="sm" icon={<Bot size={15} />} data-testid="till-ai" onClick={() => setAiOpen(true)}>
+            {t("Assistant")}
+          </Button>
+        ) : null}
         <Button size="sm" icon={<Lock size={15} />} onClick={() => void lock()} title={t("Lock (Ctrl+L)")}>
           {t("Lock")}
         </Button>
@@ -1047,6 +1080,14 @@ export function PosScreen({
             onShiftClosed();
           }}
         />
+      ) : null}
+      {aiOpen ? (
+        <Drawer title={t("AI Assistant")} onClose={() => setAiOpen(false)}>
+          {/* The till has no router; links in answers set the admin page shown on switching to Admin. */}
+          <HashRouter>
+            <AiReady>{(st) => <AiChat status={st} compact context={cartContext} />}</AiReady>
+          </HashRouter>
+        </Drawer>
       ) : null}
       <span className="sr-only" aria-live="polite">
         {t("{0} items, total {1}", cart.lines.length, formatMoney(cart.totals.total_minor))}

@@ -1,26 +1,18 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { Bot, Inbox, Plus, Send } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { Inbox } from "lucide-react";
 import { api } from "../../api";
-import type {
-  AiConversation,
-  AiPlaybookResult,
-  AiProposal,
-  AiProvider,
-  AiSettings,
-  AiTestResult,
-} from "../../api/types";
+import type { AiPlaybookResult, AiProposal, AiProvider, AiSettings, AiTestResult } from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { ApprovalCancelled, useApproval } from "../../components/approval";
-import { FeatureGate } from "../../components/FeatureGate";
-import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, TextInput } from "../../components/ui";
+import { Banner, Button, Checkbox, Chip, Field, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, useAction, useLoad } from "./common";
 import { formatMoney, formatQty } from "../../lib/money";
-import { formatDateTime, relative } from "../../lib/time";
-import { getLang, t, tb } from "../../i18n";
+import { formatDateTime } from "../../lib/time";
+import { t, tb } from "../../i18n";
 
-const TOOL_LABEL: Record<string, () => string> = {
+export const TOOL_LABEL: Record<string, () => string> = {
   list_reports: () => t("Listed reports"),
   run_report: () => t("Ran a report"),
   search_products: () => t("Searched products"),
@@ -207,7 +199,7 @@ const KIND_LABEL: Record<string, () => string> = {
   purchase_order: () => t("Draft purchase order"),
 };
 
-function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }) {
+export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }) {
   const { has, session } = useSession();
   const toast = useToast();
   const approve = useApproval();
@@ -241,7 +233,23 @@ function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }
     }
   };
   return (
-    <div className="card card-pad col gap-8" data-testid="ai-proposal">
+    <div
+      className="card card-pad col gap-8"
+      data-testid="ai-proposal"
+      tabIndex={0}
+      aria-keyshortcuts="Control+Enter Control+Backspace"
+      onKeyDown={(e) => {
+        // F5: Ctrl+Enter reviews and confirms, Ctrl+Backspace rejects (focused card only).
+        if (!canDecide || p.status !== "proposed" || e.target !== e.currentTarget) return;
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          setConfirm(true);
+        } else if ((e.ctrlKey || e.metaKey) && e.key === "Backspace") {
+          e.preventDefault();
+          void act.run(() => api.ai.reject(p.proposal_id)).then((r) => r && onChanged());
+        }
+      }}
+    >
       <div className="row wrap">
         <strong className="grow">
           {p.proposal_number} · {kindLabel}
@@ -380,7 +388,7 @@ function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }
   );
 }
 
-const PLAYBOOKS: { name: "eod" | "cash_short" | "reorder" | "refund_spike"; label: () => string }[] = [
+export const PLAYBOOKS: { name: "eod" | "cash_short" | "reorder" | "refund_spike"; label: () => string }[] = [
   { name: "eod", label: () => t("End of day") },
   { name: "cash_short", label: () => t("Cash short") },
   { name: "reorder", label: () => t("Reorder") },
@@ -399,7 +407,7 @@ function rowsIn(v: unknown): number | null {
 }
 
 /** B2: a playbook is a fixed set of reads; no model is involved. */
-function PlaybookResult({ r, onAsk }: { r: AiPlaybookResult; onAsk: (q: string) => void }) {
+export function PlaybookResult({ r, onAsk }: { r: AiPlaybookResult; onAsk: (q: string) => void }) {
   const label = PLAYBOOKS.find((p) => p.name === r.playbook)?.label() ?? r.playbook;
   return (
     <div className="card card-pad col gap-8" data-testid="ai-playbook">
@@ -432,7 +440,7 @@ function PlaybookResult({ r, onAsk }: { r: AiPlaybookResult; onAsk: (q: string) 
 }
 
 /** A7 + D2: every open proposal in one place, with today's digest. */
-function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
+export function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
   const open = useLoad(() => api.ai.proposals("proposed"), []);
   const digest = useLoad(() => api.ai.digest(), []);
   const reload = () => (void open.reload(), void digest.reload());
@@ -484,233 +492,6 @@ function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
   );
 }
 
-export function AiAssistantPage() {
-  const { has } = useSession();
-  const status = useLoad(() => api.ai.status(), []);
-  const list = useLoad(() => api.ai.conversations(), []);
-  const [cid, setCid] = useState<string | null>(null);
-  const [conv, setConv] = useState<AiConversation | null>(null);
-  // Other screens may prefill a question (e.g. end of day); it is never sent automatically.
-  const [search] = useSearchParams();
-  const [text, setText] = useState(() => search.get("q") ?? "");
-  const act = useAction();
-  const pb = useAction();
-  const [view, setView] = useState<"chat" | "inbox">("chat");
-  const [playbook, setPlaybook] = useState<AiPlaybookResult | null>(null);
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!cid) return setConv(null);
-    void api.ai.conversation(cid).then(setConv, () => setConv(null));
-  }, [cid]);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [conv]);
-  const st = status.data;
-  const reloadConv = async () => {
-    if (conv) setConv(await api.ai.conversation(conv.conversation_id));
-    void list.reload();
-  };
-  return (
-    <div>
-      <PageHeader
-        title={t("AI Assistant")}
-        subtitle={t("Ask about sales, stock, margins and purchasing. The assistant reads data with your permissions.")}
-      />
-      {st ? (
-        <div className="row" style={{ marginBottom: 12 }} data-testid="ai-provider-chip">
-          <Chip tone={st.active_provider === "fake" ? "default" : "info"}>
-            {st.active_provider === "fake" ? t("Offline test model") : providerLabel(st.active_provider)} ·{" "}
-            {st.model_id}
-          </Chip>
-        </div>
-      ) : null}
-      <FeatureGate feature="ai.enabled">
-        {!st ? (
-          <Skeleton />
-        ) : !st.ready ? (
-          <Banner tone="info" title={t("The assistant is not set up yet")}>
-            <div className="col gap-8">
-              {!st.key_configured ? <div>• {t("No AI provider key is stored.")}</div> : null}
-              {st.settings.consent === false ? (
-                <div>• {t("An owner has not agreed to send store data to the provider.")}</div>
-              ) : null}
-              {has("settings.manage") ? (
-                <Link to="/admin/settings?section=ai">{t("Open Settings → AI")}</Link>
-              ) : (
-                <div>{t("Ask the owner to finish the setup in Settings → AI.")}</div>
-              )}
-            </div>
-          </Banner>
-        ) : (
-          <div className="grid-2" style={{ gridTemplateColumns: "280px 1fr", gap: 16, alignItems: "start" }}>
-            <div className="card" style={{ maxHeight: 640, overflow: "auto" }}>
-              <div style={{ padding: 12 }}>
-                <div className="col gap-8">
-                  <Button icon={<Plus size={16} />} onClick={() => (setCid(null), setConv(null), setView("chat"))}>
-                    {t("New conversation")}
-                  </Button>
-                  <Button
-                    variant={view === "inbox" ? "primary" : "ghost"}
-                    icon={<Inbox size={16} />}
-                    data-testid="ai-inbox-button"
-                    onClick={() => setView(view === "inbox" ? "chat" : "inbox")}
-                  >
-                    {t("Action inbox")}
-                  </Button>
-                </div>
-              </div>
-              {(list.data ?? []).map((c) => (
-                <button
-                  key={c.conversation_id}
-                  className={`list-row ${cid === c.conversation_id ? "active" : ""}`}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    textAlign: "start",
-                    padding: 12,
-                    borderTop: "1px solid var(--border)",
-                  }}
-                  onClick={() => (setCid(c.conversation_id), setView("chat"))}
-                >
-                  <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</div>
-                  <div className="tiny">
-                    {relative(c.updated_at)}
-                    {c.open_proposals ? ` · ${t("{0} to review", c.open_proposals)}` : ""}
-                  </div>
-                </button>
-              ))}
-            </div>
-            {view === "inbox" ? (
-              <ActionInbox onOpen={(id) => (setCid(id), setView("chat"))} />
-            ) : (
-              <div className="col gap-16">
-                <div className="small muted">
-                  {st.mutations && st.can_mutate
-                    ? t(
-                        "The assistant may propose any admin change you are allowed to make. Nothing changes until a person confirms.",
-                      )
-                    : t("Read-only: the assistant cannot change anything.")}{" "}
-                  {t("Provider")}: {providerLabel(st.active_provider)} · {st.model_id}
-                  {st.daily_token_cap
-                    ? ` · ${t("Tokens today: {0} of {1}", st.tokens_today ?? 0, st.daily_token_cap)}`
-                    : ""}
-                </div>
-                <div className="row wrap" data-testid="ai-playbooks">
-                  <span className="small muted">{t("Playbooks")}:</span>
-                  {PLAYBOOKS.map((b) => (
-                    <Button
-                      key={b.name}
-                      variant="ghost"
-                      loading={pb.busy}
-                      onClick={async () => {
-                        const r = await pb.run(() => api.ai.playbook(b.name));
-                        if (r) setPlaybook(r);
-                      }}
-                    >
-                      {b.label()}
-                    </Button>
-                  ))}
-                </div>
-                {pb.error ? <Banner tone="danger">{pb.error}</Banner> : null}
-                {playbook ? <PlaybookResult r={playbook} onAsk={(q) => (setText(q), setPlaybook(null))} /> : null}
-                {conv?.untrusted_seen ? (
-                  <Banner tone="warning">
-                    {t("This conversation read customer messages or scanned text. Check any proposal carefully.")}
-                  </Banner>
-                ) : null}
-                <div className="card card-pad col gap-16" style={{ minHeight: 320 }}>
-                  {!conv ? (
-                    <div className="empty">
-                      <Bot size={28} />
-                      <div>{t("Try: “Which products are running low?” or “What were last week's top sellers?”")}</div>
-                    </div>
-                  ) : (
-                    conv.messages.map((m, i) => (
-                      <div
-                        key={i}
-                        className={`bubble ${m.role === "user" ? "out" : "in"}`}
-                        style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "85%" }}
-                      >
-                        {m.tools.length ? (
-                          <div className="tiny">{m.tools.map((x) => TOOL_LABEL[x]?.() ?? x).join(" · ")}</div>
-                        ) : null}
-                        {m.text ? <Linkified text={m.text} /> : null}
-                        {m.role === "assistant" && m.text && m.evidence?.length ? (
-                          <div className="row wrap" style={{ gap: 4 }} data-testid="ai-evidence">
-                            <span className="tiny">{t("Evidence")}:</span>
-                            {m.evidence.slice(0, 8).map((ev, j) => (
-                              <Chip key={j}>
-                                <span dir="ltr">
-                                  {ev.tool}
-                                  {ev.ids.length ? ` · ${ev.ids.join(", ")}` : ""}
-                                </span>
-                              </Chip>
-                            ))}
-                          </div>
-                        ) : null}
-                        {m.unverified ? (
-                          <div data-testid="ai-unverified">
-                            <Chip tone="warning">{t("Unverified: no tool result backs these figures")}</Chip>
-                          </div>
-                        ) : null}
-                        {m.stop_reason === "refusal" ? (
-                          <div className="tiny">{t("The provider declined to answer this request.")}</div>
-                        ) : null}
-                        {m.stop_reason === "max_tokens" ? (
-                          <div className="tiny">{t("The answer was cut short.")}</div>
-                        ) : null}
-                        <div className="tiny">{formatDateTime(m.at)}</div>
-                      </div>
-                    ))
-                  )}
-                  {conv?.proposals.map((p) => (
-                    <ProposalCard key={p.proposal_id} p={p} onChanged={() => void reloadConv()} />
-                  ))}
-                  <div ref={end} />
-                </div>
-                {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-                <div className="row">
-                  <textarea
-                    className="input grow"
-                    rows={2}
-                    maxLength={4000}
-                    value={text}
-                    aria-label={t("Question")}
-                    placeholder={t("Ask a question")}
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        (document.getElementById("ai-send") as HTMLButtonElement | null)?.click();
-                      }
-                    }}
-                  />
-                  <Button
-                    id="ai-send"
-                    variant="primary"
-                    icon={<Send size={16} />}
-                    loading={act.busy}
-                    disabled={!text.trim()}
-                    onClick={async () => {
-                      const r = await act.run(() => api.ai.ask(text, conv?.conversation_id ?? null, getLang()));
-                      if (r) {
-                        setText("");
-                        setConv(r);
-                        setCid(r.conversation_id);
-                        void list.reload();
-                      }
-                    }}
-                  >
-                    {t("Ask")}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </FeatureGate>
-    </div>
-  );
-}
-
 export function providerLabel(p: AiProvider): string {
   switch (p) {
     case "openai":
@@ -745,6 +526,7 @@ export function AiSettingsSection() {
   const [s, setS] = useState<AiSettings | null>(null);
   const [key, setKey] = useState("");
   const [header, setHeader] = useState("");
+  const [fbKey, setFbKey] = useState("");
   const [test, setTest] = useState<AiTestResult | null>(null);
   const [consentReset, setConsentReset] = useState(false);
   const act = useAction();
@@ -756,13 +538,18 @@ export function AiSettingsSection() {
   }
   if (error) return <Banner tone="danger">{error}</Banner>;
   if (!data || !s) return <Skeleton />;
-  const save = async (apiKey: string | null, headerValue: string | null) => {
-    const r = await act.run(() => api.ai.configure(s, apiKey, headerValue));
+  const save = async (
+    apiKey: string | null,
+    headerValue: string | null,
+    fallbackKey: string | null = fbKey || null,
+  ) => {
+    const r = await act.run(() => api.ai.configure(s, apiKey, headerValue, fallbackKey));
     if (r) {
       setData(r);
       setS(r.settings as AiSettings);
       setKey("");
       setHeader("");
+      setFbKey("");
       setConsentReset(!!r.consent_reset);
       toast("success", t("Settings saved"));
     }
@@ -950,6 +737,50 @@ export function AiSettingsSection() {
           </div>
         </>
       ) : null}
+      <div className="card card-pad col gap-8" data-testid="ai-fallback">
+        <strong>{t("Free fallback when the provider is unavailable")}</strong>
+        <div className="small muted">
+          {t(
+            "If the chosen provider times out, is rate-limited, has a server error or does not know the model, AMWAPOS asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key or a refusal.",
+          )}
+        </div>
+        <Checkbox
+          label={t("Use the OpenRouter fallback, and I agree to send the same store data to OpenRouter")}
+          checked={!!s.fallback_free}
+          onChange={(x) => setS({ ...s, fallback_free: x })}
+        />
+        <div className="form-grid">
+          <TextInput
+            label={t("Fallback model")}
+            dir="ltr"
+            value={s.fallback_model ?? "openrouter/free"}
+            placeholder="openrouter/free"
+            onChange={(e) => setS({ ...s, fallback_model: e.target.value })}
+          />
+          <TextInput
+            label={t("OpenRouter API key")}
+            type="password"
+            autoComplete="off"
+            value={fbKey}
+            placeholder={data.fallback_key_configured ? t("Stored — leave empty to keep") : ""}
+            hint={t("Stored in Windows Credential Manager, like the main key.")}
+            onChange={(e) => setFbKey(e.target.value)}
+          />
+        </div>
+        <div className="row">
+          <Chip tone={data.fallback_ready ? "success" : "default"}>
+            {data.fallback_ready ? t("Fallback ready") : t("Fallback off")}
+          </Chip>
+          {s.fallback_consent_at ? (
+            <span className="tiny">{t("Agreed on {0}.", formatDateTime(s.fallback_consent_at))}</span>
+          ) : null}
+          {data.fallback_key_configured ? (
+            <Button variant="ghost" onClick={() => void save(null, null, "")}>
+              {t("Remove OpenRouter key")}
+            </Button>
+          ) : null}
+        </div>
+      </div>
       {test ? (
         <Banner tone={test.ok ? "success" : "danger"} title={test.ok ? t("Connection works") : t("Connection failed")}>
           {test.ok

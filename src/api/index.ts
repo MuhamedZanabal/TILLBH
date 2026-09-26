@@ -359,6 +359,17 @@ export const api = {
     summary: () => call<{ unread: number; queued: number; failed: number }>("whatsapp.summary"),
     importContacts: (chats?: string[]) =>
       call<{ created: number; linked: number; skipped: number }>("whatsapp.import_contacts", { chats }),
+    triage: (limit?: number) =>
+      call<{ items: T.WaTriageItem[]; counts: Record<string, number> }>("whatsapp.triage", { limit }),
+    triageSet: (seq: number, category: T.WaTriageItem["category"]) =>
+      call<{ seq: number; category: string }>("whatsapp.triage_set", { seq, category }),
+    triageAi: (limit?: number) => call<{ updated: number }>("whatsapp.triage_ai", { limit }),
+    /** A draft for a person to edit and send; it is never queued by itself. */
+    draftReply: (chat: string, instruction?: string | null) =>
+      call<{ chat: string; text: string; source: "ai" | "template"; category: string; lang: "en" | "ar" }>(
+        "whatsapp.draft_reply",
+        { chat, instruction },
+      ),
   },
   payreviews: {
     list: (status?: string) => call<T.PaymentReview[]>("payreviews.list", { status }),
@@ -417,12 +428,47 @@ export const api = {
   ai: {
     status: () => call<T.AiStatus>("ai.status"),
     /** Owner only. Keys go to Windows Credential Manager; null keeps, "" removes. */
-    configure: (settings: T.AiSettings, api_key?: string | null, extra_header_value?: string | null) =>
-      call<T.AiStatus>("ai.configure", { settings, api_key, extra_header_value }),
+    configure: (
+      settings: T.AiSettings,
+      api_key?: string | null,
+      extra_header_value?: string | null,
+      fallback_api_key?: string | null,
+    ) => call<T.AiStatus>("ai.configure", { settings, api_key, extra_header_value, fallback_api_key }),
     test: () => call<T.AiTestResult>("ai.test"),
     models: () => call<{ models: string[] }>("ai.models"),
-    ask: (message: string, conversation_id?: string | null, locale?: string) =>
-      call<T.AiConversation>("ai.ask", { message, conversation_id, locale }),
+    ask: (
+      message: string,
+      conversation_id?: string | null,
+      locale?: string,
+      extra?: { stream_id?: string; images?: string[]; context?: T.AiContext | null },
+    ) => call<T.AiConversation>("ai.ask", { message, conversation_id, locale, ...extra }),
+    /** Live events of a question started with stream_id (poll while it runs). */
+    stream: (stream_id: string, after: number) =>
+      call<{ events: T.AiStreamEvent[]; next: number; done: boolean; known: boolean }>("ai.stream", {
+        stream_id,
+        after,
+      }),
+    attachImage: (media_type: string, data: string) =>
+      call<{ attachment_id: string; media_type: string; bytes: number }>("ai.attach_image", { media_type, data }),
+    attachment: (attachment_id: string) =>
+      call<{ attachment_id: string; media_type: string; data: string }>("ai.attachment", { attachment_id }),
+    rename: (conversation_id: string, title: string) =>
+      call<{ conversation_id: string; title: string }>("ai.conversation_rename", { conversation_id, title }),
+    pin: (conversation_id: string, kind: T.AiPin["kind"], id: string) =>
+      call<{ pins: T.AiPin[] }>("ai.pin", { conversation_id, kind, id }),
+    unpin: (conversation_id: string, kind: T.AiPin["kind"], id: string) =>
+      call<{ pins: T.AiPin[] }>("ai.unpin", { conversation_id, kind, id }),
+    briefings: () => call<T.AiBriefing[]>("ai.briefings"),
+    briefingSave: (
+      briefing_id: string | null,
+      briefing: Pick<T.AiBriefing, "name" | "playbook" | "at_time" | "days" | "with_ai" | "enabled">,
+    ) => call<T.AiBriefing[]>("ai.briefing_save", { briefing_id, briefing }),
+    briefingDelete: (briefing_id: string) => call<T.AiBriefing[]>("ai.briefing_delete", { briefing_id }),
+    briefingRun: (briefing_id: string) => call<{ note_id: string; status: string }>("ai.briefing_run", { briefing_id }),
+    notes: (limit?: number) => call<T.AiNote[]>("ai.notes", { limit }),
+    noteRead: (note_id: string) => call<void>("ai.note_read", { note_id }),
+    /** A slash command that reads (no model involved). */
+    slash: (command: string, arg?: string) => call<T.AiSlashResult>("ai.slash", { command, arg }),
     conversations: () =>
       call<{ conversation_id: string; title: string; updated_at: string; open_proposals: number }[]>(
         "ai.conversations",

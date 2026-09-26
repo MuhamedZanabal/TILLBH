@@ -1022,6 +1022,16 @@ export interface PaymentReview {
   decided_at: string | null;
   note: string | null;
   created_at: string;
+  /** E4: expected vs detected, check by check. Never settles anything by itself. */
+  comparison?: {
+    expected_minor: number | null;
+    detected_minor: number | null;
+    difference_minor: number | null;
+    verdict: "exact" | "overpaid" | "underpaid" | "amount_not_read" | "no_expected_amount";
+    all_checks_pass: boolean;
+    checks: { check: "amount" | "reference" | "ocr_confidence" | "not_duplicate"; ok: boolean; detail: unknown }[];
+    settles_automatically: false;
+  };
 }
 
 export interface InvoiceScan {
@@ -1086,6 +1096,11 @@ export interface AiSettings {
   consent_at?: string | null;
   /** Input + output tokens per business day; 0 = no cap. */
   daily_token_cap: number;
+  /** When the provider is unavailable, answer with OpenRouter (owner opt-in). */
+  fallback_free: boolean;
+  fallback_model: string;
+  fallback_base_url: string;
+  fallback_consent_at?: string | null;
 }
 
 export interface AiStatus {
@@ -1105,6 +1120,8 @@ export interface AiStatus {
   daily_token_cap?: number;
   /** Set after a save that moved between two real providers: consent must be given again. */
   consent_reset?: boolean;
+  fallback_key_configured?: boolean;
+  fallback_ready?: boolean;
 }
 
 export interface AiTestResult {
@@ -1149,8 +1166,109 @@ export interface AiConversation {
     evidence?: { tool: string; ids: string[]; at: string }[];
     /** The answer stated figures without a tool result behind them. */
     unverified?: boolean;
+    /** Every tool call in this reply, with the result exactly as the model saw it. */
+    calls?: AiToolCall[];
+    /** Thinking or reasoning text the provider returned (summarised). */
+    thinking?: string;
+    attachments?: { attachment_id: string; media_type: string }[];
+    has_context?: boolean;
+    /** "nudge": AMWAPOS asked the model to back its figures with a tool. */
+    kind?: "nudge";
   }[];
   proposals: AiProposal[];
+  pins?: AiPin[];
+}
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  input: unknown;
+  result: string;
+  is_error: boolean;
+}
+
+export interface AiPin {
+  kind: "product" | "customer" | "supplier" | "order" | "shift" | "po" | "sale" | "delivery";
+  id: string;
+  label: string;
+}
+
+/** One live event of a question (C8). */
+export type AiStreamEvent = { seq: number } & (
+  | { type: "start"; conversation_id: string; provider: string; model: string; tools: number }
+  | { type: "round"; n: number }
+  | { type: "text"; delta: string }
+  | { type: "thinking"; delta: string }
+  | { type: "tool_call"; id: string; name: string; input: unknown }
+  | { type: "tool_result"; id: string; name: string; is_error: boolean; content: string; truncated: boolean }
+  | { type: "usage"; input_tokens: number; output_tokens: number; stop_reason: string }
+  | { type: "fallback"; from: string; to: string; reason: string }
+  | { type: "nudge" }
+  | { type: "unverified" }
+  | { type: "done" }
+  | { type: "error"; code: string; message: string }
+);
+
+export interface AiContext {
+  kind: "cart";
+  lines: {
+    product_id?: string | null;
+    name: string;
+    qty_milli: number;
+    unit_price_minor: number;
+    line_total_minor: number;
+  }[];
+  total_minor: number;
+  customer?: string | null;
+  held_ticket?: string | null;
+}
+
+export interface AiBriefing {
+  briefing_id: string;
+  name: string;
+  playbook: "eod" | "cash_short" | "reorder" | "refund_spike";
+  at_time: string;
+  days: string;
+  with_ai: boolean;
+  enabled: boolean;
+  last_run_on: string | null;
+  created_by_name: string | null;
+}
+
+export interface AiNote {
+  note_id: string;
+  briefing_id: string | null;
+  title: string;
+  summary: string | null;
+  data: unknown;
+  status: "ok" | "partial" | "error";
+  error: string | null;
+  created_at: string;
+  read_at: string | null;
+  created_by_name: string | null;
+}
+
+export interface AiSlashResult {
+  command: string;
+  ran: string;
+  result: unknown;
+  truncated: boolean;
+}
+
+export interface WaTriageItem {
+  seq: number;
+  chat: string;
+  phone: string | null;
+  push_name: string | null;
+  received_at: string;
+  kind: string;
+  preview: string;
+  read: boolean;
+  category: "order" | "payment" | "complaint" | "question" | "spam" | "other";
+  confidence: number;
+  source: "rules" | "ai" | "person";
+  reasons: string[];
+  suggestion: { action: string; tool: string | null; link: string };
 }
 
 /** Confirm result: the proposal, plus a one-time secret (e.g. a phone-view link) never stored. */
