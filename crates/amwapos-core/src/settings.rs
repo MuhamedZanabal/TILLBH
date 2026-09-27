@@ -333,6 +333,9 @@ pub struct WhatsAppSettings {
     /// Send the payment acknowledgement automatically after a person confirms
     /// a payment screenshot.
     pub auto_payment_ack: bool,
+    /// Queue the "on the way" / "delivered" notice by itself when a drop is
+    /// marked Out or Delivered. Off: a person taps Message and confirms.
+    pub auto_delivery_notice: bool,
     pub receipt: MessageTemplate,
     pub dispatch: MessageTemplate,
     pub delivered: MessageTemplate,
@@ -349,6 +352,7 @@ impl Default for WhatsAppSettings {
             attach_pdf: true,
             send_read_receipts: true,
             auto_payment_ack: false,
+            auto_delivery_notice: false,
             receipt: MessageTemplate {
                 en: "Thank you for shopping at {business}.\nReceipt {receipt}\nTotal: {total}\nDate: {date}".into(),
                 ar: "شكراً لتسوقك من {business}.\nالإيصال {receipt}\nالإجمالي: {total}\nالتاريخ: {date}".into(),

@@ -309,6 +309,8 @@ fn arabic(en: &str) -> Option<&'static str> {
         "Bank Transfer" => "تحويل بنكي",
         "Wallet" => "محفظة",
         "Customer account" => "حساب العميل",
+        "Pay on delivery" => "الدفع عند الاستلام",
+        "Collected on delivery" => "محصّل عند التوصيل",
         "REFUND / CREDIT NOTE" => "إشعار دائن",
         "Refund" => "استرجاع",
         "Original receipt" => "الإيصال الأصلي",
@@ -483,6 +485,7 @@ pub fn method_label(m: &str) -> String {
         "bank_transfer" => "Bank Transfer".into(),
         "wallet" => "Wallet".into(),
         "account" => "Customer account".into(),
+        "pay_on_delivery" => "Pay on delivery".into(),
         other => other.to_string(),
     }
 }
@@ -590,6 +593,9 @@ pub fn shift_report(c: &Connection, shift_id: &str) -> AppResult<ReceiptDoc> {
     doc.pair("Paid in", m(sum.paid_in_minor));
     doc.pair("Paid out", format!("-{}", m(sum.paid_out_minor)));
     doc.pair("Safe drops", format!("-{}", m(sum.safe_drop_minor)));
+    if sum.cash_collections_minor > 0 {
+        doc.pair("Collected on delivery", m(sum.cash_collections_minor));
+    }
     doc.pair_b("Expected cash", m(sum.expected_cash_minor), false);
     if let Some(cnt) = sum.counted_cash_minor {
         doc.pair_b("Counted cash", m(cnt), false);

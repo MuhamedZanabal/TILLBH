@@ -435,15 +435,17 @@ fn store_image(dir: &Path, file_name: &str, data_b64: &str, id: &str) -> AppResu
 
 /// Latest open delivery for a phone/customer with money still due.
 fn expected_for(c: &Connection, phone: Option<&str>, customer_id: Option<&str>) -> AppResult<Option<(String, i64)>> {
-    Ok(c.query_row(
+    // A payment attaches by itself only when the person has exactly one open
+    // unpaid ticket; otherwise a person picks it on the review.
+    let mut st = c.prepare(
         "SELECT delivery_id, amount_minor FROM delivery_orders
-         WHERE status NOT IN ('cancelled') AND payment_status IN ('pending','cod') AND amount_minor > 0
+         WHERE status NOT IN ('cancelled') AND amount_minor > 0
+           AND COALESCE(pay_state, CASE payment_status WHEN 'paid' THEN 'paid' ELSE 'unpaid' END) IN ('unpaid','screenshot_pending')
            AND ((?1 IS NOT NULL AND phone=?1) OR (?2 IS NOT NULL AND customer_id=?2))
-         ORDER BY created_at DESC LIMIT 1",
-        params![phone, customer_id],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    )
-    .optional()?)
+         ORDER BY created_at DESC LIMIT 2",
+    )?;
+    let rows = st.query_map(params![phone, customer_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<(String, i64)>, _>>()?;
+    Ok(if rows.len() == 1 { rows.into_iter().next() } else { None })
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -757,7 +759,11 @@ impl AppCore {
                             return Err(AppError::conflict("That delivery is cancelled."));
                         }
                         if pay != "paid" {
-                            tx.execute("UPDATE delivery_orders SET payment_status='paid', updated_at=?2 WHERE delivery_id=?1", params![did, now])?;
+                            // A confirmed screenshot is a recorded payment (the bank is never settled from here).
+                            tx.execute(
+                                "UPDATE delivery_orders SET payment_status='paid', pay_state=CASE WHEN pay_state='paid' THEN 'paid' ELSE 'recorded' END, updated_at=?2 WHERE delivery_id=?1",
+                                params![did, now],
+                            )?;
                             tx.execute(
                                 "INSERT INTO delivery_events(event_id, delivery_id, previous_status, new_status, note, user_id, created_at) VALUES (?1,?2,?3,?3,?4,?5,?6)",
                                 params![new_id(), did, status, format!("Payment screenshot {} confirmed", r.review_number), s.user_id, now],

@@ -67,6 +67,13 @@ pub struct DeliveryRow {
     pub created_at: String,
     pub dispatched_at: Option<String>,
     pub delivered_at: Option<String>,
+    /// Ticket payment state: unpaid | recorded | screenshot_pending | paid.
+    pub pay_state: String,
+    /// Digital order this drop fulfils (when the ticket came from one).
+    pub order_id: Option<String>,
+    /// walk_in | phone | whatsapp | web | other
+    pub channel: Option<String>,
+    pub branch_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -88,6 +95,15 @@ pub struct DeliveryCreate {
     pub amount_minor: Option<i64>,
     #[serde(default)]
     pub notes: Option<String>,
+    /// Digital order this drop fulfils.
+    #[serde(default)]
+    pub order_id: Option<String>,
+    /// walk_in | phone | whatsapp | web | other
+    #[serde(default)]
+    pub channel: Option<String>,
+    /// unpaid | recorded | screenshot_pending | paid (default from payment_status).
+    #[serde(default)]
+    pub pay_state: Option<String>,
 }
 
 /// Normalize a phone number: keep digits and a leading '+'. Bahrain local
@@ -166,10 +182,15 @@ fn load_customer(c: &Connection, id: &str) -> AppResult<CustomerRow> {
     })
 }
 
+pub(crate) fn load_delivery_row(c: &Connection, id: &str) -> AppResult<DeliveryRow> {
+    load_delivery(c, id)
+}
+
 fn load_delivery(c: &Connection, id: &str) -> AppResult<DeliveryRow> {
     c.query_row(
         "SELECT d.delivery_id, d.delivery_number, d.sale_id, s.receipt_number, d.customer_id, cu.name, d.phone, d.area, d.address, d.status,
-                d.payment_status, d.amount_minor, d.assigned_user_id, u.display_name, d.notes, d.created_at, d.dispatched_at, d.delivered_at
+                d.payment_status, d.amount_minor, d.assigned_user_id, u.display_name, d.notes, d.created_at, d.dispatched_at, d.delivered_at,
+                COALESCE(d.pay_state, CASE d.payment_status WHEN 'paid' THEN 'paid' ELSE 'unpaid' END), d.order_id, d.channel, d.branch_id
          FROM delivery_orders d LEFT JOIN sales s ON s.sale_id=d.sale_id LEFT JOIN customers cu ON cu.customer_id=d.customer_id
          LEFT JOIN users u ON u.user_id=d.assigned_user_id WHERE d.delivery_id=?1",
         [id],
@@ -193,6 +214,10 @@ fn load_delivery(c: &Connection, id: &str) -> AppResult<DeliveryRow> {
                 created_at: r.get(15)?,
                 dispatched_at: r.get(16)?,
                 delivered_at: r.get(17)?,
+                pay_state: r.get(18)?,
+                order_id: r.get(19)?,
+                channel: r.get(20)?,
+                branch_id: r.get(21)?,
             })
         },
     )
@@ -264,7 +289,11 @@ impl AppCore {
     pub fn customer_save(&self, token: &str, customer_id: Option<String>, input: CustomerInput) -> AppResult<CustomerRow> {
         let s = self.session(token)?;
         s.require("customers.manage")?;
-        let v = validate_customer(&input)?;
+        let mut v = validate_customer(&input)?;
+        // No area typed: take a known place name from the address.
+        if v.area.is_none() {
+            v.area = v.address.as_deref().and_then(area_from_text).map(str::to_string);
+        }
         let actor = self.actor(&s, None);
         let id = self.db.write(|tx| {
             if let Some(p) = &v.phone {
@@ -426,14 +455,18 @@ impl AppCore {
         note: Option<String>,
     ) -> AppResult<DeliveryRow> {
         let s = self.session(token)?;
-        s.require("deliveries.view")?;
+        if !s.has("pos.sell") {
+            s.require("deliveries.view")?;
+        }
         let id = validate::id(delivery_id, "Delivery")?;
         let note = clean_opt(&note, "Note", 500)?;
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
             let d = load_delivery(tx, &id)?;
             let manage = s.has("deliveries.manage");
-            if !manage && d.assigned_user_id.as_deref() != Some(&s.user_id) {
+            // The till moves its own branch's drops forward (never cancels or assigns).
+            let till = can_work_drop(&s, &d);
+            if !manage && !till && d.assigned_user_id.as_deref() != Some(&s.user_id) {
                 return Err(AppError::forbidden("deliveries.manage"));
             }
             let now = time::now_str();
@@ -448,7 +481,12 @@ impl AppCore {
                 if !["paid", "pending", "cod"].contains(&p.as_str()) {
                     return Err(AppError::validation("Unknown payment status."));
                 }
-                tx.execute("UPDATE delivery_orders SET payment_status=?2, updated_at=?3 WHERE delivery_id=?1", params![id, p, now])?;
+                tx.execute(
+                    "UPDATE delivery_orders SET payment_status=?2, updated_at=?3,
+                        pay_state=CASE WHEN ?2='paid' THEN (CASE WHEN pay_state='paid' THEN 'paid' ELSE 'recorded' END) ELSE 'unpaid' END
+                     WHERE delivery_id=?1",
+                    params![id, p, now],
+                )?;
             }
             if let Some(st) = status.as_ref() {
                 let ok = matches!(
@@ -485,8 +523,102 @@ impl AppCore {
     }
 }
 
-/// Insert a delivery inside an open transaction (delivery desk and digital
-/// order conversion share this).
+/// Bahrain places a drop is sent to. Longer names first so "Riffa East"
+/// wins over "Riffa". Each entry: canonical name, then spellings (English
+/// matched case-insensitively on word boundaries, and Arabic).
+pub const AREAS: &[(&str, &[&str])] = &[
+    ("Riffa East", &["riffa east", "east riffa", "الرفاع الشرقي"]),
+    ("Riffa West", &["riffa west", "west riffa", "الرفاع الغربي"]),
+    ("Isa Town", &["isa town", "isatown", "madinat isa", "مدينة عيسى"]),
+    ("Hamad Town", &["hamad town", "hamadtown", "madinat hamad", "مدينة حمد"]),
+    ("Riffa", &["riffa", "rifa", "الرفاع"]),
+    ("Muharraq", &["muharraq", "muharaq", "المحرق"]),
+    ("Manama", &["manama", "المنامة"]),
+    ("Sitra", &["sitra", "سترة"]),
+    ("A'ali", &["a'ali", "aali", "a’ali", "عالي"]),
+    ("Budaiya", &["budaiya", "budaiyah", "البديع"]),
+    ("Saar", &["saar", "سار"]),
+    ("Juffair", &["juffair", "jufair", "الجفير"]),
+    ("Seef", &["seef", "السيف"]),
+    ("Amwaj", &["amwaj", "أمواج", "امواج"]),
+    ("Tubli", &["tubli", "توبلي"]),
+    ("Sanad", &["sanad", "سند"]),
+    ("Galali", &["galali", "qalali", "قلالي"]),
+    ("Duraz", &["duraz", "diraz", "الدراز"]),
+    ("Janabiyah", &["janabiyah", "janabiya", "الجنبية"]),
+    ("Hidd", &["hidd", "الحد"]),
+    ("Diyya", &["diyya", "diyyah", "الديه"]),
+    ("Samaheej", &["samaheej", "سماهيج"]),
+];
+
+/// The known area named in free text, e.g. "Maryam 1203/45 Riffa" → Riffa.
+/// No match → none (the address is never guessed).
+pub fn area_from_text(text: &str) -> Option<&'static str> {
+    let lower = text.to_lowercase();
+    let boundary = |c: Option<char>| c.is_none_or(|c| !c.is_alphanumeric() && c != '\'' && c != '’');
+    for (name, spellings) in AREAS {
+        for sp in *spellings {
+            let mut from = 0;
+            while let Some(i) = lower[from..].find(sp) {
+                let start = from + i;
+                let end = start + sp.len();
+                let before = lower[..start].chars().next_back();
+                let after = lower[end..].chars().next();
+                // Arabic words may carry a one-letter prefix ("بالرفاع").
+                let prefixed = !sp.is_ascii() && matches!(before, Some('ب' | 'و' | 'ل'));
+                if (prefixed || boundary(before)) && boundary(after) {
+                    return Some(name);
+                }
+                from = end;
+            }
+        }
+    }
+    None
+}
+
+/// Text without the area name found in it ("Maryam 1203/45 Riffa" minus Riffa).
+pub fn strip_area(text: &str, area: &str) -> String {
+    let lower = text.to_lowercase();
+    let Some((_, spellings)) = AREAS.iter().find(|(n, _)| *n == area) else { return text.trim().to_string() };
+    for sp in *spellings {
+        if let Some(i) = lower.find(sp) {
+            // to_lowercase keeps byte offsets for the scripts in the lexicon.
+            if text.is_char_boundary(i) && text.is_char_boundary(i + sp.len()) {
+                let out = format!("{} {}", &text[..i], &text[i + sp.len()..]);
+                return out
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .trim_matches(|c: char| c == ',' || c == '-' || c == ' ')
+                    .to_string();
+            }
+        }
+    }
+    text.trim().to_string()
+}
+
+/// A cashier (pos.sell) works the drops of the branch they sell in.
+pub(crate) fn can_work_drop(s: &Session, d: &DeliveryRow) -> bool {
+    s.has("pos.sell") && d.branch_id.as_deref().is_none_or(|b| b == s.branch_id)
+}
+
+/// "Save on customer" from the Send sheet: this drop's address and area.
+pub(crate) fn save_delivery_address(tx: &Connection, customer_id: &str, address: Option<&str>, area: Option<&str>) -> AppResult<()> {
+    let address = address.map(str::trim).filter(|a| !a.is_empty()).map(|a| a.chars().take(300).collect::<String>());
+    let area = area.map(str::trim).filter(|a| !a.is_empty()).map(|a| a.chars().take(80).collect::<String>());
+    tx.execute(
+        "UPDATE customers SET address=COALESCE(?2, address), area=COALESCE(?3, area), updated_at=?4 WHERE customer_id=?1",
+        params![customer_id, address, area, time::now_str()],
+    )?;
+    Ok(())
+}
+
+/// The one payment-state enum shown on tickets, drops and the WhatsApp header.
+pub const PAY_STATES: &[&str] = &["unpaid", "recorded", "screenshot_pending", "paid"];
+pub const CHANNELS: &[&str] = &["walk_in", "phone", "whatsapp", "web", "other"];
+
+/// Insert a delivery inside an open transaction (delivery desk, the Send
+/// sale and digital order conversion share this).
 pub(crate) fn insert_delivery(tx: &Connection, s: &Session, actor: &audit::Actor, req: &DeliveryCreate) -> AppResult<String> {
     let (sale_id, sale_total, sale_customer) = match req.sale_id.as_ref().filter(|x| !x.is_empty()) {
         Some(sid) => {
@@ -515,7 +647,9 @@ pub(crate) fn insert_delivery(tx: &Connection, s: &Session, actor: &audit::Actor
         None => customer_id.as_ref().and_then(|c| c.info.phone.clone()),
     };
     let address = clean_opt(&req.address, "Address", 300)?.or_else(|| customer_id.as_ref().and_then(|c| c.info.address.clone()));
-    let area = clean_opt(&req.area, "Area", 80)?.or_else(|| customer_id.as_ref().and_then(|c| c.info.area.clone()));
+    let area = clean_opt(&req.area, "Area", 80)?
+        .or_else(|| customer_id.as_ref().and_then(|c| c.info.area.clone()))
+        .or_else(|| address.as_deref().and_then(area_from_text).map(str::to_string));
     if address.is_none() && area.is_none() {
         return Err(AppError::validation("Enter a delivery address or area."));
     }
@@ -525,13 +659,31 @@ pub(crate) fn insert_delivery(tx: &Connection, s: &Session, actor: &audit::Actor
     }
     let amount = req.amount_minor.or(sale_total).unwrap_or(0);
     validate::money_non_negative(amount, "Amount")?;
+    let pay_state = req.pay_state.clone().unwrap_or_else(|| if pay == "paid" { "paid".into() } else { "unpaid".into() });
+    if !PAY_STATES.contains(&pay_state.as_str()) {
+        return Err(AppError::validation("Unknown payment state."));
+    }
+    let channel = req.channel.clone().filter(|c| !c.is_empty());
+    if let Some(c) = &channel {
+        if !CHANNELS.contains(&c.as_str()) {
+            return Err(AppError::validation("Unknown channel."));
+        }
+    }
+    let branch: Option<String> = match &sale_id {
+        Some(sid) => tx.query_row("SELECT branch_id FROM sales WHERE sale_id=?1", [sid], |r| r.get(0)).optional()?,
+        None => Some(s.branch_id.clone()),
+    };
     let id = new_id();
     let number = format!("D-{:05}", next_seq(tx, "delivery")?);
     let now = time::now_str();
     tx.execute(
         "INSERT INTO delivery_orders(delivery_id, delivery_number, sale_id, customer_id, address, area, phone, status, payment_status, amount_minor, notes,
-            created_by, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'pending',?8,?9,?10,?11,?12,?12)",
-        params![id, number, sale_id, customer_id.map(|c| c.customer_id), address, area, phone, pay, amount, clean_opt(&req.notes, "Notes", 500)?, s.user_id, now],
+            created_by, created_at, updated_at, order_id, branch_id, channel, pay_state)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,'pending',?8,?9,?10,?11,?12,?12,?13,?14,?15,?16)",
+        params![
+            id, number, sale_id, customer_id.map(|c| c.customer_id), address, area, phone, pay, amount, clean_opt(&req.notes, "Notes", 500)?,
+            s.user_id, now, req.order_id.clone().filter(|x| !x.is_empty()), branch, channel, pay_state
+        ],
     )?;
     tx.execute(
         "INSERT INTO delivery_events(event_id, delivery_id, previous_status, new_status, note, user_id, created_at) VALUES (?1,?2,NULL,'pending',NULL,?3,?4)",

@@ -44,6 +44,7 @@ fn account_sales_payments_and_refunds() {
                 tenders: vec![TenderInput { method: "account".into(), amount_minor: total, reference: None }],
                 approval_token: approval,
                 expected_total_minor: Some(total),
+                fulfilment: None,
             },
         )
     };

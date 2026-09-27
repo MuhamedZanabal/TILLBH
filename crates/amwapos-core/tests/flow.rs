@@ -45,6 +45,7 @@ fn complete_sale_with_change_and_stock() {
                 tenders: vec![cash(5000)],
                 approval_token: None,
                 expected_total_minor: Some(1600),
+                fulfilment: None,
             },
         )
         .unwrap();
@@ -85,6 +86,7 @@ fn finalize_is_exactly_once() {
         tenders: vec![cash(100)],
         approval_token: None,
         expected_total_minor: None,
+        fulfilment: None,
     };
     let a = e.core.pos_finalize(t, req.clone()).unwrap();
     let b = e.core.pos_finalize(t, req.clone()).unwrap();
@@ -124,6 +126,7 @@ fn split_tender_and_validation() {
             tenders: vec![card(20_000)],
             approval_token: None,
             expected_total_minor: None,
+            fulfilment: None,
         },
     );
     assert_eq!(over.unwrap_err().code, ErrorCode::Validation, "card cannot be over-tendered");
@@ -135,6 +138,7 @@ fn split_tender_and_validation() {
             tenders: vec![cash(10_000)],
             approval_token: None,
             expected_total_minor: None,
+            fulfilment: None,
         },
     );
     assert_eq!(short.unwrap_err().code, ErrorCode::Validation);
@@ -146,6 +150,7 @@ fn split_tender_and_validation() {
             tenders: vec![cash(20_000)],
             approval_token: None,
             expected_total_minor: Some(1),
+            fulfilment: None,
         },
     );
     assert_eq!(stale.unwrap_err().code, ErrorCode::Conflict);
@@ -159,6 +164,7 @@ fn split_tender_and_validation() {
                 tenders: vec![cash(10_000), card(8_450)],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();
@@ -244,6 +250,7 @@ fn negative_stock_blocked_unless_approved() {
                 tenders: vec![cash(500)],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();
@@ -259,6 +266,7 @@ fn negative_stock_blocked_unless_approved() {
         tenders: vec![cash(2_400)],
         approval_token: None,
         expected_total_minor: None,
+        fulfilment: None,
     };
     let err = e.core.pos_finalize(&ct, req.clone()).unwrap_err();
     assert_eq!(err.code, ErrorCode::InsufficientStock);
@@ -323,6 +331,7 @@ fn refunds_are_bounded_exact_and_idempotent() {
                 tenders: vec![cash(3_000)],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();
@@ -372,6 +381,7 @@ fn cashier_refund_needs_manager() {
                 tenders: vec![cash(700)],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();
@@ -410,6 +420,7 @@ fn shift_reconciliation_and_cash_idempotency() {
                     tenders: vec![cash(5_000)],
                     approval_token: None,
                     expected_total_minor: None,
+                    fulfilment: None,
                 },
             )
             .unwrap();
@@ -424,6 +435,7 @@ fn shift_reconciliation_and_cash_idempotency() {
                 tenders: vec![card(2_000)],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();
@@ -472,6 +484,7 @@ fn shift_reconciliation_and_cash_idempotency() {
                 tenders: vec![cash(2_000)],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap_err();
@@ -499,6 +512,7 @@ fn printer_failure_never_undoes_a_sale() {
                 tenders: vec![cash(300)],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();
@@ -575,6 +589,7 @@ fn stocktake_counts_relative_to_count_time() {
                 tenders: vec![cash(900)],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();
@@ -590,6 +605,7 @@ fn stocktake_counts_relative_to_count_time() {
                 tenders: vec![cash(900)],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();

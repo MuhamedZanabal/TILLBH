@@ -158,6 +158,21 @@ pub struct Conversation {
     pub unread: i64,
 }
 
+/// Drop notices carry the address the goods go to: templates saved before
+/// `{address}` existed get it as a last line (only when there is one).
+fn with_address(body: String, template: &str, vars: &[(&str, String)], lang: &str) -> String {
+    if template.contains("{address}") {
+        return body;
+    }
+    let get = |k: &str| vars.iter().find(|(n, _)| *n == k).map(|(_, v)| v.trim().to_string()).unwrap_or_default();
+    let place = [get("address"), get("area")].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(", ");
+    if place.is_empty() {
+        return body;
+    }
+    let label = if lang == "ar" { "العنوان" } else { "Address" };
+    format!("{body}\n{label}: {place}")
+}
+
 /// Fill `{placeholders}`. Values are plain text; braces inside values are
 /// not expanded again.
 pub fn render_template(t: &str, vars: &[(&str, String)]) -> String {
@@ -488,18 +503,26 @@ impl AppCore {
                 }
                 "dispatch" | "delivered" | "reminder" => {
                     let did = validate::id(req.delivery_id.as_deref().unwrap_or(""), "Delivery")?;
-                    let (number, amount, cust, dphone, pay): (String, i64, Option<String>, Option<String>, String) = tx
+                    type Drop = (String, i64, Option<String>, Option<String>, String, Option<String>, Option<String>, Option<String>);
+                    let (number, amount, cust, dphone, pay, address, area, receipt): Drop = tx
                         .query_row(
-                            "SELECT delivery_number, amount_minor, customer_id, phone, payment_status FROM delivery_orders WHERE delivery_id=?1",
+                            "SELECT d.delivery_number, d.amount_minor, d.customer_id, d.phone, COALESCE(d.pay_state, d.payment_status), d.address, d.area, s.receipt_number
+                             FROM delivery_orders d LEFT JOIN sales s ON s.sale_id=d.sale_id WHERE d.delivery_id=?1",
                             [&did],
-                            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
                         )
                         .optional()?
                         .ok_or_else(|| AppError::not_found("Delivery"))?;
                     customer_id = customer_id.or(cust);
                     phone = phone.or(dphone);
+                    let paid = pay == "paid" || pay == "recorded";
+                    vars.push(("ticket", receipt.clone().unwrap_or_else(|| number.clone())));
                     vars.push(("delivery", number));
-                    vars.push(("amount", format_money(if pay == "paid" { 0 } else { amount }, &currency, digits)));
+                    vars.push(("amount", format_money(if paid { 0 } else { amount }, &currency, digits)));
+                    vars.push(("total", format_money(amount, &currency, digits)));
+                    vars.push(("receipt", receipt.unwrap_or_default()));
+                    vars.push(("address", address.unwrap_or_default()));
+                    vars.push(("area", area.unwrap_or_default()));
                     delivery_id = Some(did);
                 }
                 "payment_ack" => {
@@ -562,8 +585,8 @@ impl AppCore {
             let lang = req.lang.clone().filter(|l| l == "en" || l == "ar").unwrap_or_else(|| wa.default_lang.clone());
             let body = match req.kind.as_str() {
                 "receipt" => render_template(&pick(&wa.receipt, &lang), &vars),
-                "dispatch" => render_template(&pick(&wa.dispatch, &lang), &vars),
-                "delivered" => render_template(&pick(&wa.delivered, &lang), &vars),
+                "dispatch" => with_address(render_template(&pick(&wa.dispatch, &lang), &vars), &pick(&wa.dispatch, &lang), &vars, &lang),
+                "delivered" => with_address(render_template(&pick(&wa.delivered, &lang), &vars), &pick(&wa.delivered, &lang), &vars, &lang),
                 "reminder" => render_template(&pick(&wa.reminder, &lang), &vars),
                 "payment_ack" => render_template(&pick(&wa.payment_ack, &lang), &vars),
                 _ => body_text,
@@ -642,6 +665,11 @@ impl AppCore {
             _ => return,
         };
         if !self.features().map(|f| f.is_on("whatsapp.delivery_notices")).unwrap_or(false) {
+            return;
+        }
+        // Never by itself unless the shop turned on the automatic notice.
+        if !self.db.read(|c| settings::get::<WhatsAppSettings>(c, settings::KEY_WHATSAPP)).map(|w| w.auto_delivery_notice).unwrap_or(false)
+        {
             return;
         }
         let req = QueueRequest {
@@ -815,9 +843,18 @@ impl AppCore {
                     _ => "other",
                 };
                 let phone = m.sender_pn.as_deref().and_then(phone_from_jid).or_else(|| phone_from_jid(&m.chat));
-                let customer = match &phone {
-                    Some(p) => find_customer_by_phone(tx, p)?,
-                    None => None,
+                // A chat a person linked by hand wins over the number match.
+                let linked: Option<(String, String)> = tx
+                    .query_row(
+                        "SELECT l.customer_id, cu.name FROM wa_chat_links l JOIN customers cu ON cu.customer_id=l.customer_id WHERE l.chat=?1",
+                        [&m.chat],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .optional()?;
+                let customer = match (linked, &phone) {
+                    (Some(l), _) => Some(l),
+                    (None, Some(p)) => find_customer_by_phone(tx, p)?,
+                    (None, None) => None,
                 };
                 let received = chrono::DateTime::from_timestamp(m.ts, 0).map(time::fmt).unwrap_or_else(time::now_str);
                 let clip = |v: &Option<String>| v.as_ref().map(|t| t.chars().take(8000).collect::<String>());

@@ -251,14 +251,27 @@ pub fn suggest_lines(c: &Connection, text: &str) -> AppResult<Vec<OrderLineInput
 }
 
 /// Called inside the sale's commit when the cart came from an order.
-pub(crate) fn on_sale_committed(tx: &Connection, s: &Session, actor: &audit::Actor, cart_id: &str, sale_id: &str) -> AppResult<()> {
+/// The sale for a loaded digital order committed. `fulfilment` is what the
+/// cashier chose on PAY: "send" (the drop was just created by the sale:
+/// link it to the order), "here" (no drop even if the order asked for one),
+/// or none (older clients: create the drop when the order wanted delivery).
+pub(crate) fn on_sale_committed(
+    tx: &Connection,
+    s: &Session,
+    actor: &audit::Actor,
+    cart_id: &str,
+    sale_id: &str,
+    fulfilment: Option<&str>,
+    drop_id: Option<&str>,
+) -> AppResult<()> {
     let order: Option<String> = tx.query_row("SELECT digital_order_id FROM carts WHERE cart_id=?1", [cart_id], |r| r.get(0))?;
     let Some(order_id) = order else { return Ok(()) };
-    let (status, wanted, address, phone, customer, cart): (String, i64, Option<String>, Option<String>, Option<String>, Option<String>) =
-        tx.query_row(
-            "SELECT status, delivery_wanted, address, phone, customer_id, cart_id FROM digital_orders WHERE order_id=?1",
+    type Row = (String, i64, Option<String>, Option<String>, Option<String>, Option<String>, String);
+    let (status, wanted, address, phone, customer, cart, channel): Row = tx
+        .query_row(
+            "SELECT status, delivery_wanted, address, phone, customer_id, cart_id, channel FROM digital_orders WHERE order_id=?1",
             [&order_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
         )
         .optional()?
         .ok_or_else(|| AppError::not_found("Order"))?;
@@ -268,18 +281,35 @@ pub(crate) fn on_sale_committed(tx: &Connection, s: &Session, actor: &audit::Act
     }
     let now = time::now_str();
     let mut delivery_id = None;
-    if wanted == 1 {
-        let req = crate::customers::DeliveryCreate {
-            sale_id: Some(sale_id.to_string()),
-            customer_id: customer,
-            address: address.clone(),
-            area: None,
-            phone,
-            payment_status: Some("paid".into()),
-            amount_minor: None,
-            notes: None,
-        };
-        delivery_id = Some(crate::customers::insert_delivery(tx, s, actor, &req)?);
+    match fulfilment {
+        Some("send") => {
+            if let Some(d) = drop_id {
+                tx.execute(
+                    // The order's channel is where the ticket came from.
+                    "UPDATE delivery_orders SET order_id=?2, channel=?3, updated_at=?4 WHERE delivery_id=?1",
+                    params![d, order_id, channel, now],
+                )?;
+                delivery_id = Some(d.to_string());
+            }
+        }
+        Some("here") => {}
+        _ if wanted == 1 => {
+            let req = crate::customers::DeliveryCreate {
+                sale_id: Some(sale_id.to_string()),
+                customer_id: customer,
+                address: address.clone(),
+                area: None,
+                phone,
+                payment_status: Some("paid".into()),
+                amount_minor: None,
+                notes: None,
+                order_id: Some(order_id.clone()),
+                channel: Some(channel.clone()),
+                pay_state: None,
+            };
+            delivery_id = Some(crate::customers::insert_delivery(tx, s, actor, &req)?);
+        }
+        _ => {}
     }
     tx.execute(
         "UPDATE digital_orders SET status='converted', sale_id=?2, delivery_id=?3, updated_at=?4 WHERE order_id=?1",

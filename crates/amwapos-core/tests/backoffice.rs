@@ -25,6 +25,7 @@ fn sell(e: &Env, barcode: &str, qty: i64, tender: &str) -> amwapos_core::sales::
                 tenders: vec![TenderInput { method: tender.into(), amount_minor: total, reference: None }],
                 approval_token: None,
                 expected_total_minor: Some(total),
+                fulfilment: None,
             },
         )
         .unwrap()
@@ -109,6 +110,7 @@ fn customers_and_deliveries() {
                 tenders: vec![TenderInput { method: "cash".into(), amount_minor: 1_500, reference: None }],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();

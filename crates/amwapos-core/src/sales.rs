@@ -32,7 +32,36 @@ pub struct FinalizeRequest {
     /// against a stale screen).
     #[serde(default)]
     pub expected_total_minor: Option<i64>,
+    /// Here (default, no drop) or Send (a drop is created with the sale).
+    #[serde(default)]
+    pub fulfilment: Option<Fulfilment>,
 }
+
+/// What happens to the goods after PAY.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct Fulfilment {
+    /// "here" | "send"
+    pub mode: String,
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default)]
+    pub area: Option<String>,
+    #[serde(default)]
+    pub phone: Option<String>,
+    /// Also save this address/area on the customer.
+    #[serde(default)]
+    pub save_on_customer: bool,
+    #[serde(default)]
+    pub notes: Option<String>,
+    /// walk_in | phone | whatsapp | web | other (default walk_in).
+    #[serde(default)]
+    pub channel: Option<String>,
+}
+
+/// Tender that records "the customer pays when the goods arrive": allowed only
+/// on a Send sale; it is not cash, so the drawer does not expect it, and the
+/// ticket stays unpaid until the money is recorded (`tickets.record_payment`).
+pub const PAY_ON_DELIVERY: &str = "pay_on_delivery";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaymentView {
@@ -60,6 +89,9 @@ pub struct SaleResult {
     /// Items sold below zero recorded stock (allowed by the store setting).
     #[serde(default)]
     pub stock_warnings: Vec<String>,
+    /// The drop created by a Send sale.
+    #[serde(default)]
+    pub delivery_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -305,7 +337,21 @@ impl AppCore {
         }
         let pos_cfg: settings::PosSettings = self.db.read(|c| settings::get(c, settings::KEY_POS))?;
         let pay_cfg: settings::PaymentSettings = self.db.read(settings::payments)?;
-        for t in &req.tenders {
+        let send = req.fulfilment.as_ref().is_some_and(|f| f.mode == "send");
+        if let Some(f) = &req.fulfilment {
+            if f.mode != "send" && f.mode != "here" {
+                return Err(AppError::validation("Fulfilment must be here or send."));
+            }
+        }
+        for t in req.tenders.iter().filter(|t| t.method == PAY_ON_DELIVERY) {
+            if !send {
+                return Err(AppError::validation("Pay on delivery is only for a sale that is sent."));
+            }
+            if t.amount_minor <= 0 {
+                return Err(AppError::validation("Each payment amount must be greater than zero."));
+            }
+        }
+        for t in req.tenders.iter().filter(|t| t.method != PAY_ON_DELIVERY) {
             let cfg = pay_cfg
                 .tender(&t.method)
                 .filter(|c| c.enabled)
@@ -391,7 +437,12 @@ impl AppCore {
         let device = self.require_device()?;
         let actor = self.actor(&s, negative_approved_by.clone());
         let result = self.db.write(|tx| {
-            let hash = match idempotency::check(tx, &req.operation_id, "sale.finalize", &(&cart_id, &req.tenders))? {
+            let check = match &req.fulfilment {
+                // Older clients hash exactly as before.
+                None => idempotency::check(tx, &req.operation_id, "sale.finalize", &(&cart_id, &req.tenders))?,
+                Some(f) => idempotency::check(tx, &req.operation_id, "sale.finalize", &(&cart_id, &req.tenders, f))?,
+            };
+            let hash = match check {
                 Check::Replay { result } => {
                     let mut r: SaleResult = serde_json::from_value(result)?;
                     r.replayed = true;
@@ -527,7 +578,41 @@ impl AppCore {
             )?;
             // Loyalty ledger entries, inside this commit.
             crate::loyalty::record_sale(tx, &s, &self.actor(&s, None), customer_id.as_deref(), &sale_id, &lp)?;
-            crate::orders::on_sale_committed(tx, &s, &self.actor(&s, None), &cart_id, &sale_id)?;
+            // Send: the drop is part of the same commit (one ticket, one drop).
+            let delivery_id = match req.fulfilment.as_ref().filter(|f| f.mode == "send") {
+                Some(f) => {
+                    let cid = customer_id.clone().ok_or_else(|| AppError::validation("Choose the customer to send to."))?;
+                    let pod: i64 = applied.iter().filter(|a| a.method == PAY_ON_DELIVERY).map(|a| a.amount_minor).sum();
+                    let req_d = crate::customers::DeliveryCreate {
+                        sale_id: Some(sale_id.clone()),
+                        customer_id: Some(cid.clone()),
+                        address: f.address.clone(),
+                        area: f.area.clone(),
+                        phone: f.phone.clone(),
+                        payment_status: Some(if pod > 0 { "cod".into() } else { "paid".into() }),
+                        amount_minor: Some(totals.total_minor),
+                        notes: f.notes.clone(),
+                        order_id: None,
+                        channel: Some(f.channel.clone().unwrap_or_else(|| "walk_in".into())),
+                        pay_state: Some(if pod > 0 { "unpaid".into() } else { "paid".into() }),
+                    };
+                    let did = crate::customers::insert_delivery(tx, &s, &self.actor(&s, None), &req_d)?;
+                    if f.save_on_customer {
+                        crate::customers::save_delivery_address(tx, &cid, f.address.as_deref(), f.area.as_deref())?;
+                    }
+                    Some(did)
+                }
+                None => None,
+            };
+            crate::orders::on_sale_committed(
+                tx,
+                &s,
+                &self.actor(&s, None),
+                &cart_id,
+                &sale_id,
+                req.fulfilment.as_ref().map(|f| f.mode.as_str()),
+                delivery_id.as_deref(),
+            )?;
             let print_job = if tz_currency.1 {
                 Some(crate::printing::enqueue(tx, "sale", &sale_id, None, Some(&s.user_id))?)
             } else {
@@ -557,6 +642,7 @@ impl AppCore {
                 replayed: false,
                 stock_warnings: if pos_cfg.allow_negative_stock { shortfalls.clone() } else { vec![] },
                 print: print_job.as_ref().map(|_| PrintOutcome::queued()),
+                delivery_id: delivery_id.clone(),
             };
             audit::record(
                 tx,

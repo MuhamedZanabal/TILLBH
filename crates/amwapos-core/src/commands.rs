@@ -377,6 +377,13 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "whatsapp.recent" => out(core.wa_recent(tk()?, opt(&args, "limit")?)),
         "whatsapp.import_contacts" => out(core.wa_import_contacts(tk()?, opt(&args, "chats")?)),
         "whatsapp.phone_contacts" => out(core.wa_contacts_preview(tk()?)),
+        "whatsapp.link_customer" => out(core.wa_link_customer(tk()?, &req::<String>(&args, "chat")?, opt(&args, "customer_id")?)),
+        "whatsapp.thread_context" => out(core.wa_thread_context(tk()?, &req::<String>(&args, "chat")?)),
+        // the Send loop (tickets and drops)
+        "tickets.list" => out(core.tickets_list(tk()?, all(&args)?)),
+        "tickets.counts" => out(core.tickets_counts(tk()?)),
+        "tickets.get" => out(core.ticket_get(tk()?, &req::<String>(&args, "ticket_id")?)),
+        "tickets.record_payment" => out(core.ticket_record_payment(tk()?, all(&args)?)),
         "whatsapp.phone_contacts_import" => out(core.wa_contacts_import(tk()?, all(&args)?)),
         // payment screenshot reviews
         "payreviews.list" => out(core.pr_list(tk()?, opt(&args, "status")?)),

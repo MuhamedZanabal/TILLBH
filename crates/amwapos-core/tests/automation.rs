@@ -32,6 +32,7 @@ fn sale(e: &Env) -> String {
                 tenders: vec![TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
                 approval_token: None,
                 expected_total_minor: Some(total),
+                fulfilment: None,
             },
         )
         .unwrap()
@@ -240,6 +241,7 @@ fn receipts_and_delivery_notices_are_queued_after_commit() {
                     tenders: vec![TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
                     approval_token: None,
                     expected_total_minor: Some(total),
+                    fulfilment: None,
                 },
             )
             .unwrap()
@@ -250,6 +252,8 @@ fn receipts_and_delivery_notices_are_queued_after_commit() {
     sale_for(&e);
     assert_eq!(count(&e, "SELECT COUNT(*) FROM wa_outbox"), 0);
     features(&e, json!({ "whatsapp.enabled": true, "whatsapp.send_receipts": true, "whatsapp.delivery_notices": true }));
+    // Automatic drop notices are a separate setting (off by default).
+    e.core.settings_save(t, "whatsapp", json!({ "auto_delivery_notice": true })).unwrap();
     let sid = sale_for(&e);
     assert_eq!(
         count(&e, &format!("SELECT COUNT(*) FROM wa_outbox WHERE kind='receipt' AND sale_id='{sid}' AND to_phone='+97333337777'")),

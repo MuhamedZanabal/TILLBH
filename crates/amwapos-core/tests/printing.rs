@@ -18,6 +18,7 @@ fn sell(e: &Env, barcode: &str) -> amwapos_core::sales::SaleResult {
                 tenders: vec![TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap()
@@ -148,6 +149,7 @@ fn arabic_receipts_print_as_raster_never_as_question_marks() {
                 tenders: vec![TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();
@@ -222,6 +224,7 @@ fn cash_drawer_pulses_on_cash_sales_only() {
                 tenders: vec![TenderInput { method: "card".into(), amount_minor: cart.totals.total_minor, reference: Some("4421".into()) }],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap();

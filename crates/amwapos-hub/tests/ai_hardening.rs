@@ -396,6 +396,7 @@ async fn refund_spike_raises_one_inbox_alert_and_writes_no_stock() {
                 tenders: vec![amwapos_core::pricing::TenderInput { method: "cash".into(), amount_minor: 4500, reference: None }],
                 approval_token: None,
                 expected_total_minor: Some(4500),
+                fulfilment: None,
             },
         )
         .unwrap();

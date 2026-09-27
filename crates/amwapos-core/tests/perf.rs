@@ -157,6 +157,7 @@ fn perf_100k_products() {
                     tenders: vec![TenderInput { method: "cash".into(), amount_minor: c.totals.total_minor, reference: None }],
                     approval_token: None,
                     expected_total_minor: None,
+                    fulfilment: None,
                 },
             )
             .unwrap();

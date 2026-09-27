@@ -159,6 +159,7 @@ impl AppCore {
                         "phone": phone,
                         "name": name,
                         "address": name.as_deref().and_then(|n| address_from_name(n, phone.as_deref())),
+                        "area": name.as_deref().and_then(crate::customers::area_from_text),
                         "status": status,
                         "customer_id": existing,
                         "customer_name": r.get::<_, Option<String>>(6)?,
@@ -207,6 +208,7 @@ impl AppCore {
                     continue;
                 }
                 let address = row["address"].as_str();
+                let area = row["area"].as_str();
                 let existing: Option<(String, Option<String>)> = tx
                     .query_row(
                         "SELECT customer_id, address FROM customers WHERE phone=?1 OR whatsapp=?1 ORDER BY active DESC LIMIT 1",
@@ -222,8 +224,9 @@ impl AppCore {
                         }
                         let fill = addr.as_deref().is_none_or(|a| a.trim().is_empty());
                         tx.execute(
-                            "UPDATE customers SET name=?2, whatsapp=COALESCE(whatsapp, ?3), address=CASE WHEN ?4 THEN COALESCE(?5, address) ELSE address END, updated_at=?6 WHERE customer_id=?1",
-                            params![id, name, phone, fill, address, now],
+                            "UPDATE customers SET name=?2, whatsapp=COALESCE(whatsapp, ?3), address=CASE WHEN ?4 THEN COALESCE(?5, address) ELSE address END,
+                                area=COALESCE(NULLIF(TRIM(area),''), ?7), updated_at=?6 WHERE customer_id=?1",
+                            params![id, name, phone, fill, address, now, area],
                         )?;
                         updated += 1;
                         id
@@ -231,8 +234,8 @@ impl AppCore {
                     None => {
                         let id = new_id();
                         tx.execute(
-                            "INSERT INTO customers(customer_id, name, phone, whatsapp, address, active, created_at, updated_at) VALUES (?1,?2,?3,?3,?4,1,?5,?5)",
-                            params![id, name, phone, address, now],
+                            "INSERT INTO customers(customer_id, name, phone, whatsapp, address, area, active, created_at, updated_at) VALUES (?1,?2,?3,?3,?4,?6,1,?5,?5)",
+                            params![id, name, phone, address, now, area],
                         )?;
                         created += 1;
                         id
@@ -273,6 +276,22 @@ mod tests {
         // Saved under its own number: not an address.
         assert_eq!(address_from_name("+973 3300 1122", Some("+97333001122")), None);
         assert_eq!(address_from_name("3300 1122", Some("+97333001122")), None);
+    }
+
+    #[test]
+    fn area_lexicon_takes_the_place_and_leaves_the_house_number() {
+        use crate::customers::area_from_text;
+        let name = "Maryam 1203/45 Riffa";
+        assert_eq!(address_from_name(name, None).as_deref(), Some("1203/45"));
+        assert_eq!(area_from_text(name), Some("Riffa"));
+        assert_eq!(area_from_text("Villa 5, East Riffa"), Some("Riffa East"));
+        assert_eq!(area_from_text("house 12 isa town"), Some("Isa Town"));
+        assert_eq!(area_from_text("منزل 12 بالمحرق"), Some("Muharraq"));
+        assert_eq!(area_from_text("Aali 44"), Some("A'ali"));
+        // No known place: no area (never a guess), and parts of words do not count.
+        assert_eq!(area_from_text("825 - 3325 husband"), None);
+        assert_eq!(area_from_text("Seefood shop"), None);
+        assert_eq!(crate::customers::strip_area("Maryam 1203/45 Riffa", "Riffa"), "Maryam 1203/45");
     }
 
     #[test]

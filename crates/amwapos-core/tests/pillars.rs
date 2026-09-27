@@ -98,6 +98,7 @@ fn sell(e: &Env, barcode: &str, qty_milli: i64, customer: Option<&str>, points: 
                 tenders: vec![amwapos_core::pricing::TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
                 approval_token: None,
                 expected_total_minor: Some(total),
+                fulfilment: None,
             },
         )
         .unwrap()
@@ -212,6 +213,7 @@ fn pay_cash(e: &Env, t: &str, cart: &amwapos_core::pos::CartView, op_id: &str) -
                 tenders: vec![amwapos_core::pricing::TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
                 approval_token: None,
                 expected_total_minor: Some(total),
+                fulfilment: None,
             },
         )
         .unwrap()
@@ -379,6 +381,7 @@ fn multi_branch_flag_off_is_single_branch_and_on_isolates_branches() {
                 }],
                 approval_token: None,
                 expected_total_minor: None,
+                fulfilment: None,
             },
         )
         .unwrap_err();

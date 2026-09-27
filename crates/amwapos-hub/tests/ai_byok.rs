@@ -178,6 +178,7 @@ async fn todays_sales_come_from_a_tool_call_under_the_constitution() {
                 tenders: vec![amwapos_core::pricing::TenderInput { method: "cash".into(), amount_minor: 4500, reference: None }],
                 approval_token: None,
                 expected_total_minor: Some(4500),
+                fulfilment: None,
             },
         )
         .unwrap();

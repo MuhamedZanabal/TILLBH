@@ -49,6 +49,9 @@ pub struct CustomerRef {
     pub customer_id: String,
     pub name: String,
     pub phone: Option<String>,
+    /// Saved drop address and area (prefill the Send sheet).
+    pub address: Option<String>,
+    pub area: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -67,6 +70,9 @@ pub struct CartView {
     /// Loyalty (module on and a customer on the sale): balance, points
     /// redeemed on this sale and their discount value.
     pub loyalty: Option<serde_json::Value>,
+    /// The digital order this sale rings up (Send prefill): order number,
+    /// channel, whether it wants delivery, address and phone.
+    pub order: Option<serde_json::Value>,
 }
 
 impl CartView {
@@ -84,6 +90,7 @@ impl CartView {
             version: 0,
             notices: vec![],
             loyalty: None,
+            order: None,
         }
     }
 }
@@ -328,8 +335,8 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
     let (priced, totals) = (lp.lines, lp.totals);
     let customer = match customer_id {
         Some(cid) => c
-            .query_row("SELECT customer_id, name, phone FROM customers WHERE customer_id=?1", [&cid], |r| {
-                Ok(CustomerRef { customer_id: r.get(0)?, name: r.get(1)?, phone: r.get(2)? })
+            .query_row("SELECT customer_id, name, phone, address, area FROM customers WHERE customer_id=?1", [&cid], |r| {
+                Ok(CustomerRef { customer_id: r.get(0)?, name: r.get(1)?, phone: r.get(2)?, address: r.get(3)?, area: r.get(4)? })
             })
             .optional()?,
         None => None,
@@ -384,6 +391,18 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
         version,
         notices,
         loyalty,
+        order: c
+            .query_row(
+                "SELECT o.order_id, o.order_number, o.channel, o.delivery_wanted, o.address, o.phone FROM carts ca
+                 JOIN digital_orders o ON o.order_id=ca.digital_order_id WHERE ca.cart_id=?1",
+                [cart_id],
+                |r| {
+                    Ok(serde_json::json!({ "order_id": r.get::<_, String>(0)?, "order_number": r.get::<_, String>(1)?,
+                        "channel": r.get::<_, String>(2)?, "delivery_wanted": r.get::<_, i64>(3)? == 1,
+                        "address": r.get::<_, Option<String>>(4)?, "phone": r.get::<_, Option<String>>(5)? }))
+                },
+            )
+            .optional()?,
     })
 }
 

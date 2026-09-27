@@ -83,6 +83,7 @@ fn sell(core: &AppCore, token: &str, barcode: &str, qty: i64) -> String {
             tenders: vec![TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
             approval_token: None,
             expected_total_minor: None,
+            fulfilment: None,
         },
     )
     .unwrap()

@@ -47,6 +47,7 @@ pub mod setup;
 pub mod shifts;
 pub mod sync;
 pub mod system;
+pub mod tickets;
 pub mod time;
 pub mod transfers;
 pub mod users;
