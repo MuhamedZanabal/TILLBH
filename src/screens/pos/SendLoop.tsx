@@ -2,9 +2,29 @@
 // A ticket is an order the shop must fulfil (a sent sale or a digital order);
 // its drop is the delivery job. One pay state everywhere.
 import { useCallback, useEffect, useState } from "react";
-import { Check, MapPin, MessageCircle, Paperclip, Search, Store, Truck, Undo2, UserPlus, X } from "lucide-react";
+import {
+  Banknote,
+  Check,
+  MapPin,
+  MessageCircle,
+  Paperclip,
+  Search,
+  Store,
+  Truck,
+  Undo2,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { api } from "../../api";
-import type { Cart, CustomerRow, PayState, TicketCounts, TicketRow, TicketSheet as Sheet } from "../../api/types";
+import type {
+  Cart,
+  CustomerRow,
+  PayState,
+  RiderCash,
+  TicketCounts,
+  TicketRow,
+  TicketSheet as Sheet,
+} from "../../api/types";
 import { useSession } from "../../state/session";
 import { useFeature } from "../../components/FeatureGate";
 import { Banner, Button, Checkbox, Chip, Modal } from "../../components/ui";
@@ -479,11 +499,20 @@ export function TicketRowButton({ row, onOpen }: { row: TicketRow; onOpen: (r: T
       <span className="tr-side">
         <span className="money">{formatMoney(row.amount_minor)}</span>
         <span className="tr-chips">
-          <PayChip state={row.pay_state} />
+          {row.cash_with ? <CashWithChip name={row.cash_with} /> : <PayChip state={row.pay_state} />}
           <StatusChip status={row.status} />
         </span>
       </span>
     </button>
+  );
+}
+
+/** Cash collected at the door that the rider still holds. */
+export function CashWithChip({ name }: { name: string }) {
+  return (
+    <span data-testid="cash-with">
+      <Chip tone="warning">{t("Cash with {0}", name)}</Chip>
+    </span>
   );
 }
 
@@ -499,7 +528,9 @@ export function SendRail({
   onOpen: (r: TicketRow) => void;
   reloadKey: number;
 }) {
+  const { has } = useSession();
   const [tab, setTab] = useState<RailTab>("now");
+  const [handover, setHandover] = useState(false);
   const [rows, setRows] = useState<TicketRow[] | null>(null);
   const [counts, setCounts] = useState<TicketCounts | null>(null);
   const { error, handle, setError } = useErr();
@@ -527,6 +558,16 @@ export function SendRail({
       <div className="till-ai-head">
         <Truck size={20} aria-hidden />
         <h2 className="grow">{t("Send")}</h2>
+        {has("pos.sell") ? (
+          <Button
+            variant="ghost"
+            icon={<Banknote size={20} />}
+            onClick={() => setHandover(true)}
+            data-testid="rider-handover-open"
+          >
+            {t("Rider hand-over")}
+          </Button>
+        ) : null}
         <Button
           variant="ghost"
           className="close-btn"
@@ -535,6 +576,15 @@ export function SendRail({
           onClick={onClose}
         />
       </div>
+      {handover ? (
+        <RiderHandoverSheet
+          onClose={() => setHandover(false)}
+          onDone={() => {
+            setHandover(false);
+            void load();
+          }}
+        />
+      ) : null}
       <div className="rail-tabs" role="tablist">
         {tabs.map((tv) => (
           <button
@@ -729,6 +779,11 @@ export function TicketSheet({
           </Banner>
         ) : null}
         {error ? <Banner tone="danger">{error}</Banner> : null}
+        {tk.cash_with ? (
+          <Banner tone="info" title={t("Cash with {0}", tk.cash_with)}>
+            {t("Collected at the door. It enters a drawer when the rider hands it over at the till.")}
+          </Banner>
+        ) : null}
         {!settled && tk.kind === "drop" && tk.status !== "cancelled" ? (
           <section className="ticket-money">
             <div className="grow">
@@ -808,9 +863,18 @@ export function TicketSheet({
               <span className="money">{formatMoney(l.line_total_minor)}</span>
             </div>
           ))}
-          {[...sheet.payments, ...sheet.collections].map((p, i) => (
+          {sheet.payments.map((p, i) => (
             <div key={`p${i}`} className="row tiny muted">
               <span className="grow">{methodLabel(p.method)}</span>
+              <span className="money">{formatMoney(p.amount_minor)}</span>
+            </div>
+          ))}
+          {sheet.collections.map((p, i) => (
+            <div key={`k${i}`} className="row tiny muted">
+              <span className="grow">
+                {methodLabel(p.method)}
+                {p.held_by ? ` · ${p.handed_over ? t("handed over by {0}", p.held_by) : t("with {0}", p.held_by)}` : ""}
+              </span>
               <span className="money">{formatMoney(p.amount_minor)}</span>
             </div>
           ))}
@@ -897,6 +961,8 @@ function RecordPaymentSheet({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const { session, has } = useSession();
+  const atDoor = !has("pos.sell") && !!session && ticket.assigned_user_id === session.user_id;
   const [method, setMethod] = useState(methods.includes("cash") ? "cash" : (methods[0] ?? "cash"));
   const [amount, setAmount] = useState(formatAmount(ticket.outstanding_minor));
   const [reference, setReference] = useState("");
@@ -973,7 +1039,199 @@ function RecordPaymentSheet({
             <input id="rp-ref" className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
           </div>
         ) : null}
-        {method === "cash" ? <div className="hint">{t("Cash goes into this shift's drawer.")}</div> : null}
+        {method === "cash" ? (
+          <div className="hint">
+            {atDoor
+              ? t("The cash stays with you until you hand it over at the till.")
+              : t("Cash goes into this shift's drawer.")}
+          </div>
+        ) : null}
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+      </div>
+    </Modal>
+  );
+}
+
+/** A rider hands their cash to the cashier: tick what they collected without
+ * recording it, count the notes, and the counted amount enters this drawer. */
+function RiderHandoverSheet({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [riders, setRiders] = useState<RiderCash[] | null>(null);
+  const [pick, setPick] = useState<string | null>(null);
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [counted, setCounted] = useState("");
+  const [note, setNote] = useState("");
+  const [opId] = useState(newOperationId);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<{ number: string; variance: number } | null>(null);
+  const { error, handle, setError } = useErr();
+  useEffect(() => {
+    api.riders
+      .cash()
+      .then((r) => {
+        setRiders(r);
+        if (r.length === 1) setPick(r[0].rider_user_id);
+      })
+      .catch(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const rider = riders?.find((r) => r.rider_user_id === pick) ?? null;
+  const expected =
+    (rider?.held_minor ?? 0) +
+    (rider?.uncollected.filter((u) => ticked.has(u.delivery_id)).reduce((a, u) => a + u.outstanding_minor, 0) ?? 0);
+  const countedMinor = parseMoney(counted);
+  const variance = countedMinor === null ? 0 : countedMinor - expected;
+  const save = async () => {
+    if (!rider || countedMinor === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const h = await api.riders.handover({
+        rider_user_id: rider.rider_user_id,
+        collect: [...ticked],
+        counted_minor: countedMinor,
+        note: note.trim() || null,
+        operation_id: opId,
+      });
+      setDone({ number: h.handover_number, variance: h.variance_minor });
+    } catch (e) {
+      handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (done) {
+    return (
+      <Modal
+        title={t("Handed over")}
+        size="sm"
+        onClose={onDone}
+        footer={
+          <Button variant="primary" size="lg" block onClick={onDone}>
+            {t("Done")}
+          </Button>
+        }
+      >
+        <p data-testid="handover-done">
+          {done.variance === 0
+            ? t("{0}: the count matches.", done.number)
+            : t("{0}: {1} difference recorded.", done.number, formatMoney(done.variance))}
+        </p>
+      </Modal>
+    );
+  }
+  return (
+    <Modal
+      title={t("Rider hand-over")}
+      size="md"
+      testId="rider-handover"
+      onClose={busy ? undefined : onClose}
+      footer={
+        rider ? (
+          <Button
+            variant="pay"
+            size="xl"
+            block
+            onClick={save}
+            loading={busy}
+            disabled={countedMinor === null || expected === 0 || (variance !== 0 && !note.trim())}
+            data-testid="handover-confirm"
+          >
+            {t("Count in")} <span className="money">{countedMinor !== null ? formatMoney(countedMinor) : ""}</span>
+          </Button>
+        ) : null
+      }
+    >
+      <div className="col gap-12">
+        {riders && riders.length === 0 ? <div className="rail-empty">{t("No rider is holding cash.")}</div> : null}
+        {riders && riders.length > 1 ? (
+          <div className="area-chips" role="radiogroup" aria-label={t("Rider")}>
+            {riders.map((r) => (
+              <button
+                key={r.rider_user_id}
+                type="button"
+                role="radio"
+                aria-checked={r.rider_user_id === pick}
+                className={`filter-chip ${r.rider_user_id === pick ? "active" : ""}`}
+                onClick={() => (setPick(r.rider_user_id), setTicked(new Set()))}
+              >
+                {r.name} · <span className="money">{formatMoney(r.held_minor + r.uncollected_minor)}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {rider ? (
+          <>
+            {rider.held.length ? (
+              <section className="col gap-4">
+                <div className="label">{t("Collected at the door")}</div>
+                {rider.held.map((h) => (
+                  <div key={h.collection_id} className="row small">
+                    <Check size={16} aria-hidden />
+                    <span className="grow ellipsis" dir="auto">
+                      {[h.number, h.customer_name, h.area].filter(Boolean).join(" · ")}
+                    </span>
+                    <span className="money">{formatMoney(h.amount_minor)}</span>
+                  </div>
+                ))}
+              </section>
+            ) : null}
+            {rider.uncollected.length ? (
+              <section className="col gap-4">
+                <div className="label">{t("Not recorded yet: tick what the rider collected in cash")}</div>
+                {rider.uncollected.map((u) => (
+                  <Checkbox
+                    key={u.delivery_id}
+                    checked={ticked.has(u.delivery_id)}
+                    onChange={(v) =>
+                      setTicked((s) => {
+                        const n = new Set(s);
+                        if (v) n.add(u.delivery_id);
+                        else n.delete(u.delivery_id);
+                        return n;
+                      })
+                    }
+                    label={
+                      <span className="row gap-8">
+                        <span className="grow ellipsis" dir="auto">
+                          {[u.number, u.customer_name, u.area].filter(Boolean).join(" · ")}
+                        </span>
+                        <span className="money">{formatMoney(u.outstanding_minor)}</span>
+                      </span>
+                    }
+                  />
+                ))}
+              </section>
+            ) : null}
+            <div className="row strong">
+              <span className="grow">{t("Should hand over")}</span>
+              <span className="money" data-testid="handover-expected">
+                {formatMoney(expected)}
+              </span>
+            </div>
+            <div className="field">
+              <label htmlFor="ho-count">{t("Counted")}</label>
+              <input
+                id="ho-count"
+                className="input lg num"
+                inputMode="decimal"
+                value={counted}
+                onChange={(e) => setCounted(e.target.value)}
+                data-testid="handover-counted"
+              />
+            </div>
+            {countedMinor !== null && variance !== 0 ? (
+              <>
+                <Banner tone="warning">
+                  {variance < 0 ? t("{0} short.", formatMoney(-variance)) : t("{0} over.", formatMoney(variance))}
+                </Banner>
+                <div className="field">
+                  <label htmlFor="ho-note">{t("Why is it different?")}</label>
+                  <input id="ho-note" className="input" value={note} onChange={(e) => setNote(e.target.value)} />
+                </div>
+              </>
+            ) : null}
+          </>
+        ) : null}
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
     </Modal>

@@ -62,6 +62,10 @@ pub struct TicketRow {
     pub delivered_at: Option<String>,
     /// unpaid_out (out or delivered, money not in) | notice_failed
     pub problem: Option<String>,
+    /// The rider still holding cash collected for this ticket (not yet
+    /// counted into a drawer at a hand-over).
+    #[serde(default)]
+    pub cash_with: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -96,7 +100,9 @@ const DROP_SELECT: &str = "SELECT d.delivery_id, d.order_id, d.sale_id, COALESCE
         EXISTS(SELECT 1 FROM wa_outbox w WHERE w.delivery_id=d.delivery_id AND w.status='failed'),
         CASE WHEN d.sale_id IS NULL THEN d.amount_minor
              ELSE COALESCE((SELECT SUM(p.amount_minor) FROM payments p WHERE p.sale_id=d.sale_id AND p.method='pay_on_delivery'),0) END,
-        COALESCE((SELECT SUM(k.amount_minor) FROM sale_collections k WHERE k.delivery_id=d.delivery_id),0)
+        COALESCE((SELECT SUM(k.amount_minor) FROM sale_collections k WHERE k.delivery_id=d.delivery_id),0),
+        (SELECT hu.display_name FROM sale_collections hk JOIN users hu ON hu.user_id=hk.held_by
+          WHERE hk.delivery_id=d.delivery_id AND hk.collection_id NOT IN (SELECT collection_id FROM rider_handover_items) LIMIT 1)
     FROM delivery_orders d LEFT JOIN sales s ON s.sale_id=d.sale_id LEFT JOIN customers cu ON cu.customer_id=d.customer_id
     LEFT JOIN users u ON u.user_id=d.assigned_user_id";
 
@@ -143,6 +149,7 @@ fn drop_row(r: &rusqlite::Row) -> rusqlite::Result<TicketRow> {
         updated_at: r.get(18)?,
         delivered_at: r.get(19)?,
         problem,
+        cash_with: r.get(24)?,
     })
 }
 
@@ -185,6 +192,7 @@ fn order_row(r: &rusqlite::Row) -> rusqlite::Result<TicketRow> {
         updated_at: r.get(12)?,
         delivered_at: None,
         problem: None,
+        cash_with: None,
     })
 }
 
@@ -431,12 +439,15 @@ impl AppCore {
                 Ok(json!({ "method": r.get::<_, String>(0)?, "amount_minor": r.get::<_, i64>(1)?, "reference": r.get::<_, Option<String>>(2)? }))
             })?;
             let collections = list(
-                "SELECT k.method, k.amount_minor, k.reference, k.created_at, u.display_name FROM sale_collections k
-                 LEFT JOIN users u ON u.user_id=k.user_id WHERE k.delivery_id=?1 ORDER BY k.created_at",
+                "SELECT k.method, k.amount_minor, k.reference, k.created_at, u.display_name, hu.display_name,
+                    EXISTS(SELECT 1 FROM rider_handover_items hi WHERE hi.collection_id=k.collection_id)
+                 FROM sale_collections k LEFT JOIN users u ON u.user_id=k.user_id LEFT JOIN users hu ON hu.user_id=k.held_by
+                 WHERE k.delivery_id=?1 ORDER BY k.created_at",
                 &did,
                 &|r| {
                     Ok(json!({ "method": r.get::<_, String>(0)?, "amount_minor": r.get::<_, i64>(1)?, "reference": r.get::<_, Option<String>>(2)?,
-                        "at": r.get::<_, String>(3)?, "user": r.get::<_, Option<String>>(4)? }))
+                        "at": r.get::<_, String>(3)?, "user": r.get::<_, Option<String>>(4)?,
+                        "held_by": r.get::<_, Option<String>>(5)?, "handed_over": r.get::<_, bool>(6)? }))
                 },
             )?;
             let reviews = list(
@@ -542,15 +553,33 @@ impl AppCore {
                     .with_details(json!({ "outstanding_minor": t.outstanding_minor })));
             }
             let shift = crate::sales::open_shift_for(tx, &s)?;
-            if method == "cash" && shift.is_none() {
+            // The rider on the drop, with no drawer of their own, keeps the
+            // cash until a cashier counts it in at a hand-over.
+            let held_by = (method == "cash" && shift.is_none() && d.assigned_user_id.as_deref() == Some(s.user_id.as_str()))
+                .then(|| s.user_id.clone());
+            if method == "cash" && shift.is_none() && held_by.is_none() {
                 return Err(crate::sales::shift_required());
             }
             let now = time::now_str();
             let cid = new_id();
             tx.execute(
                 "INSERT INTO sale_collections(collection_id, sale_id, delivery_id, method, amount_minor, reference, shift_id, branch_id, device_id, user_id,
-                    operation_id, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
-                params![cid, t.sale_id, id, method, amount, reference, shift, s.branch_id, device.device_id, s.user_id, req.operation_id, now],
+                    operation_id, created_at, held_by) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+                params![
+                    cid,
+                    t.sale_id,
+                    id,
+                    method,
+                    amount,
+                    reference,
+                    if held_by.is_some() { None } else { shift.clone() },
+                    s.branch_id,
+                    device.device_id,
+                    s.user_id,
+                    req.operation_id,
+                    now,
+                    held_by
+                ],
             )?;
             let full = amount == t.outstanding_minor;
             if full {
@@ -563,9 +592,14 @@ impl AppCore {
                 )?;
             }
             let label = crate::receipt::method_label(&method);
+            let note = if held_by.is_some() {
+                format!("Cash collected at the door: {amount} (with the rider)")
+            } else {
+                format!("Payment recorded: {label} {amount}")
+            };
             tx.execute(
                 "INSERT INTO delivery_events(event_id, delivery_id, previous_status, new_status, note, user_id, created_at) VALUES (?1,?2,?3,?3,?4,?5,?6)",
-                params![new_id(), id, t.status, format!("Payment recorded: {label} {amount}"), s.user_id, now],
+                params![new_id(), id, t.status, note, s.user_id, now],
             )?;
             audit::record(
                 tx,
@@ -574,9 +608,9 @@ impl AppCore {
                 "delivery",
                 Some(&id),
                 Some(&json!({ "pay_state": t.pay_state, "outstanding_minor": t.outstanding_minor })),
-                Some(&json!({ "method": method, "amount_minor": amount, "collection_id": cid, "shift_id": shift })),
+                Some(&json!({ "method": method, "amount_minor": amount, "collection_id": cid, "shift_id": shift, "held_by": held_by })),
             )?;
-            if method == "cash" {
+            if method == "cash" && held_by.is_none() {
                 crate::printing::enqueue_drawer_pulse(tx, Some(&s.user_id), &cid)?;
             }
             idempotency::complete(

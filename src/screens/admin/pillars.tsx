@@ -1061,7 +1061,24 @@ export function EndOfDayPage() {
               </tbody>
             </table>
           </div>
-          {data.hidden.filter((h) => h !== "low_stock").length ? (
+          {data.rider_cash_held?.length ? (
+            <div className="card card-pad col gap-8" data-testid="eod-rider-cash">
+              <h3>{t("Cash still with riders")}</h3>
+              <div className="tiny">{t("Collected at the door and not handed over at a till yet.")}</div>
+              <table className="table">
+                <tbody>
+                  {data.rider_cash_held.map((r) => (
+                    <tr key={r.rider_user_id}>
+                      <td>{r.name}</td>
+                      <td className="num tiny">{t("{0} drops", r.drops)}</td>
+                      <td className="money">{formatMoney(r.amount_minor)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {data.hidden.filter((h) => h !== "low_stock" && h !== "rider_cash_held").length ? (
             <div className="tiny">{t("Some sections are hidden because your role cannot see them.")}</div>
           ) : null}
           {aiOn && has("ai.use") ? (

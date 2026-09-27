@@ -261,6 +261,16 @@ export const api = {
       operation_id: string;
     }) => call<T.TicketRow>("tickets.record_payment", a),
   },
+  riders: {
+    cash: () => call<T.RiderCash[]>("riders.cash"),
+    handover: (a: {
+      rider_user_id: string;
+      collect: string[];
+      counted_minor: number;
+      note?: string | null;
+      operation_id: string;
+    }) => call<T.RiderHandover>("riders.handover", a),
+  },
   deliveries: {
     list: (status?: string, include_closed = false) =>
       call<T.DeliveryRow[]>("deliveries.list", { status, include_closed }),

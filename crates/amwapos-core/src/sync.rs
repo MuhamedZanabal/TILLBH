@@ -94,6 +94,8 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("delivery_orders", &["delivery_id"], Policy::Shared),
     ("delivery_events", &["event_id"], Policy::Shared),
     ("sale_collections", &["collection_id"], Policy::Append),
+    ("rider_handovers", &["handover_id"], Policy::Append),
+    ("rider_handover_items", &["collection_id"], Policy::Append),
 ];
 
 /// Columns never shipped to other devices.
@@ -461,7 +463,8 @@ fn validate_hub_push(c: &Connection, ch: &Change, device: &str) -> AppResult<()>
             .unwrap_or(false))
     };
     let ok = match ch.table.as_str() {
-        "sales" | "refunds" | "cash_events" | "shifts" | "stock_movements" | "sale_collections" => owns("device_id"),
+        "sales" | "refunds" | "cash_events" | "shifts" | "stock_movements" | "sale_collections" | "rider_handovers" => owns("device_id"),
+        "rider_handover_items" => parent_owned("rider_handovers", "handover_id", "handover_id")?,
         "sale_items" | "payments" => parent_owned("sales", "sale_id", "sale_id")?,
         "refund_items" | "refund_tenders" => parent_owned("refunds", "refund_id", "refund_id")?,
         _ => true,
@@ -927,7 +930,10 @@ impl AppCore {
                         (_, "refund_items") | (_, "refund_tenders") => read_rows(c, t, "WHERE refund_id IN (SELECT refund_id FROM refunds WHERE original_sale_id IN (SELECT sale_id FROM sales WHERE completed_at >= ?1))", &[SqlValue::Text(since.clone())])?,
                         // Historical cash events and movements are summarized by stock_levels / shifts.
                         (_, "cash_events") | (_, "stock_movements") => vec![],
-                        (_, "sale_collections") => read_rows(c, t, "WHERE created_at >= ?1", &[SqlValue::Text(since.clone())])?,
+                        // Held rider cash stays in the snapshot until it is handed over.
+                        (_, "sale_collections") => read_rows(c, t, "WHERE created_at >= ?1 OR (held_by IS NOT NULL AND collection_id NOT IN (SELECT collection_id FROM rider_handover_items))", &[SqlValue::Text(since.clone())])?,
+                        (_, "rider_handovers") => read_rows(c, t, "WHERE created_at >= ?1", &[SqlValue::Text(since.clone())])?,
+                        (_, "rider_handover_items") => read_rows(c, t, "WHERE handover_id IN (SELECT handover_id FROM rider_handovers WHERE created_at >= ?1)", &[SqlValue::Text(since.clone())])?,
                         _ => read_rows(c, t, "", &[])?,
                     };
                     tables.push((t.to_string(), rows));

@@ -27,6 +27,8 @@ pub struct EodPack {
     pub shifts: Option<Report>,
     pub refunds: Option<Report>,
     pub low_stock: Vec<Value>,
+    /// Riders still holding cash from the door (not handed over yet).
+    pub rider_cash_held: Vec<Value>,
     /// Sections the user may not see (missing permission).
     pub hidden: Vec<String>,
 }
@@ -102,7 +104,13 @@ impl AppCore {
             hidden.push("low_stock".into());
             vec![]
         };
-        Ok(EodPack { date, branch_id: scope, sales, tenders, shifts, refunds, low_stock, hidden })
+        let rider_cash_held = if s.has("reports.financial") {
+            self.db.read(crate::riders::held_by_rider)?
+        } else {
+            hidden.push("rider_cash_held".into());
+            vec![]
+        };
+        Ok(EodPack { date, branch_id: scope, sales, tenders, shifts, refunds, low_stock, rider_cash_held, hidden })
     }
 
     /// The pack as CSV files in a zip (base64 for the UI to save).

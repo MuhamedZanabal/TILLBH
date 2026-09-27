@@ -242,6 +242,45 @@ export interface TicketRow {
   updated_at: string;
   delivered_at: string | null;
   problem: "unpaid_out" | "notice_failed" | null;
+  /** Rider still holding cash collected for this ticket (not handed over). */
+  cash_with?: string | null;
+}
+
+/** Cash a rider holds or still owes, for the till's hand-over. */
+export interface RiderCash {
+  rider_user_id: string;
+  name: string;
+  held: {
+    collection_id: string;
+    delivery_id: string | null;
+    number: string | null;
+    customer_name: string | null;
+    area: string | null;
+    amount_minor: number;
+    at: string;
+  }[];
+  held_minor: number;
+  uncollected: {
+    delivery_id: string;
+    number: string;
+    customer_name: string | null;
+    area: string | null;
+    status: string;
+    outstanding_minor: number;
+  }[];
+  uncollected_minor: number;
+}
+
+export interface RiderHandover {
+  handover_id: string;
+  handover_number: string;
+  rider_user_id: string;
+  rider_name: string | null;
+  expected_minor: number;
+  counted_minor: number;
+  variance_minor: number;
+  drops: number;
+  at: string;
 }
 
 export interface TicketFilter {
@@ -265,7 +304,15 @@ export interface TicketSheet {
   lines: { name: string; qty_milli: number; line_total_minor: number }[];
   events: { from: string | null; to: string; note: string | null; at: string; user: string | null }[];
   payments: { method: string; amount_minor: number; reference: string | null }[];
-  collections: { method: string; amount_minor: number; reference: string | null; at: string; user: string | null }[];
+  collections: {
+    method: string;
+    amount_minor: number;
+    reference: string | null;
+    at: string;
+    user: string | null;
+    held_by?: string | null;
+    handed_over?: boolean;
+  }[];
   reviews: { review_id: string; review_number: string; status: string; detected_minor: number | null; at: string }[];
   notices: { message_id: string; kind: string; status: string; error: string | null; at: string }[];
   next: string[];
@@ -514,6 +561,7 @@ export interface ShiftSummary {
   safe_drop_minor: number;
   /** Cash collected on this shift for pay-on-delivery tickets. */
   cash_collections_minor?: number;
+  rider_handover_minor?: number;
   no_sale_count: number;
   expected_cash_minor: number;
   counted_cash_minor: number | null;
@@ -1623,6 +1671,7 @@ export interface EodPack {
   shifts: Report | null;
   refunds: Report | null;
   low_stock: { product_id: string; name: string; sku: string; qty_milli: number; reorder_point_milli: number }[];
+  rider_cash_held?: { rider_user_id: string; name: string; drops: number; amount_minor: number; since: string }[];
   hidden: string[];
 }
 

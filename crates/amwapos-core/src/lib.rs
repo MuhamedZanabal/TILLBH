@@ -40,6 +40,7 @@ pub mod raster;
 pub mod receipt;
 pub mod refunds;
 pub mod reports;
+pub mod riders;
 pub mod sales;
 pub mod service;
 pub mod settings;

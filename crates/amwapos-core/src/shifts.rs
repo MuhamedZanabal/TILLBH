@@ -54,6 +54,9 @@ pub struct ShiftSummary {
     /// Cash collected on this shift for pay-on-delivery tickets.
     #[serde(default)]
     pub cash_collections_minor: i64,
+    /// Rider cash counted into this drawer at hand-overs.
+    #[serde(default)]
+    pub rider_handover_minor: i64,
     pub no_sale_count: i64,
     pub expected_cash_minor: i64,
     pub counted_cash_minor: Option<i64>,
@@ -136,6 +139,7 @@ pub fn shift_summary(c: &Connection, shift_id: &str) -> AppResult<ShiftSummary> 
                     paid_out_minor: 0,
                     safe_drop_minor: 0,
                     cash_collections_minor: 0,
+                    rider_handover_minor: 0,
                     no_sale_count: 0,
                     expected_cash_minor: 0,
                     expected_visible: true,
@@ -189,9 +193,12 @@ pub fn shift_summary(c: &Connection, shift_id: &str) -> AppResult<ShiftSummary> 
         c.query_row("SELECT COALESCE(SUM(amount_minor),0) FROM sale_collections WHERE shift_id=?1 AND method='cash'", [shift_id], |r| {
             r.get(0)
         })?;
+    s.rider_handover_minor =
+        c.query_row("SELECT COALESCE(SUM(counted_minor),0) FROM rider_handovers WHERE shift_id=?1", [shift_id], |r| r.get(0))?;
     s.expected_cash_minor =
         s.opening_float_minor + s.cash_sales_minor - s.cash_refunds_minor + s.paid_in_minor - s.paid_out_minor - s.safe_drop_minor
-            + s.cash_collections_minor;
+            + s.cash_collections_minor
+            + s.rider_handover_minor;
     Ok(s)
 }
 
