@@ -149,6 +149,12 @@ async fn whatsapp_service_end_to_end_with_fake_adapter() {
     )
     .await;
     until("receipt sent", || e.fake.sent().iter().any(|m| m.document.is_some())).await;
+    // WhatsApp accepts the message a moment before the worker records it as sent.
+    until("send recorded", || {
+        count(&e.core, "SELECT COUNT(*) FROM wa_outbox WHERE status='sent' AND wa_message_id IS NOT NULL") == 1
+            && count(&e.core, "SELECT COUNT(*) FROM audit_logs WHERE event_type='whatsapp.sent'") == 1
+    })
+    .await;
     let sent = e.fake.sent();
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].to, "97333337777@s.whatsapp.net");
