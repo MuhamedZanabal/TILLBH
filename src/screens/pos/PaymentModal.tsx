@@ -21,6 +21,7 @@ import { newOperationId } from "../../lib/ids";
 import { digits, formatAmount, formatMoney, formatQty, parseMoney } from "../../lib/money";
 import { Banner, Button, Modal } from "../../components/ui";
 import { methodLabel } from "./labels";
+import { SendPanel, initialSend, type SendState } from "./SendLoop";
 import { t, tb } from "../../i18n";
 
 const icons: Record<string, typeof Banknote> = {
@@ -65,6 +66,10 @@ export function PaymentModal({
   // One operation id per payment attempt: a retry after a timeout can never double-charge.
   const [opId, setOpId] = useState(newOperationId);
   const amountRef = useRef<HTMLInputElement>(null);
+  // Here (default) or Send; Send may be paid on delivery (no tender now).
+  const [send, setSend] = useState<SendState>(() => initialSend(cart));
+  const sending = send.mode === "send";
+  const pod = sending && send.pod;
 
   useEffect(() => {
     amountRef.current?.focus();
@@ -75,6 +80,7 @@ export function PaymentModal({
   const unit = 10 ** digits();
 
   const tenderList: TenderInput[] | null = useMemo(() => {
+    if (pod) return due > 0 ? [{ method: "pay_on_delivery", amount_minor: due, reference: null }] : [];
     if (split) {
       const out: TenderInput[] = [];
       for (const r of rows) {
@@ -87,7 +93,7 @@ export function PaymentModal({
     const v = amount.trim() === "" ? (method === "cash" ? null : due) : parseMoney(amount);
     if (v === null || v <= 0) return null;
     return [{ method, amount_minor: v, reference: reference || null }];
-  }, [split, rows, amount, method, reference, due]);
+  }, [split, rows, amount, method, reference, due, pod]);
 
   const paid = (tenderList ?? []).reduce((a, tv) => a + tv.amount_minor, 0);
   const nonCash = (tenderList ?? [])
@@ -97,6 +103,9 @@ export function PaymentModal({
   const remaining = due - paid;
   const change = paid > due ? paid - due : 0;
   const validation = useMemo(() => {
+    if (sending && !cart.customer) return t("Choose the customer to send to.");
+    if (sending && !send.address.trim() && !send.area.trim()) return t("Enter the address or area.");
+    if (pod) return null;
     if (!tenderList)
       return split
         ? t("Enter an amount for each payment.")
@@ -112,7 +121,7 @@ export function PaymentModal({
     }
     return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenderList, nonCash, due, remaining, change, cashIn, split, method]);
+  }, [tenderList, nonCash, due, remaining, change, cashIn, split, method, sending, pod, send, cart.customer]);
 
   const complete = async () => {
     if (validation || !tenderList || !cart.cart_id || busy) return;
@@ -126,6 +135,15 @@ export function PaymentModal({
           tenders: tenderList,
           expected_total_minor: due,
           approval_token: tok,
+          fulfilment: sending
+            ? {
+                mode: "send",
+                address: send.address.trim() || null,
+                area: send.area.trim() || null,
+                save_on_customer: send.save,
+                channel: cart.order?.channel ?? "walk_in",
+              }
+            : { mode: "here" },
         }),
       );
       onPaid(sale);
@@ -206,7 +224,8 @@ export function PaymentModal({
             loading={busy}
             data-testid="complete-sale"
           >
-            {t("Complete Sale")} <span className="money">{formatMoney(due)}</span> <kbd>{t("Enter")}</kbd>
+            {pod ? t("Send, pay on delivery") : sending ? t("Complete and send") : t("Complete Sale")}{" "}
+            <span className="money">{formatMoney(due)}</span> <kbd>{t("Enter")}</kbd>
           </Button>
         </div>
       }
@@ -224,7 +243,7 @@ export function PaymentModal({
           </div>
           <dl className="pay-mini">
             <div>
-              <dt>{t("Paid")}</dt>
+              <dt>{pod ? t("On delivery") : t("Paid")}</dt>
               <dd className="money">{formatMoney(paid)}</dd>
             </div>
             <div>
@@ -233,7 +252,8 @@ export function PaymentModal({
             </div>
           </dl>
         </div>
-        <div className="pay-cols">
+        <SendPanel cart={cart} value={send} onChange={setSend} onCartChanged={onCartChanged} podAllowed={due > 0} />
+        <div className={`pay-cols ${pod ? "pod-hidden" : ""}`} hidden={pod}>
           <div className="pay-left">
             <div className="tender-tiles" role="radiogroup" aria-label={t("Payment method")}>
               {tiles.map((tv) => {

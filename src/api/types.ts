@@ -174,6 +174,8 @@ export interface CustomerRef {
   customer_id: string;
   name: string;
   phone: string | null;
+  address?: string | null;
+  area?: string | null;
 }
 
 export interface Cart {
@@ -190,6 +192,111 @@ export interface Cart {
   notices: string[];
   /** Present when loyalty is on and a customer is on the sale. */
   loyalty?: CartLoyalty | null;
+  /** The digital order this sale rings up (Send prefill). */
+  order?: {
+    order_id: string;
+    order_number: string;
+    channel: string;
+    delivery_wanted: boolean;
+    address: string | null;
+    phone: string | null;
+  } | null;
+}
+
+/** What happens to the goods after PAY. */
+export interface Fulfilment {
+  mode: "here" | "send";
+  address?: string | null;
+  area?: string | null;
+  phone?: string | null;
+  save_on_customer?: boolean;
+  notes?: string | null;
+  channel?: string | null;
+}
+
+export type PayState = "unpaid" | "recorded" | "screenshot_pending" | "paid";
+
+/** A ticket (a sent sale or a digital order) and its drop. */
+export interface TicketRow {
+  kind: "drop" | "order";
+  ticket_id: string;
+  delivery_id: string | null;
+  order_id: string | null;
+  sale_id: string | null;
+  number: string;
+  delivery_number: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  phone: string | null;
+  area: string | null;
+  address: string | null;
+  amount_minor: number;
+  outstanding_minor: number;
+  pay_state: PayState;
+  status: "pending" | "preparing" | "dispatched" | "delivered" | "cancelled" | "draft" | "confirmed";
+  channel: string | null;
+  assigned_user_id: string | null;
+  assigned_name: string | null;
+  branch_id: string | null;
+  created_at: string;
+  updated_at: string;
+  delivered_at: string | null;
+  problem: "unpaid_out" | "notice_failed" | null;
+}
+
+export interface TicketFilter {
+  tab?: "now" | "out" | "done" | "board";
+  area?: string | null;
+  rider?: string | null;
+  pay_state?: string | null;
+  channel?: string | null;
+  customer_id?: string | null;
+}
+
+export interface TicketCounts {
+  badge: number;
+  now: number;
+  out: number;
+  done: number;
+}
+
+export interface TicketSheet {
+  ticket: TicketRow;
+  lines: { name: string; qty_milli: number; line_total_minor: number }[];
+  events: { from: string | null; to: string; note: string | null; at: string; user: string | null }[];
+  payments: { method: string; amount_minor: number; reference: string | null }[];
+  collections: { method: string; amount_minor: number; reference: string | null; at: string; user: string | null }[];
+  reviews: { review_id: string; review_number: string; status: string; detected_minor: number | null; at: string }[];
+  notices: { message_id: string; kind: string; status: string; error: string | null; at: string }[];
+  next: string[];
+  riders: { user_id: string; name: string }[];
+  can: {
+    advance: boolean;
+    cancel: boolean;
+    assign: boolean;
+    record_payment: boolean;
+    attach_screenshot: boolean;
+    message: boolean;
+    ring_up: boolean;
+    undo: boolean;
+  };
+}
+
+export interface WaThreadContext {
+  chat: string;
+  phone: string | null;
+  push_name: string | null;
+  customer: {
+    customer_id: string;
+    name: string;
+    phone: string | null;
+    area: string | null;
+    address: string | null;
+  } | null;
+  match: "linked" | "number" | null;
+  last_ticket: TicketRow | null;
+  tickets: TicketRow[];
+  orders_digital: boolean;
 }
 
 export interface CartLoyalty {
@@ -267,6 +374,8 @@ export interface SaleResult {
   replayed: boolean;
   print: PrintOutcome | null;
   stock_warnings?: string[];
+  /** The drop created by a Send sale. */
+  delivery_id?: string | null;
 }
 
 export interface SaleItem {
@@ -403,6 +512,8 @@ export interface ShiftSummary {
   paid_in_minor: number;
   paid_out_minor: number;
   safe_drop_minor: number;
+  /** Cash collected on this shift for pay-on-delivery tickets. */
+  cash_collections_minor?: number;
   no_sale_count: number;
   expected_cash_minor: number;
   counted_cash_minor: number | null;

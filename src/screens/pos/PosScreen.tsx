@@ -44,6 +44,7 @@ import { HashRouter } from "react-router-dom";
 import type { AiContext } from "../../api/types";
 import { CartPanel } from "./CartPanel";
 import { PaymentModal, SaleSuccess } from "./PaymentModal";
+import { SendRail, TicketSheet } from "./SendLoop";
 import {
   CashEventDialog,
   CustomItemDialog,
@@ -117,6 +118,11 @@ export function PosScreen({
   const [cart, setCart] = useState<Cart>(EMPTY_CART);
   // The assistant drawer is open: till shortcuts pause while it has the keyboard.
   const [aiOpen, setAiOpen] = useState(false);
+  // The Send rail shares the assistant's side; only one of the two is open.
+  const [railOpen, setRailOpen] = useState(false);
+  const [ticketId, setTicketId] = useState<string | null>(null);
+  const [sendBadge, setSendBadge] = useState(0);
+  const [railKey, setRailKey] = useState(0);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PosSearchRow[] | null>(null);
   const [sel, setSel] = useState(0);
@@ -365,10 +371,22 @@ export function PosScreen({
     return () => window.removeEventListener("keydown", onEsc);
   }, [aiOpen, focusScan]);
 
+  // Esc closes the Send rail (the ticket sheet handles its own Esc).
+  useEffect(() => {
+    if (!railOpen) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector(".backdrop")) return;
+      setRailOpen(false);
+      focusScan();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [railOpen, focusScan]);
+
   // Global shortcuts and scanner capture when focus is outside the scan field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (modal.kind !== "none" || aiOpen || moreOpen) return;
+      if (modal.kind !== "none" || aiOpen || moreOpen || ticketId) return;
       const target = e.target as HTMLElement;
       const inField =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT");
@@ -436,7 +454,22 @@ export function PosScreen({
     focusScan();
   };
 
+  const reloadSends = useCallback(async () => {
+    try {
+      setSendBadge((await api.tickets.counts()).badge);
+    } catch {
+      // The badge is a convenience; the rail shows errors.
+    }
+    setRailKey((k) => k + 1);
+  }, []);
+  useEffect(() => {
+    void reloadSends();
+    const tv = setInterval(() => void reloadSends(), 60_000);
+    return () => clearInterval(tv);
+  }, [reloadSends]);
+
   const afterSale = (sale: SaleResult) => {
+    if (sale.delivery_id) void reloadSends();
     sounds.success();
     setLastSale(sale);
     setCart(EMPTY_CART);
@@ -608,6 +641,21 @@ export function PosScreen({
         <span className="clock num" aria-label={t("Time")}>
           {clock}
         </span>
+        <button
+          type="button"
+          className={`top-btn icon-only ${railOpen ? "on" : ""}`}
+          data-testid="send-btn"
+          aria-label={sendBadge ? t("Send: {0} open", sendBadge) : t("Send")}
+          aria-pressed={railOpen}
+          onClick={() => (setRailOpen((v) => !v), setAiOpen(false))}
+        >
+          <Truck size={22} aria-hidden />
+          {sendBadge ? (
+            <span className="badge corner" data-testid="send-badge">
+              {sendBadge}
+            </span>
+          ) : null}
+        </button>
         {aiOn ? (
           <button
             type="button"
@@ -615,7 +663,7 @@ export function PosScreen({
             data-testid="till-ai"
             aria-label={t("Assistant")}
             aria-pressed={aiOpen}
-            onClick={() => setAiOpen((v) => !v)}
+            onClick={() => (setAiOpen((v) => !v), setRailOpen(false))}
           >
             <Bot size={22} aria-hidden />
           </button>
@@ -1027,6 +1075,31 @@ export function PosScreen({
             setModal({ kind: "none" });
             onShiftClosed();
           }}
+        />
+      ) : null}
+      {railOpen ? (
+        <SendRail
+          reloadKey={railKey}
+          onClose={() => (setRailOpen(false), focusScan())}
+          onOpen={(r) => setTicketId(r.ticket_id)}
+        />
+      ) : null}
+      {ticketId ? (
+        <TicketSheet
+          ticketId={ticketId}
+          onClose={() => (setTicketId(null), focusScan())}
+          onChanged={() => void reloadSends()}
+          onRungUp={
+            hasLines
+              ? undefined
+              : (c) => {
+                  applyCart(c);
+                  setTicketId(null);
+                  setRailOpen(false);
+                  toast("success", t("Order loaded. Take payment as usual."));
+                  void reloadSends();
+                }
+          }
         />
       ) : null}
       {aiOpen ? (

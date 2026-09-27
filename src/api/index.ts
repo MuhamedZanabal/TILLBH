@@ -65,7 +65,13 @@ export const api = {
     cancel: (approval_token?: string | null) => call<T.Cart>("pos.cancel", { approval_token }),
     loyaltyRedeem: (points: number) => call<T.Cart>("pos.loyalty_redeem", { points }),
     finalize: (
-      a: { cart_id: string; operation_id: string; tenders: T.TenderInput[]; expected_total_minor?: number } & Approval,
+      a: {
+        cart_id: string;
+        operation_id: string;
+        tenders: T.TenderInput[];
+        expected_total_minor?: number;
+        fulfilment?: T.Fulfilment | null;
+      } & Approval,
     ) => call<T.SaleResult>("pos.finalize", a),
   },
   sales: {
@@ -243,6 +249,18 @@ export const api = {
     }) => call<T.CustomerAccountView>("customers.address_save", a),
     addressDelete: (address_id: string) => call<void>("customers.address_delete", { address_id }),
   },
+  tickets: {
+    list: (f: T.TicketFilter = {}) => call<T.TicketRow[]>("tickets.list", f),
+    counts: () => call<T.TicketCounts>("tickets.counts"),
+    get: (ticket_id: string) => call<T.TicketSheet>("tickets.get", { ticket_id }),
+    recordPayment: (a: {
+      delivery_id: string;
+      method: string;
+      amount_minor?: number | null;
+      reference?: string | null;
+      operation_id: string;
+    }) => call<T.TicketRow>("tickets.record_payment", a),
+  },
   deliveries: {
     list: (status?: string, include_closed = false) =>
       call<T.DeliveryRow[]>("deliveries.list", { status, include_closed }),
@@ -259,6 +277,8 @@ export const api = {
       payment_status?: string;
       note?: string;
     }) => call<T.DeliveryRow>("deliveries.update", a),
+    revert: (delivery_id: string, status: string) =>
+      call<T.DeliveryRow>("deliveries.update", { delivery_id, status, revert: true }),
   },
   reports: {
     catalog: () => call<{ key: string; title: string; group: string; description: string }[]>("reports.catalog"),
@@ -358,6 +378,9 @@ export const api = {
     markRead: (chat: string) => call<number>("whatsapp.mark_read", { chat }),
     summary: () => call<{ unread: number; queued: number; failed: number }>("whatsapp.summary"),
     phoneContacts: () => call<T.WaPhoneContacts>("whatsapp.phone_contacts"),
+    threadContext: (chat: string) => call<T.WaThreadContext>("whatsapp.thread_context", { chat }),
+    linkCustomer: (chat: string, customer_id: string | null) =>
+      call<T.WaThreadContext>("whatsapp.link_customer", { chat, customer_id }),
     phoneContactsRefresh: () => call<{ requested: boolean }>("whatsapp.phone_contacts_refresh"),
     phoneContactsImport: (jids: string[] | null, update_existing: boolean) =>
       call<{ created: number; updated: number; skipped: number }>("whatsapp.phone_contacts_import", {

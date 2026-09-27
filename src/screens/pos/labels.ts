@@ -13,6 +13,8 @@ export function methodLabel(m: string): string {
       return t("Bank Transfer");
     case "account":
       return t("Customer account");
+    case "pay_on_delivery":
+      return t("Pay on delivery");
     default:
       return m;
   }

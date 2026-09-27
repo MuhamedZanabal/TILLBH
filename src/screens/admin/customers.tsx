@@ -1,12 +1,13 @@
 import { WhatsAppContactsButton } from "./waContacts";
+import { TicketRowButton, TicketSheet, channelLabel, payLabel as payStateLabel } from "../pos/SendLoop";
 import { WhatsAppSendButton } from "./automation";
 import { AccountTab, AddressesTab } from "./customerAccount";
 import { useFeature } from "../../components/FeatureGate";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, MessageCircle, Plus } from "lucide-react";
 import { api } from "../../api";
-import type { CustomerInput, CustomerRow, DeliveryRow } from "../../api/types";
+import type { CustomerInput, CustomerRow, DeliveryRow, PayState, TicketRow } from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { formatMoney } from "../../lib/money";
@@ -400,7 +401,6 @@ export function DeliveriesPage() {
       void detail.reload();
     }
   };
-  const waitMin = (d: DeliveryRow) => Math.round((Date.now() - new Date(d.created_at).getTime()) / 60000);
   return (
     <div>
       <PageHeader
@@ -413,47 +413,15 @@ export function DeliveriesPage() {
             <button className={`filter-chip ${view === "table" ? "active" : ""}`} onClick={() => setView("table")}>
               {t("Table")}
             </button>
-            <Checkbox label={t("Include delivered / cancelled")} checked={closed} onChange={setClosed} />
+            {view === "table" ? (
+              <Checkbox label={t("Include delivered / cancelled")} checked={closed} onChange={setClosed} />
+            ) : null}
           </>
         }
       />
       {error ? <Banner tone="danger">{error}</Banner> : null}
-      {loading && !data ? <Skeleton /> : null}
-      {view === "board" && data ? (
-        <div className="kanban">
-          {(["pending", "preparing", "dispatched"] as const).map((st) => (
-            <div key={st} className="kanban-col">
-              <h3 style={{ margin: "4px 4px 10px" }}>
-                {codeLabel(st)} <span className="tiny">({data.filter((d) => d.status === st).length})</span>
-              </h3>
-              {data
-                .filter((d) => d.status === st)
-                .map((d) => (
-                  <div
-                    key={d.delivery_id}
-                    className="kanban-card"
-                    onClick={() => setOpen(d)}
-                    tabIndex={0}
-                    role="button"
-                  >
-                    <div className="row">
-                      <strong className="grow">{d.delivery_number}</strong>
-                      <span className="tiny">{waitMin(d)} min</span>
-                    </div>
-                    <div className="small">{d.customer_name ?? t("Customer")}</div>
-                    <div className="tiny">{d.area ?? d.address ?? ""}</div>
-                    <div className="row" style={{ marginTop: 6 }}>
-                      <span className="money grow">{formatMoney(d.amount_minor)}</span>
-                      <Chip tone={d.payment_status === "paid" ? "success" : "warning"}>
-                        {payLabel(d.payment_status)}
-                      </Chip>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          ))}
-        </div>
-      ) : null}
+      {loading && !data && view === "table" ? <Skeleton /> : null}
+      {view === "board" ? <TicketBoard /> : null}
       {view === "table" && data ? <DeliveryTable rows={data} onOpen={setOpen} /> : null}
       {open ? (
         <Drawer title={t("Delivery {0}", open.delivery_number)} onClose={() => setOpen(null)}>
@@ -581,6 +549,86 @@ export function DeliveriesPage() {
           </div>
         </Drawer>
       ) : null}
+    </div>
+  );
+}
+
+type BoardCol = "now" | "prep" | "out" | "done" | "problem";
+
+function boardCol(r: TicketRow): BoardCol {
+  if (r.problem) return "problem";
+  if (r.status === "preparing") return "prep";
+  if (r.status === "dispatched") return "out";
+  if (r.status === "delivered" || r.status === "cancelled") return "done";
+  return "now";
+}
+
+/** Admin board: the same tickets as the till's rail, in five columns. */
+function TicketBoard() {
+  const [f, setF] = useState<{ area?: string; rider?: string; pay_state?: string; channel?: string }>({});
+  const [open, setOpen] = useState<string | null>(null);
+  const { data, error, reload } = useLoad(() => api.tickets.list({ tab: "board" }), []);
+  useEffect(() => {
+    const id = setInterval(() => void reload(), 30000);
+    return () => clearInterval(id);
+  }, [reload]);
+  const rows = (data ?? []).filter(
+    (r) =>
+      (!f.area || r.area === f.area) &&
+      (!f.rider || r.assigned_user_id === f.rider) &&
+      (!f.pay_state || r.pay_state === f.pay_state) &&
+      (!f.channel || r.channel === f.channel),
+  );
+  const uniq = <T,>(xs: (T | null)[]) => [...new Set(xs.filter((x): x is T => x !== null && x !== ""))];
+  const areas = uniq((data ?? []).map((r) => r.area));
+  const riders = [
+    ...new Map((data ?? []).filter((r) => r.assigned_user_id).map((r) => [r.assigned_user_id!, r.assigned_name ?? ""])),
+  ];
+  const channels = uniq((data ?? []).map((r) => r.channel));
+  const cols: { key: BoardCol; label: string }[] = [
+    { key: "now", label: t("Now") },
+    { key: "prep", label: t("Prep") },
+    { key: "out", label: t("Out") },
+    { key: "done", label: t("Done") },
+    { key: "problem", label: t("Problem") },
+  ];
+  const chip = (key: keyof typeof f, value: string, label: string) => (
+    <button
+      key={`${key}-${value}`}
+      type="button"
+      className={`filter-chip ${f[key] === value ? "active" : ""}`}
+      onClick={() => setF({ ...f, [key]: f[key] === value ? undefined : value })}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="stack-16" data-testid="ticket-board">
+      <div className="area-chips">
+        {(["unpaid", "screenshot_pending", "recorded", "paid"] as PayState[]).map((p) =>
+          chip("pay_state", p, payStateLabel(p)),
+        )}
+        {channels.map((c) => chip("channel", c, channelLabel(c)))}
+        {areas.map((a) => chip("area", a, a))}
+        {riders.map(([id, name]) => chip("rider", id, name))}
+      </div>
+      {error ? <Banner tone="danger">{error}</Banner> : null}
+      <div className="kanban board5">
+        {cols.map((c) => {
+          const list = rows.filter((r) => boardCol(r) === c.key);
+          return (
+            <div key={c.key} className={`kanban-col ${c.key === "problem" && list.length ? "problem" : ""}`}>
+              <h3 style={{ margin: "4px 4px 10px" }}>
+                {c.label} <span className="tiny">({list.length})</span>
+              </h3>
+              {list.map((r) => (
+                <TicketRowButton key={r.ticket_id} row={r} onOpen={(x) => setOpen(x.ticket_id)} />
+              ))}
+            </div>
+          );
+        })}
+      </div>
+      {open ? <TicketSheet ticketId={open} onClose={() => setOpen(null)} onChanged={() => void reload()} /> : null}
     </div>
   );
 }

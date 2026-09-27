@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   CheckCircle2,
   CircleAlert,
@@ -32,6 +32,7 @@ import { formatDateTime, relative } from "../../lib/time";
 import { newOperationId } from "../../lib/ids";
 import { t, tb } from "../../i18n";
 import { OrderEditor } from "../orders";
+import { AreaPicker, PayChip, TicketRowButton, TicketSheet } from "../pos/SendLoop";
 import type { DigitalOrder, WaTriageItem } from "../../api/types";
 
 // ---------------------------------------------------------------- helpers
@@ -546,7 +547,7 @@ const TRIAGE_TONE: Record<WaTriageItem["category"], "info" | "success" | "danger
   other: "default",
 };
 const SUGGESTION_LABEL: Record<string, () => string> = {
-  draft_order: () => t("Make a draft order"),
+  draft_order: () => t("New ticket"),
   review_payment: () => t("Review the payment"),
   draft_reply: () => t("Draft a reply"),
   mark_read: () => t("Mark as read"),
@@ -703,6 +704,83 @@ export function PaymentComparison({ r }: { r: PaymentReview }) {
   );
 }
 
+/** Link a chat to a customer: pick one, or create one from the chat. */
+function LinkCustomer({
+  chat,
+  phone,
+  suggestedName,
+  onClose,
+  onLinked,
+}: {
+  chat: string;
+  phone: string | null;
+  suggestedName: string;
+  onClose: () => void;
+  onLinked: () => void;
+}) {
+  const [q, setQ] = useState(phone ?? "");
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState(suggestedName);
+  const [address, setAddress] = useState("");
+  const [area, setArea] = useState("");
+  const act = useAction();
+  const found = useLoad(() => (q.trim().length >= 2 ? api.customers.search(q, false, 8) : Promise.resolve([])), [q]);
+  const link = async (id: string | null) => {
+    if (await act.run(() => api.whatsapp.linkCustomer(chat, id))) onLinked();
+  };
+  const create = async () => {
+    const c = await act.run(() =>
+      api.customers.save(null, {
+        name,
+        phone,
+        whatsapp: phone,
+        address: address || null,
+        area: area || null,
+        active: true,
+      }),
+    );
+    if (c) await link(c.customer_id);
+  };
+  return (
+    <Drawer title={t("Link or create customer")} onClose={onClose}>
+      <div className="col gap-12">
+        {!creating ? (
+          <>
+            <TextInput label={t("Find customer")} value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+            {(found.data ?? []).map((c) => (
+              <button key={c.customer_id} type="button" className="send-row" onClick={() => void link(c.customer_id)}>
+                <span className="grow" dir="auto">
+                  {c.name}
+                </span>
+                <span className="tiny muted">{[c.area, c.phone].filter(Boolean).join(" · ")}</span>
+              </button>
+            ))}
+            <div className="row gap-8">
+              <Button variant="primary" onClick={() => setCreating(true)}>
+                {t("Create customer")}
+              </Button>
+              <Button variant="ghost" onClick={() => void link(null)}>
+                {t("Unlink")}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <TextInput label={t("Name")} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            <div className="small muted num">{phone}</div>
+            <TextInput label={t("Address")} value={address} onChange={(e) => setAddress(e.target.value)} />
+            <AreaPicker value={area} onChange={setArea} />
+            <Button variant="primary" size="lg" disabled={!name.trim()} loading={act.busy} onClick={create}>
+              {t("Save and link")}
+            </Button>
+          </>
+        )}
+        {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+      </div>
+    </Drawer>
+  );
+}
+
 function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => void }) {
   const toast = useToast();
   const { data, reload } = useLoad(() => api.whatsapp.thread(chat.chat), [chat.chat]);
@@ -710,9 +788,28 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
   const [images, setImages] = useState<Record<number, string>>({});
   const act = useAction();
   const ordersOn = useFeature("orders.digital");
-  const { has } = useSession();
-  const nav = useNavigate();
+  const { has, setMode } = useSession();
   const [draft, setDraft] = useState<DigitalOrder | null>(null);
+  const ctx = useLoad(() => api.whatsapp.threadContext(chat.chat), [chat.chat]);
+  const [view, setView] = useState<"chat" | "tickets" | "customer">("chat");
+  const [ticket, setTicket] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [askTicket, setAskTicket] = useState(false);
+  const person = ctx.data?.customer ?? null;
+  const newTicket = async () => {
+    const o = await act.run(() =>
+      api.orders.save(null, {
+        channel: "whatsapp",
+        customer_id: person?.customer_id ?? null,
+        phone: ctx.data?.phone ?? chat.phone ?? null,
+        address: person?.address ?? null,
+        delivery_wanted: true,
+        lines: [],
+      }),
+    );
+    setAskTicket(false);
+    if (o) setDraft(o);
+  };
   useEffect(() => {
     void api.whatsapp.markRead(chat.chat).then(onRead, () => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -726,63 +823,184 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
   }, [data]);
   return (
     <div className="card card-pad col gap-16">
-      <div className="row">
-        <h3 className="grow">{chat.name ?? chat.phone ?? chat.chat}</h3>
-        {chat.customer_id ? <Link to={`/admin/customers/${chat.customer_id}`}>{t("Open customer")}</Link> : null}
+      <div className="wa-head" data-testid="wa-thread-head">
+        <div className="grow">
+          <h3 dir="auto">{person?.name ?? ctx.data?.push_name ?? chat.name ?? t("Unknown person")}</h3>
+          <div className="tiny muted">
+            {[
+              person?.area,
+              ctx.data?.phone ?? chat.phone,
+              person
+                ? ctx.data?.match === "linked"
+                  ? t("Linked by hand")
+                  : t("Matched by number")
+                : t("Not a customer yet"),
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        </div>
+        {ctx.data?.last_ticket ? (
+          <button type="button" className="wa-last" onClick={() => setTicket(ctx.data!.last_ticket!.ticket_id)}>
+            <span className="tiny muted">{t("Last ticket")}</span>
+            <span className="num">{ctx.data.last_ticket.number}</span>
+            <PayChip state={ctx.data.last_ticket.pay_state} />
+          </button>
+        ) : null}
+        <div className="row gap-8">
+          {ordersOn && has("orders.manage") ? (
+            <Button variant="primary" onClick={() => setAskTicket(true)} data-testid="wa-new-ticket">
+              {t("New ticket")}
+            </Button>
+          ) : null}
+          {!ordersOn && person && has("pos.sell") ? (
+            <Button
+              variant="primary"
+              onClick={async () => {
+                if (await act.run(() => api.pos.setCustomer(person.customer_id))) {
+                  toast("success", t("{0} is on the till's sale. Scan the items, then PAY and Send.", person.name));
+                  setMode("cashier");
+                }
+              }}
+              data-testid="wa-start-sale"
+            >
+              {t("Start till sale")}
+            </Button>
+          ) : null}
+          {person ? (
+            <Link className="btn" to={`/admin/customers/${person.customer_id}`}>
+              {t("Open customer")}
+            </Link>
+          ) : null}
+          <Button onClick={() => setLinking(true)} data-testid="wa-link">
+            {person ? t("Change link") : t("Link or create customer")}
+          </Button>
+        </div>
       </div>
-      <Banner tone="info">
-        {t("Customer messages are shown as plain text. AMWAPOS never follows instructions written in a message.")}
-      </Banner>
-      <div className="col gap-8" style={{ maxHeight: 460, overflow: "auto" }}>
-        {items.map((it) =>
-          "m" in it && it.m ? (
-            <div key={it.key} className="bubble in" style={{ alignSelf: "flex-start", maxWidth: "80%" }}>
-              {it.m.body ? <div style={{ whiteSpace: "pre-wrap" }}>{it.m.body}</div> : null}
-              {it.m.caption ? <div style={{ whiteSpace: "pre-wrap" }}>{it.m.caption}</div> : null}
-              {it.m.has_media ? (
-                images[it.m.seq] ? (
-                  <img src={images[it.m.seq]} alt={t("Attachment")} style={{ maxWidth: 260 }} />
-                ) : (
-                  <Button
-                    size="sm"
-                    icon={<ImageIcon size={14} />}
-                    onClick={async () => {
-                      const seq = (it.m as { seq: number }).seq;
-                      const b = await act.run(() => api.whatsapp.media(seq));
-                      const url = blobUrl(b);
-                      if (url) setImages((x) => ({ ...x, [seq]: url }));
-                    }}
-                  >
-                    {t("View attachment")}
-                  </Button>
-                )
-              ) : null}
-              {it.m.kind === "other" && !it.m.body ? <div className="tiny">{t("Unsupported message type")}</div> : null}
-              <div className="tiny">{formatDateTime(it.at)}</div>
-              {ordersOn && has("orders.manage") && (it.m.body || it.m.caption) ? (
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    const seq = (it.m as { seq: number }).seq;
-                    const o = await act.run(() => api.orders.fromInbox(seq));
-                    if (o) setDraft(o);
-                  }}
-                >
-                  {t("Create order from this message")}
-                </Button>
-              ) : null}
+      <Tabs
+        tabs={[
+          { key: "chat", label: t("Chat") },
+          { key: "tickets", label: t("Tickets") },
+          { key: "customer", label: t("Customer") },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+      {view === "tickets" ? (
+        <div className="col gap-8" data-testid="wa-tickets">
+          {(ctx.data?.tickets ?? []).length ? (
+            ctx.data!.tickets.map((r) => (
+              <TicketRowButton key={r.ticket_id} row={r} onOpen={(x) => setTicket(x.ticket_id)} />
+            ))
+          ) : (
+            <div className="muted">
+              {person ? t("No tickets yet.") : t("Link the chat to a customer to see their tickets.")}
             </div>
-          ) : "o" in it && it.o ? (
-            <div key={it.key} className="bubble out" style={{ alignSelf: "flex-end", maxWidth: "80%" }}>
-              <div style={{ whiteSpace: "pre-wrap" }}>{it.o.body}</div>
-              {it.o.document_name ? <div className="tiny">📎 {it.o.document_name}</div> : null}
-              <div className="tiny">
-                {formatDateTime(it.at)} · <OutboxStatus row={it.o} />
-              </div>
-            </div>
-          ) : null,
-        )}
-      </div>
+          )}
+        </div>
+      ) : null}
+      {view === "customer" ? (
+        person ? (
+          <dl className="kv">
+            <dt>{t("Name")}</dt>
+            <dd dir="auto">{person.name}</dd>
+            <dt>{t("Phone")}</dt>
+            <dd className="num">{person.phone ?? "—"}</dd>
+            <dt>{t("Area")}</dt>
+            <dd>{person.area ?? "—"}</dd>
+            <dt>{t("Address")}</dt>
+            <dd dir="auto">{person.address ?? "—"}</dd>
+          </dl>
+        ) : (
+          <div className="muted">{t("Not a customer yet.")}</div>
+        )
+      ) : null}
+      {ticket ? (
+        <TicketSheet ticketId={ticket} onClose={() => setTicket(null)} onChanged={() => void ctx.reload()} />
+      ) : null}
+      {askTicket ? (
+        <Confirm
+          title={t("New ticket")}
+          confirmLabel={t("Create draft")}
+          busy={act.busy}
+          error={act.error}
+          onCancel={() => setAskTicket(false)}
+          onConfirm={newTicket}
+        >
+          {t(
+            "A draft ticket for {0}. You add the items and confirm it; nothing is sold until it is rung up at a till.",
+            person?.name ?? ctx.data?.phone ?? "",
+          )}
+        </Confirm>
+      ) : null}
+      {linking ? (
+        <LinkCustomer
+          chat={chat.chat}
+          phone={ctx.data?.phone ?? chat.phone ?? null}
+          suggestedName={ctx.data?.push_name ?? chat.name ?? ""}
+          onClose={() => setLinking(false)}
+          onLinked={() => (setLinking(false), void ctx.reload())}
+        />
+      ) : null}
+      {view === "chat" ? (
+        <>
+          <Banner tone="info">
+            {t("Customer messages are shown as plain text. AMWAPOS never follows instructions written in a message.")}
+          </Banner>
+          <div className="col gap-8" style={{ maxHeight: 460, overflow: "auto" }}>
+            {items.map((it) =>
+              "m" in it && it.m ? (
+                <div key={it.key} className="bubble in" style={{ alignSelf: "flex-start", maxWidth: "80%" }}>
+                  {it.m.body ? <div style={{ whiteSpace: "pre-wrap" }}>{it.m.body}</div> : null}
+                  {it.m.caption ? <div style={{ whiteSpace: "pre-wrap" }}>{it.m.caption}</div> : null}
+                  {it.m.has_media ? (
+                    images[it.m.seq] ? (
+                      <img src={images[it.m.seq]} alt={t("Attachment")} style={{ maxWidth: 260 }} />
+                    ) : (
+                      <Button
+                        size="sm"
+                        icon={<ImageIcon size={14} />}
+                        onClick={async () => {
+                          const seq = (it.m as { seq: number }).seq;
+                          const b = await act.run(() => api.whatsapp.media(seq));
+                          const url = blobUrl(b);
+                          if (url) setImages((x) => ({ ...x, [seq]: url }));
+                        }}
+                      >
+                        {t("View attachment")}
+                      </Button>
+                    )
+                  ) : null}
+                  {it.m.kind === "other" && !it.m.body ? (
+                    <div className="tiny">{t("Unsupported message type")}</div>
+                  ) : null}
+                  <div className="tiny">{formatDateTime(it.at)}</div>
+                  {ordersOn && has("orders.manage") && (it.m.body || it.m.caption) ? (
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        const seq = (it.m as { seq: number }).seq;
+                        const o = await act.run(() => api.orders.fromInbox(seq));
+                        if (o) setDraft(o);
+                      }}
+                    >
+                      {t("New ticket from this message")}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : "o" in it && it.o ? (
+                <div key={it.key} className="bubble out" style={{ alignSelf: "flex-end", maxWidth: "80%" }}>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{it.o.body}</div>
+                  {it.o.document_name ? <div className="tiny">📎 {it.o.document_name}</div> : null}
+                  <div className="tiny">
+                    {formatDateTime(it.at)} · <OutboxStatus row={it.o} />
+                  </div>
+                </div>
+              ) : null,
+            )}
+          </div>
+        </>
+      ) : null}
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       {draft ? (
         <OrderEditor
@@ -790,8 +1008,8 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
           onClose={() => setDraft(null)}
           onSaved={() => {
             setDraft(null);
-            toast("success", t("Draft order saved. Confirm it in Digital orders."));
-            nav("/admin/orders");
+            toast("success", t("Draft ticket saved. It waits on the Send rail until it is rung up."));
+            void ctx.reload();
           }}
         />
       ) : null}
@@ -980,6 +1198,7 @@ interface WaSettings {
   attach_pdf: boolean;
   send_read_receipts: boolean;
   auto_payment_ack: boolean;
+  auto_delivery_notice: boolean;
   receipt: { en: string; ar: string };
   dispatch: { en: string; ar: string };
   delivered: { en: string; ar: string };
@@ -1058,9 +1277,19 @@ export function WaTemplates() {
         disabled={!editable}
         onChange={(x) => setData({ ...data, auto_payment_ack: x })}
       />
+      <Checkbox
+        label={t("Send the on-the-way and delivered notices by themselves when a drop is marked Out or Delivered")}
+        checked={!!data.auto_delivery_notice}
+        disabled={!editable}
+        onChange={(x) => setData({ ...data, auto_delivery_notice: x })}
+      />
       {tpl("receipt", t("Receipt"), "{business} {customer} {receipt} {total} {date}")}
-      {tpl("dispatch", t("Out for delivery"), "{business} {customer} {delivery} {amount}")}
-      {tpl("delivered", t("Delivered"), "{business} {customer} {delivery} {amount}")}
+      {tpl(
+        "dispatch",
+        t("Out for delivery"),
+        "{business} {customer} {ticket} {delivery} {amount} {total} {address} {area}",
+      )}
+      {tpl("delivered", t("Delivered"), "{business} {customer} {ticket} {delivery} {amount} {total} {address} {area}")}
       {tpl("reminder", t("Payment reminder"), "{business} {customer} {delivery} {amount}")}
       {tpl("payment_ack", t("Payment received"), "{business} {customer} {amount} {reference} {delivery}")}
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}

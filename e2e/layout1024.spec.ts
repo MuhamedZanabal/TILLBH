@@ -250,6 +250,78 @@ test("1024×768: POS, payment, shift close, refund", async ({ page }) => {
   await page.keyboard.press("Escape");
 });
 
+test("1024×768: PAY Send with pay on delivery → Send rail → ticket sheet → delivered and paid", async ({ page }) => {
+  await page.goto("/");
+  const users = await rpc(page, "auth.users");
+  const owner = users.find((u: { display_name: string }) => u.display_name === "Zana");
+  const token = (await rpc(page, "auth.login", { user_id: owner.user_id, pin: "4826" })).token;
+  // A customer with a saved address (re-runs: the phone is already saved).
+  await rpc(
+    page,
+    "customers.save",
+    { customer: { name: "Maryam Send", phone: "33447788", address: "House 1203, Road 45", active: true } },
+    token,
+  ).catch(() => undefined);
+  await rpc(page, "auth.logout", {}, token);
+  await page.reload();
+  await login(page, "Zana", "4826");
+  await expect(page.getByTestId("pos")).toBeVisible();
+
+  // ---- PAY: Send to the customer, paid on delivery (nothing in the drawer now) ----
+  await scan(page, barcodes[2]);
+  await page.getByTestId("pay").click();
+  await expect(page.getByTestId("fulfil-here")).toHaveAttribute("aria-checked", "true");
+  await page.getByTestId("fulfil-send").click();
+  await expect(page.getByTestId("complete-sale")).toBeDisabled();
+  await page.getByTestId("send-customer-search").fill("Maryam Send");
+  await page.getByTestId("send-customer-row").first().click();
+  await expect(page.getByTestId("send-address")).toHaveValue("House 1203, Road 45");
+  await page.getByTestId("send-area").fill("Riffa");
+  await page.getByTestId("pay-on-delivery").click();
+  const confirm = page.getByTestId("complete-sale");
+  await expect(confirm).toBeEnabled();
+  await expect(confirm).toContainText("pay on delivery");
+  const cb = (await confirm.boundingBox())!;
+  expect(cb.y + cb.height).toBeLessThanOrEqual(768 - 8);
+  await shot(page, "08-pay-send-pod");
+  await touchTargets(page, "[role=dialog]");
+  await confirm.click();
+  await page.getByTestId("new-sale").click();
+
+  // ---- The Send rail: badge, the ticket unpaid, PAY never covered ----
+  await expect(page.getByTestId("send-badge")).toBeVisible();
+  await page.getByTestId("send-btn").click();
+  const rail = page.getByTestId("send-rail");
+  await expect(rail).toBeVisible();
+  const row = rail.getByTestId("ticket-row").filter({ hasText: "Maryam Send" }).first();
+  await expect(row).toBeVisible();
+  await expect(row.getByTestId("pay-chip")).toHaveAttribute("data-state", "unpaid");
+  const rb = (await row.boundingBox())!;
+  expect(rb.height, "rail row").toBeGreaterThanOrEqual(56);
+  await payIsTappable(page);
+  await touchTargets(page, "[data-testid=send-rail]");
+  await shot(page, "09-send-rail");
+
+  // ---- Ticket sheet: Out → Delivered asks "Paid?" → take cash → paid ----
+  await row.click();
+  const sheet = page.getByTestId("ticket-sheet");
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText("House 1203, Road 45");
+  await expect(sheet.getByTestId("ticket-step-preparing")).toBeVisible();
+  await shot(page, "10-ticket-sheet");
+  await sheet.getByTestId("ticket-step-dispatched").click();
+  await sheet.getByTestId("ticket-step-delivered").click();
+  await page.getByTestId("deliver-take-payment").click();
+  await page.getByTestId("record-payment-confirm").click();
+  await expect(sheet.getByTestId("pay-chip")).toHaveAttribute("data-state", "paid");
+  await expect(sheet).toContainText("Delivered");
+  await page.keyboard.press("Escape");
+  await rail.getByTestId("rail-tab-done").click();
+  await expect(rail.getByTestId("ticket-row").filter({ hasText: "Maryam Send" }).first()).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(rail).toBeHidden();
+});
+
 test("1024×768: AI page and till drawer", async ({ page }) => {
   await page.goto("/");
   const users = await rpc(page, "auth.users");

@@ -158,6 +158,7 @@ export function ShiftClose({
       [t("Paid in"), formatMoney(sum.paid_in_minor)],
       [t("Paid out"), formatMoney(-sum.paid_out_minor)],
       [t("Safe drops"), formatMoney(-sum.safe_drop_minor)],
+      ...(sum.cash_collections_minor ? [[t("Collected on delivery"), formatMoney(sum.cash_collections_minor)]] : []),
     ];
   }, [sum]);
   if (done) {

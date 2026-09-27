@@ -2928,3 +2928,269 @@ table.diff tr.changed {
 .wa-contact .wc-name {
   font-weight: 650;
 }
+
+/* ---------- Send loop: PAY Here/Send, the Send rail, the ticket sheet ---------- */
+.top-btn .badge.corner {
+  position: absolute;
+  top: -6px;
+  inset-inline-end: -6px;
+}
+.send-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 48px;
+  border: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background var(--dur);
+}
+.seg-btn + .seg-btn {
+  border-inline-start: 1px solid var(--border-strong);
+}
+.seg-btn.active {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+.seg-btn:active {
+  background: var(--surface-press);
+}
+.seg-btn.active:active {
+  background: var(--brand-press);
+}
+.send-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+.send-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+}
+.send-search .input {
+  height: 56px;
+}
+.send-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.send-row:active {
+  background: var(--surface-press);
+}
+.send-where {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.send-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+}
+.pod-toggle span {
+  font-weight: 650;
+}
+.area-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.send-rail .rail-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+.rail-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 48px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.rail-tab.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+}
+.rail-n {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--surface-hover);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.rail-list {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.rail-empty {
+  margin: 32px 16px;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 16px;
+}
+.ticket-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  width: 100%;
+}
+.ticket-row:active {
+  background: var(--surface-press);
+}
+.tr-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.tr-name {
+  font-weight: 650;
+}
+.tr-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex: none;
+}
+.tr-chips {
+  display: flex;
+  gap: 4px;
+}
+.ticket-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ticket-who,
+.ticket-where,
+.ticket-money {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+}
+.ticket-where,
+.ticket-money {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+.ticket-pay {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.ticket-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ticket-foot {
+  width: 100%;
+}
+.ticket-steps {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.ticket-steps .btn {
+  flex: 1;
+}
+.file-btn {
+  cursor: pointer;
+}
+.kanban.board5 {
+  grid-template-columns: repeat(5, minmax(220px, 1fr));
+  overflow-x: auto;
+}
+.kanban-col.problem h3 {
+  color: var(--danger);
+}
+.kanban-col .ticket-row + .ticket-row {
+  margin-top: 8px;
+}
+.wa-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.wa-last {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.pay-cols.pod-hidden {
+  display: none;
+}

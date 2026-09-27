@@ -1,0 +1,981 @@
+// The Send loop on the till and the board: Person → Channel → Ticket → Drop → Close.
+// A ticket is an order the shop must fulfil (a sent sale or a digital order);
+// its drop is the delivery job. One pay state everywhere.
+import { useCallback, useEffect, useState } from "react";
+import { Check, MapPin, MessageCircle, Paperclip, Search, Store, Truck, Undo2, UserPlus, X } from "lucide-react";
+import { api } from "../../api";
+import type { Cart, CustomerRow, PayState, TicketCounts, TicketRow, TicketSheet as Sheet } from "../../api/types";
+import { useSession } from "../../state/session";
+import { useFeature } from "../../components/FeatureGate";
+import { Banner, Button, Checkbox, Chip, Modal } from "../../components/ui";
+import { explain } from "../../lib/errors";
+import { newOperationId } from "../../lib/ids";
+import { formatAmount, formatMoney, formatQty, parseMoney } from "../../lib/money";
+import { relative } from "../../lib/time";
+import { t } from "../../i18n";
+import { methodLabel } from "./labels";
+import { WhatsAppSendButton, fileToBase64 } from "../admin/automation";
+
+/** Places a drop goes to (same list as the backend lexicon). */
+export const AREAS = [
+  "Riffa",
+  "Riffa East",
+  "Riffa West",
+  "Muharraq",
+  "Manama",
+  "Isa Town",
+  "Sitra",
+  "Hamad Town",
+  "A'ali",
+  "Budaiya",
+  "Saar",
+  "Juffair",
+  "Seef",
+  "Amwaj",
+  "Tubli",
+  "Sanad",
+  "Galali",
+  "Duraz",
+  "Janabiyah",
+  "Hidd",
+  "Diyya",
+  "Samaheej",
+];
+
+const payTone: Record<PayState, "warning" | "success" | "info"> = {
+  unpaid: "warning",
+  recorded: "info",
+  screenshot_pending: "info",
+  paid: "success",
+};
+
+export function payLabel(p: PayState): string {
+  switch (p) {
+    case "unpaid":
+      return t("Unpaid");
+    case "recorded":
+      return t("Payment recorded");
+    case "screenshot_pending":
+      return t("Screenshot to check");
+    default:
+      return t("Paid");
+  }
+}
+
+export function PayChip({ state }: { state: PayState }) {
+  return (
+    <span data-testid="pay-chip" data-state={state}>
+      <Chip tone={payTone[state]} dot>
+        {payLabel(state)}
+      </Chip>
+    </span>
+  );
+}
+
+export function statusLabel(s: string): string {
+  switch (s) {
+    case "draft":
+      return t("Draft");
+    case "confirmed":
+      return t("Confirmed");
+    case "pending":
+      return t("New");
+    case "preparing":
+      return t("Prep");
+    case "dispatched":
+      return t("Out");
+    case "delivered":
+      return t("Delivered");
+    case "cancelled":
+      return t("Cancelled");
+    default:
+      return s;
+  }
+}
+
+/** The button label for moving a drop to this status. */
+function stepLabel(s: string): string {
+  switch (s) {
+    case "preparing":
+      return t("Prep");
+    case "dispatched":
+      return t("Out");
+    case "delivered":
+      return t("Delivered");
+    case "cancelled":
+      return t("Cancel");
+    default:
+      return statusLabel(s);
+  }
+}
+
+export function StatusChip({ status }: { status: string }) {
+  const tone =
+    status === "delivered"
+      ? "success"
+      : status === "cancelled"
+        ? "danger"
+        : status === "dispatched"
+          ? "brand"
+          : status === "draft" || status === "confirmed"
+            ? "default"
+            : "info";
+  return <Chip tone={tone}>{statusLabel(status)}</Chip>;
+}
+
+export function channelLabel(c: string | null): string {
+  switch (c) {
+    case "walk_in":
+      return t("Walk-in");
+    case "phone":
+      return t("Phone");
+    case "whatsapp":
+      return t("WhatsApp");
+    case "web":
+      return t("Web");
+    case "other":
+      return t("Other");
+    default:
+      return "";
+  }
+}
+
+function useErr() {
+  const [error, setError] = useState<string | null>(null);
+  const handle = (e: unknown) => {
+    const ex = explain(e);
+    setError(`${ex.message} ${ex.action}`.trim());
+  };
+  return { error, setError, handle };
+}
+
+/** Area as chips: what matches the typed text, or the common places. */
+export function AreaPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const q = value.trim().toLowerCase();
+  const shown = (q ? AREAS.filter((a) => a.toLowerCase().includes(q) && a !== value) : AREAS).slice(0, 8);
+  return (
+    <div className="field">
+      <label htmlFor="send-area">{t("Area")}</label>
+      <input
+        id="send-area"
+        className="input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoComplete="off"
+        data-testid="send-area"
+      />
+      {shown.length ? (
+        <div className="area-chips" role="listbox" aria-label={t("Areas")}>
+          {shown.map((a) => (
+            <button
+              key={a}
+              type="button"
+              role="option"
+              aria-selected={a === value}
+              className={`filter-chip ${a === value ? "active" : ""}`}
+              onClick={() => onChange(a)}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export interface SendState {
+  mode: "here" | "send";
+  address: string;
+  area: string;
+  save: boolean;
+  pod: boolean;
+}
+
+export function initialSend(cart: Cart): SendState {
+  const o = cart.order;
+  return {
+    mode: o?.delivery_wanted ? "send" : "here",
+    address: o?.address || cart.customer?.address || "",
+    area: cart.customer?.area || "",
+    save: false,
+    pod: false,
+  };
+}
+
+/** Here | Send, and for Send: who, where, and whether they pay at the door. */
+export function SendPanel({
+  cart,
+  value,
+  onChange,
+  onCartChanged,
+  podAllowed,
+}: {
+  cart: Cart;
+  value: SendState;
+  onChange: (v: SendState) => void;
+  onCartChanged: (c: Cart) => void;
+  podAllowed: boolean;
+}) {
+  const [q, setQ] = useState("");
+  const [rows, setRows] = useState<CustomerRow[]>([]);
+  const [creating, setCreating] = useState(false);
+  const { error, handle } = useErr();
+  const customer = cart.customer;
+  useEffect(() => {
+    if (value.mode !== "send" || customer || q.trim().length < 2) {
+      setRows([]);
+      return;
+    }
+    const tv = setTimeout(() => {
+      api.customers.search(q, false, 6).then(setRows).catch(handle);
+    }, 150);
+    return () => clearTimeout(tv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, value.mode, customer]);
+  const attach = async (id: string | null) => {
+    try {
+      const c = await api.pos.setCustomer(id);
+      onCartChanged(c);
+      if (c.customer) {
+        // Prefill from the customer, editable for this drop only.
+        onChange({
+          ...value,
+          address: value.address || c.customer.address || "",
+          area: value.area || c.customer.area || "",
+        });
+      }
+      setQ("");
+    } catch (e) {
+      handle(e);
+    }
+  };
+  return (
+    <div className="send-panel" data-testid="send-panel">
+      <div className="seg" role="radiogroup" aria-label={t("Fulfil")}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value.mode === "here"}
+          className={`seg-btn ${value.mode === "here" ? "active" : ""}`}
+          onClick={() => onChange({ ...value, mode: "here", pod: false })}
+          data-testid="fulfil-here"
+        >
+          <Store size={20} aria-hidden /> {t("Here")}
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value.mode === "send"}
+          className={`seg-btn ${value.mode === "send" ? "active" : ""}`}
+          onClick={() =>
+            onChange({
+              ...value,
+              mode: "send",
+              address: value.address || customer?.address || "",
+              area: value.area || customer?.area || "",
+            })
+          }
+          data-testid="fulfil-send"
+        >
+          <Truck size={20} aria-hidden /> {t("Send")}
+        </button>
+      </div>
+      {value.mode === "send" ? (
+        <div className="send-body">
+          {customer ? (
+            <div className="send-who">
+              <div className="grow">
+                <div className="strong" dir="auto">
+                  {customer.name}
+                </div>
+                <div className="tiny muted num">{customer.phone}</div>
+              </div>
+              <Button icon={<X size={16} />} onClick={() => void attach(null)}>
+                {t("Change")}
+              </Button>
+            </div>
+          ) : (
+            <div className="col gap-8">
+              <div className="row">
+                <div className="scan-box grow send-search">
+                  <Search size={20} className="scan-icon" aria-hidden />
+                  <input
+                    className="input"
+                    placeholder={t("Customer phone or name")}
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    aria-label={t("Find customer")}
+                    data-testid="send-customer-search"
+                  />
+                </div>
+                <Button icon={<UserPlus size={18} />} onClick={() => setCreating(true)} data-testid="send-new-customer">
+                  {t("New customer")}
+                </Button>
+              </div>
+              {rows.map((c) => (
+                <button
+                  key={c.customer_id}
+                  type="button"
+                  className="send-row"
+                  onClick={() => void attach(c.customer_id)}
+                  data-testid="send-customer-row"
+                >
+                  <span className="grow ellipsis" dir="auto">
+                    {c.name}
+                  </span>
+                  <span className="tiny muted">{[c.area, c.phone].filter(Boolean).join(" · ")}</span>
+                </button>
+              ))}
+              {!rows.length ? <div className="hint">{t("A sent sale needs the customer.")}</div> : null}
+            </div>
+          )}
+          <div className="send-where">
+            <div className="field">
+              <label htmlFor="send-address">{t("Address")}</label>
+              <input
+                id="send-address"
+                className="input"
+                value={value.address}
+                onChange={(e) => onChange({ ...value, address: e.target.value })}
+                placeholder={t("House / road / block")}
+                data-testid="send-address"
+              />
+            </div>
+            <AreaPicker value={value.area} onChange={(area) => onChange({ ...value, area })} />
+          </div>
+          <div className="send-opts">
+            <Checkbox
+              label={t("Save on customer")}
+              checked={value.save}
+              onChange={(save) => onChange({ ...value, save })}
+            />
+            {podAllowed ? (
+              <label className="checkbox pod-toggle" data-testid="pay-on-delivery">
+                <input
+                  type="checkbox"
+                  checked={value.pod}
+                  onChange={(e) => onChange({ ...value, pod: e.target.checked })}
+                />
+                <span>{t("Pay on delivery")}</span>
+              </label>
+            ) : null}
+          </div>
+          {value.pod ? (
+            <div className="hint">
+              {t("Nothing goes in the drawer now. The ticket stays unpaid until the money is recorded.")}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {error ? <Banner tone="danger">{error}</Banner> : null}
+      {creating ? (
+        <NewCustomerSheet
+          initial={q}
+          onClose={() => setCreating(false)}
+          onCreated={(c, addr, area) => {
+            setCreating(false);
+            onCartChanged(c);
+            onChange({ ...value, mode: "send", address: addr || value.address, area: area || value.area });
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** New customer: name, phone, address, area. Attached to the sale on save. */
+export function NewCustomerSheet({
+  initial,
+  onClose,
+  onCreated,
+}: {
+  initial: string;
+  onClose: () => void;
+  onCreated: (c: Cart, address: string, area: string) => void;
+}) {
+  const looksPhone = /^\+?\d[\d\s]*$/.test(initial.trim());
+  const [name, setName] = useState(looksPhone ? "" : initial);
+  const [phone, setPhone] = useState(looksPhone ? initial : "");
+  const [address, setAddress] = useState("");
+  const [area, setArea] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { error, handle, setError } = useErr();
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const c = await api.customers.save(null, {
+        name,
+        phone: phone || null,
+        address: address || null,
+        area: area || null,
+        active: true,
+      });
+      onCreated(await api.pos.setCustomer(c.customer_id), address, area || c.area || "");
+    } catch (e) {
+      handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={t("New customer")}
+      size="md"
+      onClose={busy ? undefined : onClose}
+      footer={
+        <Button
+          variant="primary"
+          size="lg"
+          block
+          onClick={save}
+          loading={busy}
+          disabled={!name.trim()}
+          data-testid="new-customer-save"
+        >
+          {t("Save customer")}
+        </Button>
+      }
+    >
+      <div className="col gap-12">
+        <div className="field">
+          <label htmlFor="nc-name">{t("Name")}</label>
+          <input id="nc-name" className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </div>
+        <div className="field">
+          <label htmlFor="nc-phone">{t("Phone")}</label>
+          <input
+            id="nc-phone"
+            className="input num"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="nc-address">{t("Address")}</label>
+          <input id="nc-address" className="input" value={address} onChange={(e) => setAddress(e.target.value)} />
+        </div>
+        <AreaPicker value={area} onChange={setArea} />
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+      </div>
+    </Modal>
+  );
+}
+
+/** One 56 px row on the rail or the board. */
+export function TicketRowButton({ row, onOpen }: { row: TicketRow; onOpen: (r: TicketRow) => void }) {
+  return (
+    <button type="button" className="ticket-row" onClick={() => onOpen(row)} data-testid="ticket-row">
+      <span className="tr-main">
+        <span className="tr-name ellipsis" dir="auto">
+          {row.customer_name || row.phone || row.number}
+        </span>
+        <span className="tr-place ellipsis tiny muted" dir="auto">
+          {[row.area, row.address].filter(Boolean).join(" · ") || t("No address")}
+        </span>
+      </span>
+      <span className="tr-side">
+        <span className="money">{formatMoney(row.amount_minor)}</span>
+        <span className="tr-chips">
+          <PayChip state={row.pay_state} />
+          <StatusChip status={row.status} />
+        </span>
+      </span>
+    </button>
+  );
+}
+
+type RailTab = "now" | "out" | "done";
+
+/** The till's Send rail: a 420 px drawer on the assistant's side, above the dock. */
+export function SendRail({
+  onClose,
+  onOpen,
+  reloadKey,
+}: {
+  onClose: () => void;
+  onOpen: (r: TicketRow) => void;
+  reloadKey: number;
+}) {
+  const [tab, setTab] = useState<RailTab>("now");
+  const [rows, setRows] = useState<TicketRow[] | null>(null);
+  const [counts, setCounts] = useState<TicketCounts | null>(null);
+  const { error, handle, setError } = useErr();
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const [r, c] = await Promise.all([api.tickets.list({ tab }), api.tickets.counts()]);
+      setRows(r);
+      setCounts(c);
+    } catch (e) {
+      handle(e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  useEffect(() => {
+    void load();
+  }, [load, reloadKey]);
+  const tabs: { key: RailTab; label: string; n?: number }[] = [
+    { key: "now", label: t("Now"), n: counts?.now },
+    { key: "out", label: t("Out"), n: counts?.out },
+    { key: "done", label: t("Done today"), n: counts?.done },
+  ];
+  return (
+    <aside className="till-ai send-rail" role="complementary" aria-label={t("Send")} data-testid="send-rail">
+      <div className="till-ai-head">
+        <Truck size={20} aria-hidden />
+        <h2 className="grow">{t("Send")}</h2>
+        <Button
+          variant="ghost"
+          className="close-btn"
+          aria-label={t("Close")}
+          icon={<X size={22} />}
+          onClick={onClose}
+        />
+      </div>
+      <div className="rail-tabs" role="tablist">
+        {tabs.map((tv) => (
+          <button
+            key={tv.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === tv.key}
+            className={`rail-tab ${tab === tv.key ? "active" : ""}`}
+            onClick={() => setTab(tv.key)}
+            data-testid={`rail-tab-${tv.key}`}
+          >
+            {tv.label}
+            {tv.n ? <span className="rail-n num">{tv.n}</span> : null}
+          </button>
+        ))}
+      </div>
+      <div className="rail-list">
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+        {rows && rows.length === 0 ? (
+          <div className="rail-empty" data-testid="rail-empty">
+            {tab === "now"
+              ? t("No sends. On PAY, tap Send.")
+              : tab === "out"
+                ? t("Nothing is out.")
+                : t("Nothing closed today.")}
+          </div>
+        ) : null}
+        {rows?.map((r) => (
+          <TicketRowButton key={r.ticket_id} row={r} onOpen={onOpen} />
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+/** The ticket sheet: same on the till and the board. */
+export function TicketSheet({
+  ticketId,
+  onClose,
+  onChanged,
+  onRungUp,
+}: {
+  ticketId: string;
+  onClose: () => void;
+  onChanged: () => void;
+  /** Ring up a digital order into this till's sale (till only). */
+  onRungUp?: (c: Cart) => void;
+}) {
+  const { config } = useSession();
+  const shotsOn = useFeature("ocr.payment_screenshots");
+  const [sheet, setSheet] = useState<Sheet | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [deliverAsk, setDeliverAsk] = useState(false);
+  const [thenDeliver, setThenDeliver] = useState(false);
+  const [ringOp] = useState(newOperationId);
+  const { error, handle, setError } = useErr();
+  const load = useCallback(async () => {
+    try {
+      setSheet(await api.tickets.get(ticketId));
+    } catch (e) {
+      handle(e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketId]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      await load();
+      onChanged();
+    } catch (e) {
+      handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!sheet) {
+    return (
+      <Modal title={t("Ticket")} size="sheet" onClose={onClose}>
+        {error ? <Banner tone="danger">{error}</Banner> : <div className="muted">{t("Loading…")}</div>}
+      </Modal>
+    );
+  }
+  const tk = sheet.ticket;
+  const did = tk.delivery_id;
+  const settled = tk.pay_state === "paid" || tk.pay_state === "recorded";
+  const step = (to: string) => {
+    if (!did) return;
+    if (to === "delivered" && !settled && tk.outstanding_minor > 0) {
+      setDeliverAsk(true);
+      return;
+    }
+    void run(() => api.deliveries.update({ delivery_id: did, status: to }));
+  };
+  const lastEvent = sheet.events.at(-1);
+  const canUndo = sheet.can.undo && !!lastEvent?.from && lastEvent.from !== lastEvent.to;
+  const failed = sheet.notices.filter((n) => n.status === "failed");
+  const waDigits = (tk.phone ?? "").replace(/\D/g, "");
+  const primaryStep = sheet.next.find((s) => s !== "cancelled");
+  const ringUp = async () => {
+    if (!tk.order_id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (tk.status === "draft") await api.orders.confirm(tk.order_id);
+      const c = await api.orders.convert(tk.order_id, ringOp);
+      onRungUp?.(c);
+    } catch (e) {
+      handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={
+        <span className="row gap-8">
+          <span className="num">{tk.number}</span>
+          <StatusChip status={tk.status} />
+        </span>
+      }
+      size="sheet"
+      testId="ticket-sheet"
+      onClose={busy ? undefined : onClose}
+      footer={
+        <div className="ticket-foot">
+          {sheet.can.ring_up && onRungUp ? (
+            <Button variant="primary" size="xl" block onClick={ringUp} loading={busy} data-testid="ticket-ring-up">
+              {t("Ring up")}
+            </Button>
+          ) : (
+            <div className="ticket-steps">
+              {sheet.next.map((s) => (
+                <Button
+                  key={s}
+                  variant={s === primaryStep ? "primary" : s === "cancelled" ? "danger-outline" : "default"}
+                  size="lg"
+                  onClick={() => step(s)}
+                  disabled={busy}
+                  data-testid={`ticket-step-${s}`}
+                >
+                  {s === "delivered" ? <Check size={20} aria-hidden /> : null}
+                  {stepLabel(s)}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+      }
+    >
+      <div className="ticket-body">
+        <section className="ticket-who">
+          <div className="grow">
+            <div className="strong" dir="auto">
+              {tk.customer_name || t("No customer")}
+            </div>
+            <div className="tiny muted">
+              {[channelLabel(tk.channel), tk.delivery_number, relative(tk.created_at)].filter(Boolean).join(" · ")}
+            </div>
+          </div>
+          <div className="ticket-pay">
+            <span className="money strong">{formatMoney(tk.amount_minor)}</span>
+            <PayChip state={tk.pay_state} />
+          </div>
+        </section>
+        <section className="ticket-where">
+          <MapPin size={20} aria-hidden />
+          <div className="grow">
+            <div dir="auto">{tk.address || t("No address")}</div>
+            <div className="tiny muted">{[tk.area, tk.phone].filter(Boolean).join(" · ")}</div>
+          </div>
+          {waDigits ? (
+            <a
+              className="btn"
+              href={`https://wa.me/${waDigits}`}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={t("Open WhatsApp chat")}
+            >
+              <MessageCircle size={18} aria-hidden /> {t("WhatsApp")}
+            </a>
+          ) : null}
+        </section>
+        {failed.length ? (
+          <Banner tone="warning" title={t("WhatsApp message not sent")}>
+            {failed[0].error || t("It will not be retried by itself. Send it again from Message.")}
+          </Banner>
+        ) : null}
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+        {!settled && tk.kind === "drop" && tk.status !== "cancelled" ? (
+          <section className="ticket-money">
+            <div className="grow">
+              {tk.outstanding_minor > 0
+                ? t("To collect {0}", formatMoney(tk.outstanding_minor))
+                : t("Waiting for the payment to be checked.")}
+            </div>
+            {sheet.can.record_payment ? (
+              <Button onClick={() => setPaying(true)} data-testid="ticket-record-payment">
+                {t("Record payment")}
+              </Button>
+            ) : null}
+            {sheet.can.attach_screenshot && shotsOn && did ? (
+              <label className="btn file-btn">
+                <Paperclip size={18} aria-hidden /> {t("Attach screenshot")}
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    void run(async () =>
+                      api.payreviews.upload({
+                        file_name: f.name,
+                        data: await fileToBase64(f),
+                        expected_minor: tk.outstanding_minor || tk.amount_minor,
+                        delivery_id: did,
+                      }),
+                    );
+                  }}
+                />
+              </label>
+            ) : null}
+          </section>
+        ) : null}
+        {sheet.can.assign && sheet.riders.length ? (
+          <section>
+            <div className="label">{t("Rider")}</div>
+            <div className="area-chips">
+              {sheet.riders.map((r) => (
+                <button
+                  key={r.user_id}
+                  type="button"
+                  className={`filter-chip ${tk.assigned_user_id === r.user_id ? "active" : ""}`}
+                  onClick={() =>
+                    did &&
+                    void run(() =>
+                      api.deliveries.update({
+                        delivery_id: did,
+                        assigned_user_id: tk.assigned_user_id === r.user_id ? "" : r.user_id,
+                      }),
+                    )
+                  }
+                >
+                  {r.name}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : tk.assigned_name ? (
+          <div className="small muted">{t("Rider: {0}", tk.assigned_name)}</div>
+        ) : null}
+        {sheet.can.message && did ? (
+          <section className="row gap-8 wrap">
+            <WhatsAppSendButton kind="dispatch" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            <WhatsAppSendButton kind="delivered" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+          </section>
+        ) : null}
+        <section className="ticket-lines">
+          {sheet.lines.map((l, i) => (
+            <div key={i} className="row small">
+              <span className="grow ellipsis" dir="auto">
+                {l.name}
+              </span>
+              <span className="num muted">{formatQty(l.qty_milli)}×</span>
+              <span className="money">{formatMoney(l.line_total_minor)}</span>
+            </div>
+          ))}
+          {[...sheet.payments, ...sheet.collections].map((p, i) => (
+            <div key={`p${i}`} className="row tiny muted">
+              <span className="grow">{methodLabel(p.method)}</span>
+              <span className="money">{formatMoney(p.amount_minor)}</span>
+            </div>
+          ))}
+        </section>
+        {canUndo && did && lastEvent?.from ? (
+          <div>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Undo2 size={16} />}
+              onClick={() => void run(() => api.deliveries.revert(did, lastEvent.from!))}
+            >
+              {t("Undo: back to {0}", statusLabel(lastEvent.from))}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      {paying && did ? (
+        <RecordPaymentSheet
+          ticket={tk}
+          methods={(config?.payments ?? []).map((p) => p.method).filter((m) => m !== "account")}
+          onClose={() => (setPaying(false), setThenDeliver(false))}
+          onDone={() => {
+            setPaying(false);
+            const deliver = thenDeliver;
+            setThenDeliver(false);
+            void run(async () => {
+              if (deliver) await api.deliveries.update({ delivery_id: did, status: "delivered" });
+            });
+          }}
+        />
+      ) : null}
+      {deliverAsk && did ? (
+        <Modal
+          title={t("Paid?")}
+          size="sm"
+          onClose={() => setDeliverAsk(false)}
+          footer={
+            <>
+              <Button
+                size="lg"
+                onClick={() => {
+                  setDeliverAsk(false);
+                  void run(() => api.deliveries.update({ delivery_id: did, status: "delivered" }));
+                }}
+                data-testid="deliver-unpaid"
+              >
+                {t("Still unpaid")}
+              </Button>
+              {sheet.can.record_payment ? (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  onClick={() => (setDeliverAsk(false), setThenDeliver(true), setPaying(true))}
+                  data-testid="deliver-take-payment"
+                >
+                  {t("Take payment")}
+                </Button>
+              ) : null}
+            </>
+          }
+        >
+          <p>
+            {t(
+              "{0} is still to collect. Take the payment now, or mark it delivered and collect later.",
+              formatMoney(tk.outstanding_minor),
+            )}
+          </p>
+        </Modal>
+      ) : null}
+    </Modal>
+  );
+}
+
+/** Money for a pay-on-delivery ticket: method chips, amount, one Confirm. */
+function RecordPaymentSheet({
+  ticket,
+  methods,
+  onClose,
+  onDone,
+}: {
+  ticket: TicketRow;
+  methods: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [method, setMethod] = useState(methods.includes("cash") ? "cash" : (methods[0] ?? "cash"));
+  const [amount, setAmount] = useState(formatAmount(ticket.outstanding_minor));
+  const [reference, setReference] = useState("");
+  const [opId] = useState(newOperationId);
+  const [busy, setBusy] = useState(false);
+  const { error, handle, setError } = useErr();
+  const minor = parseMoney(amount);
+  const save = async () => {
+    if (!ticket.delivery_id || minor === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.tickets.recordPayment({
+        delivery_id: ticket.delivery_id,
+        method,
+        amount_minor: minor,
+        reference: reference || null,
+        operation_id: opId,
+      });
+      onDone();
+    } catch (e) {
+      handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={t("Record payment")}
+      size="md"
+      onClose={busy ? undefined : onClose}
+      footer={
+        <Button
+          variant="pay"
+          size="xl"
+          block
+          onClick={save}
+          loading={busy}
+          disabled={minor === null || minor <= 0}
+          data-testid="record-payment-confirm"
+        >
+          {t("Confirm")} <span className="money">{minor !== null ? formatMoney(minor) : ""}</span>
+        </Button>
+      }
+    >
+      <div className="col gap-12">
+        <div className="area-chips" role="radiogroup" aria-label={t("Payment method")}>
+          {methods.map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={m === method}
+              className={`filter-chip ${m === method ? "active" : ""}`}
+              onClick={() => setMethod(m)}
+            >
+              {methodLabel(m)}
+            </button>
+          ))}
+        </div>
+        <div className="field">
+          <label htmlFor="rp-amount">{t("Amount")}</label>
+          <input
+            id="rp-amount"
+            className="input lg num"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </div>
+        {method !== "cash" ? (
+          <div className="field">
+            <label htmlFor="rp-ref">{t("Reference")}</label>
+            <input id="rp-ref" className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
+          </div>
+        ) : null}
+        {method === "cash" ? <div className="hint">{t("Cash goes into this shift's drawer.")}</div> : null}
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+      </div>
+    </Modal>
+  );
+}

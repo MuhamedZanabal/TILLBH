@@ -237,10 +237,33 @@ export function Modal({
       el?.querySelector<HTMLElement>(FOCUSABLE);
     target?.focus();
     return () => {
-      previously?.focus?.();
+      // The opener may have gone with a closed parent sheet: keep focus in the
+      // dialog still open (so Esc and Tab keep working), else the page.
+      if (previously?.isConnected) previously.focus();
+      else {
+        const open = Array.from(document.querySelectorAll<HTMLElement>("[role=dialog]")).filter((d) => d !== el);
+        const host = open.at(-1);
+        host?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Focus can fall to the page when the control that had it disappears (a
+  // step button after the ticket moved on): Esc still closes the top dialog.
+  useEffect(() => {
+    if (!onClose) return;
+    const onDocKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      const dialogs = document.querySelectorAll("[role=dialog]");
+      if (dialogs[dialogs.length - 1] !== ref.current) return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onDocKey);
+    return () => window.removeEventListener("keydown", onDocKey);
+  }, [onClose]);
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Escape" && onClose) {
       e.stopPropagation();
