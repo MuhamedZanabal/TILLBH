@@ -349,7 +349,9 @@ export function AdminShell() {
 
 function Shell() {
   const { session, has, setMode, lock, logout, config, status } = useSession();
+  // At 1024 the nav is a 64 px icon rail; the menu button opens the labelled nav as a flyout (tap, not hover).
   const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1200);
+  const [fly, setFly] = useState(false);
   const [menu, setMenu] = useState(false);
   const loc = useLocation();
   const nav = useNavigate();
@@ -378,7 +380,8 @@ function Shell() {
     return () => window.removeEventListener("keydown", k);
   }, []);
   return (
-    <div className={`admin ${collapsed ? "collapsed" : ""}`} data-testid="admin">
+    <div className={`admin ${collapsed ? "collapsed" : ""} ${fly ? "flyout" : ""}`} data-testid="admin">
+      {fly ? <div className="fly-backdrop" onClick={() => setFly(false)} aria-hidden /> : null}
       <aside className="sidebar">
         <div className="sb-brand">
           <Logo size={28} />
@@ -396,9 +399,10 @@ function Shell() {
                     key={i.path}
                     to={`/admin/${i.path}`}
                     className={({ isActive }) => `sb-link ${isActive ? "active" : ""}`}
-                    title={i.label}
+                    aria-label={i.label}
+                    onClick={() => setFly(false)}
                   >
-                    <i.icon size={17} />
+                    <i.icon size={20} aria-hidden />
                     <span className="sb-label">{i.label}</span>
                   </NavLink>
                 ))}
@@ -412,19 +416,20 @@ function Shell() {
           <button
             className="btn ghost icon"
             aria-label={t("Toggle navigation")}
-            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={collapsed ? fly : true}
+            onClick={() => (window.innerWidth < 1200 ? setFly((f) => !f) : setCollapsed((c) => !c))}
           >
-            <Menu size={18} />
+            <Menu size={22} />
           </button>
-          <div className="tiny">
-            {t("Admin /")} <strong style={{ color: "var(--text)" }}>{current?.label ?? "…"}</strong>
+          <div className="crumb ellipsis">
+            <span className="muted">{t("Admin /")}</span> <strong>{current?.label ?? "…"}</strong>
           </div>
           <div className="grow" />
-          <button className="btn ghost sm" onClick={() => setPalette(true)} title={t("Go to… (Ctrl+K)")}>
-            <Search size={15} /> <span className="kbd">Ctrl K</span>
+          <button className="btn ghost" onClick={() => setPalette(true)} aria-label={t("Go to… (Ctrl+K)")}>
+            <Search size={20} /> <span className="kbd">Ctrl K</span>
           </button>
-          <span className="small muted row">
-            <Store size={15} /> {config?.business_name} · {status.device?.name}
+          <span className="small muted row store-name">
+            <Store size={16} /> {config?.business_name} · {status.device?.name}
           </span>
           <span style={{ filter: "invert(0)" }}>
             <ConnectionPill />
@@ -432,35 +437,46 @@ function Shell() {
           <BranchSwitcher />
           <LanguageToggle />
           <button className="btn ghost icon" aria-label={t("Alerts")} onClick={() => nav("/admin/dashboard")}>
-            <Bell size={18} />
+            <Bell size={20} />
           </button>
           <div style={{ position: "relative" }} ref={menuRef}>
-            <button className="btn ghost" onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu}>
+            <button
+              className="btn ghost user-btn"
+              onClick={() => setMenu((m) => !m)}
+              aria-haspopup="menu"
+              aria-expanded={menu}
+              aria-label={session?.display_name}
+            >
               <span className="avatar sm">{initials(session?.display_name ?? "?")}</span>
-              {session?.display_name}
+              <span className="user-name ellipsis">{session?.display_name}</span>
             </button>
             {menu ? (
               <div className="menu" role="menu">
                 <button role="menuitem" onClick={() => (setMenu(false), nav("/admin/profile"))}>
-                  <UserRound size={15} /> {t("My Profile")}
+                  <UserRound size={20} /> {t("My Profile")}
                 </button>
                 {has("pos.sell") ? (
                   <button role="menuitem" onClick={() => setMode("cashier")}>
-                    <Receipt size={15} /> {t("Switch to POS")}
+                    <Receipt size={20} /> {t("Switch to POS")}
                   </button>
                 ) : null}
                 <button role="menuitem" onClick={() => void lock()}>
-                  <Lock size={15} /> {t("Lock")}
+                  <Lock size={20} /> {t("Lock")}
                 </button>
                 <button role="menuitem" onClick={() => void logout()}>
-                  <LogOut size={15} /> {t("Logout")}
+                  <LogOut size={20} /> {t("Logout")}
                 </button>
               </div>
             ) : null}
           </div>
           {has("pos.sell") ? (
-            <button className="btn primary sm" onClick={() => setMode("cashier")} title={t("Return to checkout")}>
-              <Gauge size={15} /> {t("POS")}
+            <button
+              className="btn primary"
+              onClick={() => setMode("cashier")}
+              aria-label={t("Return to checkout")}
+              data-testid="back-to-pos"
+            >
+              <Gauge size={20} /> {t("POS")}
             </button>
           ) : null}
         </header>

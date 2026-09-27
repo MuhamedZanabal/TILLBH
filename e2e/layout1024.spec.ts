@@ -25,7 +25,7 @@ async function noHorizontalScroll(page: Page) {
   expect(w, "no horizontal scroll").toBeLessThanOrEqual(1024);
 }
 
-async function payIsTappable(page: Page) {
+async function payIsTappable(page: Page, h = 768) {
   const pay = page.getByTestId("pay");
   await expect(pay).toBeVisible();
   const b = (await pay.boundingBox())!;
@@ -33,7 +33,7 @@ async function payIsTappable(page: Page) {
   expect(b.height, "PAY height").toBeGreaterThanOrEqual(56);
   expect(b.x).toBeGreaterThanOrEqual(0);
   expect(b.x + b.width).toBeLessThanOrEqual(1024);
-  expect(b.y + b.height, "PAY clear of a 16 px taskbar strip").toBeLessThanOrEqual(768 - 16);
+  expect(b.y + b.height, "PAY clear of a 16 px taskbar strip").toBeLessThanOrEqual(h - 16);
   const top = await page.evaluate(
     ([x, y]) => {
       const el = document.elementFromPoint(x, y);
@@ -125,25 +125,39 @@ test("1024×768: POS, payment, shift close, refund", async ({ page }) => {
     "Americana Chicken Nuggets 400g",
   ];
   barcodes = names.map((_, i) => `77012300${String(i + 10).padStart(4, "0")}`);
-  const existing = await rpc(page, "pos.search", { query: barcodes[0], limit: 1 }, token).catch(() => []);
-  if (!existing.length)
-    for (let i = 0; i < names.length; i++)
+  // Re-runs on the same data directory: a duplicate barcode just means the product is there.
+  for (let i = 0; i < names.length; i++)
+    await rpc(
+      page,
+      "products.create",
+      {
+        name: names[i],
+        tax_rule_id: tax,
+        category_id: cat.category_id,
+        price_minor: 350 + i * 1275,
+        cost_minor: 200 + i * 700,
+        barcodes: [barcodes[i]],
+        // Three items sit at the reorder point, so one sale leaves them low.
+        opening_stock_milli: i % 4 === 0 ? 6000 : 80000,
+        reorder_point_milli: 5000,
+        is_favorite: true,
+        unit: "pcs",
+        track_inventory: true,
+      },
+      token,
+    ).catch(() => undefined);
+  // Another cashier's shift left open by an earlier suite blocks this till: close it as the owner.
+  const shifts = await rpc(page, "shift.list", { limit: 50 }, token);
+  for (const sh of shifts as { shift_id: string; status: string; user_name?: string; expected_cash_minor?: number }[])
+    if (sh.status === "open")
       await rpc(
         page,
-        "products.create",
+        "shift.close",
         {
-          name: names[i],
-          tax_rule_id: tax,
-          category_id: cat.category_id,
-          price_minor: 350 + i * 1275,
-          cost_minor: 200 + i * 700,
-          barcodes: [barcodes[i]],
-          // Three items sit at the reorder point, so one sale leaves them low.
-          opening_stock_milli: i % 4 === 0 ? 6000 : 80000,
-          reorder_point_milli: 5000,
-          is_favorite: true,
-          unit: "pcs",
-          track_inventory: true,
+          shift_id: sh.shift_id,
+          counted_cash_minor: sh.expected_cash_minor ?? 0,
+          note: "closed by the 1024 layout test",
+          operation_id: `layout-${sh.shift_id}`,
         },
         token,
       );
@@ -176,6 +190,17 @@ test("1024×768: POS, payment, shift close, refund", async ({ page }) => {
   await shot(page, "02-pos-12-lines");
   await payIsTappable(page);
   await touchTargets(page, ".pos-root");
+
+  // A maximized window on a 1024×768 panel loses height to the title bar and taskbar:
+  // at 700 px PAY and the payment Confirm must still be fully on screen.
+  await page.setViewportSize({ width: 1024, height: 700 });
+  await payIsTappable(page, 700);
+  await page.getByTestId("pay").click();
+  const c700 = (await page.getByTestId("complete-sale").boundingBox())!;
+  expect(c700.y + c700.height).toBeLessThanOrEqual(700 - 8);
+  await shot(page, "03b-payment-at-700");
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1024, height: 768 });
 
   // ---- 3. Payment sheet: cash with change ----
   await page.getByTestId("pay").click();
@@ -288,6 +313,13 @@ test("1024×768: Arabic RTL, dark compact, backup + update-needed", async ({ pag
   // ---- 10. Terminal whose hub needs an update, and backups overdue ----
   await page.route("**/rpc", async (route) => {
     const body = route.request().postDataJSON() as { cmd: string };
+    if (body.cmd === "backup.health")
+      return route.fulfill({
+        json: {
+          ok: true,
+          data: { component: "backup", state: "warning", summary: "Last backup 3 days ago", details: {} },
+        },
+      });
     if (body.cmd !== "sync.status") return route.fallback();
     await route.fulfill({
       json: {
@@ -314,6 +346,17 @@ test("1024×768: Arabic RTL, dark compact, backup + update-needed", async ({ pag
   expect(bh.height, "backup banner is one line").toBeLessThanOrEqual(72);
   await shot(page, "10b-admin-backup-banner");
   await noHorizontalScroll(page);
+  // Admin on the same panel: rail + flyout nav, 48 px chrome, page body scrolls.
+  await touchTargets(page, ".topbar");
+  await touchTargets(page, ".sidebar");
+  await page.getByRole("button", { name: "Toggle navigation" }).click();
+  await expect(page.locator(".admin.flyout")).toBeVisible();
+  await shot(page, "10c-admin-nav-flyout");
+  await page.getByRole("link", { name: "Products" }).click();
+  await expect(page.locator(".admin.flyout")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Products", level: 1 })).toBeVisible();
+  await noHorizontalScroll(page);
+  await shot(page, "10d-admin-products");
   await page.getByTestId("back-to-pos").click();
   await page.unroute("**/rpc");
 

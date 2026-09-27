@@ -1,18 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
+  AlertTriangle,
   Bot,
   Brain,
   CalendarClock,
+  CheckCircle2,
+  Cpu,
+  FileScan,
+  Image as ImageIcon,
   Inbox,
   Keyboard,
+  Languages,
+  MessageSquare,
   Paperclip,
   Pencil,
   Pin,
   Plus,
+  Receipt,
+  RotateCw,
   Send,
-  Wrench,
+  Settings2,
+  ShoppingCart,
+  Slash,
   X,
+  XCircle,
 } from "lucide-react";
 import { api } from "../../api";
 import type {
@@ -27,8 +39,8 @@ import type {
 } from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
-import { FeatureGate } from "../../components/FeatureGate";
-import { Banner, Button, Checkbox, Chip, Field, Modal, PageHeader, Skeleton, TextInput } from "../../components/ui";
+import { useFeature } from "../../components/FeatureGate";
+import { Banner, Button, Chip, Modal, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, useAction, useLoad } from "./common";
 import { formatMoney, formatQty } from "../../lib/money";
 import { formatDateTime, relative } from "../../lib/time";
@@ -134,7 +146,7 @@ function pretty(v: unknown): string {
   return JSON.stringify(v, null, 1);
 }
 
-/** One tool call: name, input and result, all visible. */
+/** One tool call as a timeline chip: name → running → done. Tap opens its input and output. */
 function ToolStep({
   name,
   input,
@@ -148,92 +160,168 @@ function ToolStep({
   isError?: boolean;
   running?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const state = running ? "running" : isError ? "error" : "done";
   return (
-    <details className="ai-step" data-testid="ai-tool-step">
-      <summary className="row" style={{ gap: 6 }}>
-        <Wrench size={14} />
-        <span className="small">{toolLabel(name)}</span>
-        <code dir="ltr" className="tiny">
-          {name}
-        </code>
+    <>
+      <button
+        type="button"
+        className={`tool-chip ${state}`}
+        data-testid="ai-tool-step"
+        aria-label={`${toolLabel(name)} (${name}): ${running ? t("Running…") : isError ? t("Error") : t("Done")}`}
+        onClick={() => setOpen(true)}
+      >
         {running ? (
-          <Chip>{t("Running…")}</Chip>
+          <span className="spinner" aria-hidden />
         ) : isError ? (
-          <Chip tone="danger">{t("Error")}</Chip>
+          <XCircle size={16} aria-hidden />
         ) : (
-          <Chip tone="success">{t("Done")}</Chip>
+          <CheckCircle2 size={16} aria-hidden />
         )}
-      </summary>
-      <div className="col gap-4" style={{ marginTop: 6 }}>
-        <div className="tiny muted">{t("Input")}</div>
-        <pre className="tiny" dir="ltr" style={{ whiteSpace: "pre-wrap", maxHeight: 160, overflow: "auto" }}>
-          {pretty(input)}
-        </pre>
-        {result !== undefined ? (
-          <>
-            <div className="tiny muted">{t("Result the assistant received")}</div>
-            <pre className="tiny" dir="ltr" style={{ whiteSpace: "pre-wrap", maxHeight: 260, overflow: "auto" }}>
-              {pretty(result)}
+        <span className="tc-label">{toolLabel(name)}</span>
+        <code dir="ltr">{name}</code>
+      </button>
+      {open ? (
+        <Modal title={toolLabel(name)} size="sheet narrow" onClose={() => setOpen(false)}>
+          <div className="col gap-8">
+            <code dir="ltr" className="tiny">
+              {name}
+            </code>
+            <div className="field-label">{t("Input")}</div>
+            <pre className="tool-io" dir="ltr">
+              {pretty(input)}
             </pre>
-          </>
-        ) : null}
-      </div>
-    </details>
+            <div className="field-label">{t("Result the assistant received")}</div>
+            <pre className="tool-io" dir="ltr">
+              {result === undefined ? t("Running…") : pretty(result)}
+            </pre>
+          </div>
+        </Modal>
+      ) : null}
+    </>
   );
 }
 
 function Thinking({ text, open }: { text: string; open?: boolean }) {
   if (!text.trim()) return null;
   return (
-    <details open={open} data-testid="ai-thinking">
-      <summary className="row small muted" style={{ gap: 6 }}>
-        <Brain size={14} /> {t("Thinking")}
+    <details open={open} className="ai-thinking" data-testid="ai-thinking">
+      <summary>
+        <Brain size={16} aria-hidden /> {t("Thinking")}
       </summary>
-      <div className="small muted" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>
-        {text}
-      </div>
+      <div className="think-text">{text}</div>
     </details>
   );
 }
 
+/** Where a piece of evidence lives in the admin, when it names one record. */
+function evidenceLink(tool: string, ids: string[]): string | null {
+  const id = ids.length === 1 ? ids[0] : null;
+  if (/product|price|stock|barcode|margin/.test(tool)) return id ? `/admin/products/${id}` : "/admin/products";
+  if (/customer|loyalty|credit/.test(tool)) return id ? `/admin/customers/${id}` : "/admin/customers";
+  if (/supplier/.test(tool)) return id ? `/admin/suppliers/${id}` : "/admin/suppliers";
+  if (/purchase|_po|reorder/.test(tool)) return id ? `/admin/purchase-orders/${id}` : "/admin/purchase-orders";
+  if (/deliver/.test(tool)) return "/admin/deliveries";
+  if (/sale|refund|receipt/.test(tool)) return "/admin/sales";
+  if (/shift|cash/.test(tool)) return "/admin/shifts";
+  if (/audit/.test(tool)) return "/admin/audit";
+  if (/report|kpi|dashboard/.test(tool)) return "/admin/reports";
+  return null;
+}
+
+const MONEY_RE = /((?:BHD|د\.ب\.?)\s?-?[\d٠-٩,]+(?:[.٫][\d٠-٩]{1,3})?|-?[\d,]+\.\d{3}\b)/g;
+
+/** Answers render bold, bullet lists and money spans styled as totals; links stay links. */
+function RichText({ text }: { text: string }) {
+  const inline = (line: string, key: string): ReactNode[] =>
+    line.split(/(\*\*[^*]+\*\*)/g).flatMap((part, i) => {
+      if (/^\*\*[^*]+\*\*$/.test(part)) return [<strong key={`${key}b${i}`}>{part.slice(2, -2)}</strong>];
+      return part.split(MONEY_RE).map((seg, j) =>
+        j % 2 === 1 ? (
+          <span key={`${key}m${i}.${j}`} className="ai-money">
+            {seg}
+          </span>
+        ) : seg ? (
+          <Linkified key={`${key}t${i}.${j}`} text={seg} />
+        ) : null,
+      );
+    });
+  const blocks: ReactNode[] = [];
+  let list: ReactNode[] = [];
+  const flush = () => {
+    if (list.length) blocks.push(<ul key={`ul${blocks.length}`}>{list}</ul>);
+    list = [];
+  };
+  text.split("\n").forEach((raw, i) => {
+    // Raw tool data (JSON) folds away instead of filling the screen.
+    const tr = raw.trim();
+    if (tr.length > 80 && (tr.startsWith("{") || tr.startsWith("["))) {
+      flush();
+      blocks.push(
+        <details key={i} className="raw-data">
+          <summary>{t("Data ({0} characters)", tr.length)}</summary>
+          <pre dir="ltr">{tr}</pre>
+        </details>,
+      );
+      return;
+    }
+    const m = /^\s*(?:[-*•]|\d+[.)])\s+(.*)$/.exec(raw);
+    if (m) {
+      list.push(<li key={i}>{inline(m[1], `l${i}`)}</li>);
+      return;
+    }
+    flush();
+    if (raw.trim()) blocks.push(<p key={i}>{inline(raw, `p${i}`)}</p>);
+  });
+  flush();
+  return <div className="ai-rich">{blocks}</div>;
+}
+
 function LiveView({ live }: { live: Live }) {
   return (
-    <div className="bubble in col gap-8" style={{ alignSelf: "flex-start", maxWidth: "95%" }} data-testid="ai-live">
-      <div className="row tiny" style={{ gap: 6 }}>
-        <span className="spinner" aria-hidden />
-        <span>
+    <div className="msg assistant" data-testid="ai-live">
+      <div className="avatar-ai" aria-hidden>
+        <Bot size={18} />
+      </div>
+      <div className="bubble in">
+        <div className="bubble-meta">
           {live.provider
             ? `${providerLabel(live.provider as AiStatus["active_provider"])} · ${live.model}`
             : t("Starting…")}
-        </span>
-        {live.round ? <span>· {t("Step {0}", live.round)}</span> : null}
-        {live.tokensIn || live.tokensOut ? (
-          <span>· {t("{0} in / {1} out tokens", live.tokensIn, live.tokensOut)}</span>
+          {live.round ? ` · ${t("Step {0}", live.round)}` : ""}
+          {live.tokensIn || live.tokensOut ? ` · ${t("{0} in / {1} out tokens", live.tokensIn, live.tokensOut)}` : ""}
+        </div>
+        {live.fallback ? (
+          <span className="chip warning" data-testid="ai-fallback-chip">
+            {t("Answered via OpenRouter fallback")} ·{" "}
+            <span dir="ltr">
+              {live.fallback.from} → {live.fallback.to}
+            </span>
+          </span>
         ) : null}
+        <Thinking text={live.thinking} open />
+        {live.steps.length ? (
+          <div className="tool-timeline">
+            {live.steps.map((s) => (
+              <ToolStep
+                key={s.id}
+                name={s.name}
+                input={s.input}
+                result={s.result}
+                isError={s.is_error}
+                running={s.result === undefined}
+              />
+            ))}
+          </div>
+        ) : null}
+        {live.nudged ? (
+          <div className="tiny">{t("AMWAPOS asked the assistant to back its figures with a tool.")}</div>
+        ) : null}
+        <div className="ai-rich streaming">
+          {live.text ? <span style={{ whiteSpace: "pre-wrap" }}>{live.text}</span> : null}
+          <span className="caret" aria-hidden />
+        </div>
       </div>
-      {live.fallback ? (
-        <Banner tone="warning" title={t("Switched to the free fallback")}>
-          <span dir="ltr">
-            {live.fallback.from} → {live.fallback.to}
-          </span>{" "}
-          · {tb(live.fallback.reason)}
-        </Banner>
-      ) : null}
-      <Thinking text={live.thinking} open />
-      {live.steps.map((s) => (
-        <ToolStep
-          key={s.id}
-          name={s.name}
-          input={s.input}
-          result={s.result}
-          isError={s.is_error}
-          running={s.result === undefined}
-        />
-      ))}
-      {live.nudged ? (
-        <div className="tiny">{t("AMWAPOS asked the assistant to back its figures with a tool.")}</div>
-      ) : null}
-      {live.text ? <div style={{ whiteSpace: "pre-wrap" }}>{live.text}</div> : null}
     </div>
   );
 }
@@ -253,7 +341,7 @@ function Attachment({ id }: { id: string }) {
     };
   }, [id]);
   return src ? (
-    <img src={src} alt={t("Attached photo")} style={{ maxWidth: 180, maxHeight: 140, borderRadius: 6 }} />
+    <img src={src} alt={t("Attached photo")} style={{ maxWidth: 180, maxHeight: 140, borderRadius: 8 }} />
   ) : (
     <Chip>{t("Photo")}</Chip>
   );
@@ -261,52 +349,80 @@ function Attachment({ id }: { id: string }) {
 
 type Message = AiConversation["messages"][number];
 
-function MessageView({ m }: { m: Message }) {
+function MessageView({ m, fallback }: { m: Message; fallback?: { from: string; to: string } | null }) {
   if (m.kind === "nudge") {
-    return <div className="tiny muted">{t("AMWAPOS asked the assistant to back its figures with a tool.")}</div>;
+    return (
+      <div className="tiny muted msg-note">{t("AMWAPOS asked the assistant to back its figures with a tool.")}</div>
+    );
   }
   const mine = m.role === "user";
   return (
-    <div
-      className={`bubble ${mine ? "out" : "in"} col gap-8`}
-      style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "90%" }}
-    >
-      {m.thinking ? <Thinking text={m.thinking} /> : null}
-      {(m.calls ?? []).map((c) => (
-        <ToolStep key={c.id} name={c.name} input={c.input} result={c.result} isError={c.is_error} />
-      ))}
-      {m.attachments?.length ? (
-        <div className="row wrap">
-          {m.attachments.map((a) => (
-            <Attachment key={a.attachment_id} id={a.attachment_id} />
-          ))}
+    <div className={`msg ${mine ? "user" : "assistant"}`}>
+      {!mine ? (
+        <div className="avatar-ai" aria-hidden>
+          <Bot size={18} />
         </div>
       ) : null}
-      {m.has_context ? <Chip>{t("Till cart attached")}</Chip> : null}
-      {m.text ? <Linkified text={m.text} /> : null}
-      {m.role === "assistant" && m.text && m.evidence?.length ? (
-        <div className="row wrap" style={{ gap: 4 }} data-testid="ai-evidence">
-          <span className="tiny">{t("Evidence")}:</span>
-          {m.evidence.slice(0, 8).map((ev, j) => (
-            <Chip key={j}>
-              <span dir="ltr">
-                {ev.tool}
-                {ev.ids.length ? ` · ${ev.ids.join(", ")}` : ""}
-              </span>
-            </Chip>
-          ))}
-        </div>
-      ) : null}
-      {m.unverified ? (
-        <div data-testid="ai-unverified">
-          <Chip tone="warning">{t("Unverified: no tool result backs these figures")}</Chip>
-        </div>
-      ) : null}
-      {m.stop_reason === "refusal" ? (
-        <div className="tiny">{t("The provider declined to answer this request.")}</div>
-      ) : null}
-      {m.stop_reason === "max_tokens" ? <div className="tiny">{t("The answer was cut short.")}</div> : null}
-      <div className="tiny">{formatDateTime(m.at)}</div>
+      <div className={`bubble ${mine ? "out" : "in"}`}>
+        {fallback ? (
+          <span className="chip warning" data-testid="ai-fallback-chip">
+            {t("Answered via OpenRouter fallback")}
+          </span>
+        ) : null}
+        {m.thinking ? <Thinking text={m.thinking} /> : null}
+        {m.calls?.length ? (
+          <div className="tool-timeline">
+            {m.calls.map((c) => (
+              <ToolStep key={c.id} name={c.name} input={c.input} result={c.result} isError={c.is_error} />
+            ))}
+          </div>
+        ) : null}
+        {m.attachments?.length ? (
+          <div className="row wrap">
+            {m.attachments.map((a) => (
+              <Attachment key={a.attachment_id} id={a.attachment_id} />
+            ))}
+          </div>
+        ) : null}
+        {m.has_context ? <Chip tone="brand">{t("Till cart attached")}</Chip> : null}
+        {m.unverified ? (
+          <div className="ai-unverified" data-testid="ai-unverified" role="note">
+            <AlertTriangle size={16} aria-hidden />
+            {t("Unverified: no tool result backs these figures")}
+          </div>
+        ) : null}
+        {m.text ? mine ? <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div> : <RichText text={m.text} /> : null}
+        {m.role === "assistant" && m.text && m.evidence?.length ? (
+          <div className="evidence" data-testid="ai-evidence">
+            {m.evidence.slice(0, 8).map((ev, j) => {
+              const to = evidenceLink(ev.tool, ev.ids);
+              const body = (
+                <>
+                  <span dir="ltr">
+                    {ev.tool}
+                    {ev.ids.length ? ` · ${ev.ids.slice(0, 2).join(", ")}${ev.ids.length > 2 ? "…" : ""}` : ""}
+                  </span>
+                  <span className="ev-time">{relative(ev.at)}</span>
+                </>
+              );
+              return to ? (
+                <Link key={j} to={to} className="ev-chip">
+                  {body}
+                </Link>
+              ) : (
+                <span key={j} className="ev-chip">
+                  {body}
+                </span>
+              );
+            })}
+          </div>
+        ) : null}
+        {m.stop_reason === "refusal" ? (
+          <div className="tiny">{t("The provider declined to answer this request.")}</div>
+        ) : null}
+        {m.stop_reason === "max_tokens" ? <div className="tiny">{t("The answer was cut short.")}</div> : null}
+        <div className="bubble-time">{formatDateTime(m.at)}</div>
+      </div>
     </div>
   );
 }
@@ -376,6 +492,11 @@ export const SLASH: SlashDef[] = [
   { name: "reorder", read: true, desc: () => t("Reorder playbook") },
   { name: "refund_spike", read: true, desc: () => t("Refund-spike playbook") },
 ];
+
+/** Palette groups: read-only lookups, writes (proposals only) and chat controls. */
+const slashGroup = (d: SlashDef): "read" | "write" | "chat" =>
+  d.read ? "read" : d.name === "price" ? "write" : "chat";
+const SLASH_GROUP_LABEL = { read: () => t("Read"), write: () => t("Write"), chat: () => t("Chat") };
 
 const PAGES = [
   "dashboard",
@@ -535,14 +656,21 @@ function SlashResultCard({ r, onClose, onExplain }: { r: AiSlashResult; onClose:
 
 const DAY_LABEL = (): string[] => [t("Mon"), t("Tue"), t("Wed"), t("Thu"), t("Fri"), t("Sat"), t("Sun")];
 
+const TIME_PRESETS = ["07:00", "09:00", "13:00", "18:00", "22:00"];
+
+/** Briefings: playbook tiles, time presets and day toggles (all 48 px, tap only). */
 function BriefingForm({ b, onSaved, onCancel }: { b: AiBriefing | null; onSaved: () => void; onCancel: () => void }) {
   const act = useAction();
-  const [name, setName] = useState(b?.name ?? t("End of day"));
   const [playbook, setPlaybook] = useState<AiBriefing["playbook"]>(b?.playbook ?? "eod");
+  const [name, setName] = useState(b?.name ?? "");
   const [at, setAt] = useState(b?.at_time ?? "22:00");
+  const [custom, setCustom] = useState(!!b && !TIME_PRESETS.includes(b.at_time));
   const [days, setDays] = useState(b?.days ?? "1234567");
   const [withAi, setWithAi] = useState(b?.with_ai ?? false);
   const [enabled, setEnabled] = useState(b?.enabled ?? true);
+  const label = PLAYBOOKS.find((x) => x.name === playbook)?.label() ?? playbook;
+  const toggleDay = (k: string) =>
+    setDays(days.includes(k) ? days.replace(k, "") : [...new Set((days + k).split(""))].sort().join(""));
   return (
     <Confirm
       title={b ? t("Edit briefing") : t("New briefing")}
@@ -552,48 +680,112 @@ function BriefingForm({ b, onSaved, onCancel }: { b: AiBriefing | null; onSaved:
       onCancel={onCancel}
       onConfirm={async () => {
         const r = await act.run(() =>
-          api.ai.briefingSave(b?.briefing_id ?? null, { name, playbook, at_time: at, days, with_ai: withAi, enabled }),
+          api.ai.briefingSave(b?.briefing_id ?? null, {
+            name: name.trim() || label,
+            playbook,
+            at_time: at,
+            days: days || "1234567",
+            with_ai: withAi,
+            enabled,
+          }),
         );
         if (r) onSaved();
       }}
     >
-      <div className="col gap-8">
-        <TextInput label={t("Name")} value={name} onChange={(e) => setName(e.target.value)} />
-        <Field label={t("Playbook")}>
-          <select
-            className="select"
-            value={playbook}
-            onChange={(e) => setPlaybook(e.target.value as AiBriefing["playbook"])}
-          >
-            {PLAYBOOKS.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.label()}
-              </option>
+      <div className="col gap-16 briefing-form">
+        <div className="toggle-group" role="radiogroup" aria-label={t("Playbook")}>
+          {PLAYBOOKS.map((p) => (
+            <button
+              key={p.name}
+              type="button"
+              role="radio"
+              aria-checked={playbook === p.name}
+              className={`toggle ${playbook === p.name ? "on" : ""}`}
+              onClick={() => setPlaybook(p.name)}
+            >
+              {p.label()}
+            </button>
+          ))}
+        </div>
+        <div>
+          <div className="field-label">{t("Time")}</div>
+          <div className="toggle-group" role="radiogroup" aria-label={t("Time")}>
+            {TIME_PRESETS.map((x) => (
+              <button
+                key={x}
+                type="button"
+                role="radio"
+                aria-checked={!custom && at === x}
+                className={`toggle num ${!custom && at === x ? "on" : ""}`}
+                onClick={() => (setCustom(false), setAt(x))}
+              >
+                {x}
+              </button>
             ))}
-          </select>
-        </Field>
-        <Field label={t("Time")}>
-          <input className="input" type="time" value={at} onChange={(e) => setAt(e.target.value)} />
-        </Field>
-        <Field label={t("Days")}>
-          <div className="row wrap">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={custom}
+              className={`toggle ${custom ? "on" : ""}`}
+              onClick={() => setCustom(true)}
+            >
+              {t("Other time")}
+            </button>
+          </div>
+          {custom ? (
+            <input
+              className="input"
+              style={{ marginTop: 8, maxWidth: 200 }}
+              type="time"
+              aria-label={t("Time")}
+              value={at}
+              onChange={(e) => setAt(e.target.value)}
+            />
+          ) : null}
+        </div>
+        <div>
+          <div className="field-label">{t("Days")}</div>
+          <div className="toggle-group days" role="group" aria-label={t("Days")}>
             {DAY_LABEL().map((d, i) => {
               const k = String(i + 1);
               return (
-                <Checkbox
+                <button
                   key={k}
-                  label={d}
-                  checked={days.includes(k)}
-                  onChange={(x) =>
-                    setDays(x ? [...new Set((days + k).split(""))].sort().join("") : days.replace(k, ""))
-                  }
-                />
+                  type="button"
+                  aria-pressed={days.includes(k)}
+                  className={`toggle ${days.includes(k) ? "on" : ""}`}
+                  onClick={() => toggleDay(k)}
+                >
+                  {d}
+                </button>
               );
             })}
           </div>
-        </Field>
-        <Checkbox label={t("Add an AI summary (needs a real provider)")} checked={withAi} onChange={setWithAi} />
-        <Checkbox label={t("Enabled")} checked={enabled} onChange={setEnabled} />
+        </div>
+        <div className="toggle-group">
+          <button
+            type="button"
+            aria-pressed={withAi}
+            className={`toggle ${withAi ? "on" : ""}`}
+            onClick={() => setWithAi(!withAi)}
+          >
+            {t("Add an AI summary (needs a real provider)")}
+          </button>
+          <button
+            type="button"
+            aria-pressed={enabled}
+            className={`toggle ${enabled ? "on" : ""}`}
+            onClick={() => setEnabled(!enabled)}
+          >
+            {t("Enabled")}
+          </button>
+        </div>
+        <TextInput
+          label={t("Name (optional)")}
+          placeholder={label}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
         <div className="tiny">
           {t(
             "Runs while AMWAPOS is open on this computer, with the permissions of the person who saves it. It only reads.",
@@ -805,6 +997,19 @@ export function AiChat({
   const [shortcuts, setShortcuts] = useState(false);
   const [paletteIdx, setPaletteIdx] = useState(0);
   const [sendContext, setSendContext] = useState(true);
+  // A9: answer language for this viewer (the store setting wins when it is not "ui").
+  const [lang, setLang] = useState<"ui" | "en" | "ar">(() => {
+    try {
+      const v = localStorage.getItem("amwapos.ai.lang");
+      return v === "en" || v === "ar" ? v : "ui";
+    } catch {
+      return "ui";
+    }
+  });
+  const [sheet, setSheet] = useState<null | "model" | "attach" | "history" | "side">(null);
+  // C4: the answer at this index came from the free fallback model.
+  const [fallbackIdx, setFallbackIdx] = useState<number | null>(null);
+  const liveRef = useRef<Live | null>(null);
   const lastQuestion = useRef("");
   const act = useAction();
   const pb = useAction();
@@ -850,7 +1055,11 @@ export function AiChat({
           try {
             const r = await api.ai.stream(streamId, after);
             if (r.events.length) {
-              setLive((l) => (l ? applyEvents(l, r.events) : l));
+              setLive((l) => {
+                const n = l ? applyEvents(l, r.events) : l;
+                liveRef.current = n;
+                return n;
+              });
               after = r.next;
             }
             if (r.done) break;
@@ -862,7 +1071,7 @@ export function AiChat({
       })();
       const ctx = context && sendContext ? context() : null;
       const r = await act.run(() =>
-        api.ai.ask(q, conv?.conversation_id ?? null, getLang(), {
+        api.ai.ask(q, conv?.conversation_id ?? null, lang === "ui" ? getLang() : lang, {
           stream_id: streamId,
           images: photos.map((p) => p.id),
           context: ctx,
@@ -870,16 +1079,19 @@ export function AiChat({
       );
       stop = true;
       await poll;
+      const usedFallback = !!liveRef.current?.fallback;
+      liveRef.current = null;
       setLive(null);
       if (r) {
         setText("");
         setPhotos([]);
+        setFallbackIdx(usedFallback ? r.messages.length - 1 : null);
         setConv(r);
         setCid(r.conversation_id);
         void list.reload();
       }
     },
-    [act, context, conv, list, photos, sendContext],
+    [act, context, conv, list, photos, sendContext, lang],
   );
 
   const resolvePin = async (kind: AiPin["kind"], q: string): Promise<string | null> => {
@@ -1048,142 +1260,176 @@ export function AiChat({
     }
   };
 
-  const conversations = (
-    <div className="card" style={{ maxHeight: compact ? 220 : 640, overflow: "auto" }}>
-      <div style={{ padding: 12 }} className="col gap-8">
-        <Button icon={<Plus size={16} />} onClick={() => (setCid(null), setConv(null), setView("chat"))}>
-          {t("New conversation")}
-        </Button>
-        <div className="col" style={{ gap: 6 }}>
-          <Button
-            variant={view === "inbox" ? "primary" : "ghost"}
-            icon={<Inbox size={16} />}
-            data-testid="ai-inbox-button"
-            onClick={() => setView(view === "inbox" ? "chat" : "inbox")}
-          >
-            {t("Action inbox")}
-          </Button>
-          {has("admin.access") ? (
-            <Button
-              variant={view === "briefings" ? "primary" : "ghost"}
-              icon={<CalendarClock size={16} />}
-              data-testid="ai-briefings-button"
-              onClick={() => setView(view === "briefings" ? "chat" : "briefings")}
-            >
-              {t("Briefings")}
-            </Button>
-          ) : null}
-        </div>
-      </div>
-      {(list.data ?? []).map((c) => (
+  const openChat = (id: string | null) => {
+    setCid(id);
+    if (!id) setConv(null);
+    setView("chat");
+    setSheet(null);
+  };
+  const cycleLang = () => {
+    const next = lang === "ui" ? "en" : lang === "en" ? "ar" : "ui";
+    setLang(next);
+    try {
+      localStorage.setItem("amwapos.ai.lang", next);
+    } catch {
+      /* per-viewer convenience only */
+    }
+  };
+  const storeLang = status.settings?.answer_language ?? "ui";
+  const langLabel = storeLang !== "ui" ? storeLang.toUpperCase() : lang === "ui" ? t("UI") : lang.toUpperCase();
+  const modelName = status.active_provider === "fake" ? t("Offline test model") : providerLabel(status.active_provider);
+  const cartCtx = context ? context() : null;
+  const openProposals = (conv?.proposals ?? []).filter((p) => p.status === "proposed");
+  const otherProposals = (conv?.proposals ?? []).filter((p) => p.status !== "proposed");
+  const lastAnswer = [...(conv?.messages ?? [])].reverse().find((m) => m.role === "assistant" && m.text);
+  const lastAssistantIdx = (conv?.messages ?? []).reduce((a, m, i) => (m.role === "assistant" ? i : a), -1);
+
+  const rail = (
+    <nav className="ai-rail" aria-label={t("Conversations")}>
+      <Button
+        variant="primary"
+        block
+        icon={<Plus size={20} />}
+        data-testid="ai-new-chat"
+        onClick={() => openChat(null)}
+      >
+        {t("New conversation")}
+      </Button>
+      <div className="ai-views" role="tablist">
         <button
-          key={c.conversation_id}
-          className={`list-row ${cid === c.conversation_id ? "active" : ""}`}
-          style={{
-            display: "block",
-            width: "100%",
-            textAlign: "start",
-            padding: 12,
-            borderTop: "1px solid var(--border)",
-          }}
-          onClick={() => (setCid(c.conversation_id), setView("chat"))}
+          type="button"
+          role="tab"
+          aria-selected={view === "chat"}
+          className={`ai-view ${view === "chat" ? "on" : ""}`}
+          onClick={() => setView("chat")}
         >
-          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</div>
-          <div className="tiny">
-            {relative(c.updated_at)}
-            {c.open_proposals ? ` · ${t("{0} to review", c.open_proposals)}` : ""}
-          </div>
+          <MessageSquare size={20} aria-hidden /> {t("Chat")}
         </button>
-      ))}
-    </div>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "inbox"}
+          className={`ai-view ${view === "inbox" ? "on" : ""}`}
+          data-testid="ai-inbox-button"
+          onClick={() => (setView("inbox"), setSheet(null))}
+        >
+          <Inbox size={20} aria-hidden /> {t("Action inbox")}
+        </button>
+        {has("admin.access") ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "briefings"}
+            className={`ai-view ${view === "briefings" ? "on" : ""}`}
+            data-testid="ai-briefings-button"
+            onClick={() => (setView("briefings"), setSheet(null))}
+          >
+            <CalendarClock size={20} aria-hidden /> {t("Briefings")}
+          </button>
+        ) : null}
+      </div>
+      <div className="ai-convs">
+        {(list.data ?? []).map((c) => (
+          <button
+            key={c.conversation_id}
+            type="button"
+            className={`ai-conv ${cid === c.conversation_id ? "on" : ""}`}
+            onClick={() => openChat(c.conversation_id)}
+          >
+            <span className="ellipsis c-title">{c.title}</span>
+            <span className="tiny">
+              {relative(c.updated_at)}
+              {c.open_proposals ? (
+                <>
+                  {" · "}
+                  <span className="c-open">{t("{0} to review", c.open_proposals)}</span>
+                </>
+              ) : null}
+            </span>
+          </button>
+        ))}
+        {list.data && !list.data.length ? (
+          <div className="tiny muted ai-convs-empty">{t("No conversations yet.")}</div>
+        ) : null}
+      </div>
+    </nav>
   );
 
-  const chat = (
-    <div className="col gap-16">
-      {!compact ? (
-        <div className="small muted">
-          {status.mutations && status.can_mutate
-            ? t(
-                "The assistant may propose any admin change you are allowed to make. Nothing changes until a person confirms.",
-              )
-            : t("Read-only: the assistant cannot change anything.")}{" "}
-          {t("Provider")}: {providerLabel(status.active_provider)} · {status.model_id}
-          {status.daily_token_cap
-            ? ` · ${t("Tokens today: {0} of {1}", status.tokens_today ?? 0, status.daily_token_cap)}`
-            : ""}
-          {status.fallback_ready ? ` · ${t("Fallback ready")}` : ""}
+  const proposalsPanel = (inline: boolean) => (
+    <>
+      {openProposals.map((p) => (
+        <ProposalCard key={p.proposal_id} p={p} onChanged={() => void reloadConv()} />
+      ))}
+      {otherProposals.map((p) => (
+        <ProposalCard key={p.proposal_id} p={p} onChanged={() => void reloadConv()} />
+      ))}
+      {!inline && !conv?.proposals.length ? (
+        <div className="side-empty">
+          <strong>{t("Proposals")}</strong>
+          <p>{t("Changes the assistant prepares appear here. Nothing changes until a person confirms.")}</p>
         </div>
       ) : null}
-      {conv ? (
-        <div className="row wrap" style={{ gap: 6 }}>
-          {renaming !== null ? (
-            <form
-              className="row"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (await act.run(() => api.ai.rename(conv.conversation_id, renaming))) {
-                  setRenaming(null);
-                  void reloadConv();
-                }
-              }}
-            >
-              <input
-                className="input"
-                autoFocus
-                aria-label={t("Conversation name")}
-                value={renaming}
-                onChange={(e) => setRenaming(e.target.value)}
-              />
-              <Button type="submit" variant="primary">
-                {t("Save")}
-              </Button>
-              <Button variant="ghost" onClick={() => setRenaming(null)}>
-                {t("Cancel")}
-              </Button>
-            </form>
-          ) : (
-            <>
-              <strong>{conv.title}</strong>
-              <button className="icon-btn" aria-label={t("Rename")} onClick={() => setRenaming(conv.title)}>
-                <Pencil size={14} />
-              </button>
-            </>
-          )}
-          {(conv.pins ?? []).map((p) => (
-            <Chip key={`${p.kind}-${p.id}`}>
-              <Pin size={12} /> {PIN_LABEL[p.kind]()}: {p.label}{" "}
-              <button
-                className="icon-btn"
-                aria-label={t("Unpin")}
-                onClick={async () => {
-                  if (await act.run(() => api.ai.unpin(conv.conversation_id, p.kind, p.id))) void reloadConv();
-                }}
-              >
-                <X size={12} />
-              </button>
-            </Chip>
-          ))}
-          <span className="tiny muted">{t("Pin with /pin product <name>")}</span>
-        </div>
+    </>
+  );
+
+  const side = (
+    <aside className="ai-side" aria-label={t("Proposals and evidence")}>
+      {proposalsPanel(false)}
+      {lastAnswer?.evidence?.length ? (
+        <section className="side-card">
+          <h3>{t("Evidence")}</h3>
+          <ul className="ev-list">
+            {lastAnswer.evidence.slice(0, 10).map((ev, j) => {
+              const to = evidenceLink(ev.tool, ev.ids);
+              const body = (
+                <>
+                  <code dir="ltr">{ev.tool}</code>
+                  <span className="tiny">
+                    {ev.ids.length ? `${ev.ids.length} · ` : ""}
+                    {relative(ev.at)}
+                  </span>
+                </>
+              );
+              return <li key={j}>{to ? <Link to={to}>{body}</Link> : <span>{body}</span>}</li>;
+            })}
+          </ul>
+        </section>
       ) : null}
-      {!compact ? (
-        <div className="row wrap" data-testid="ai-playbooks">
-          <span className="small muted">{t("Playbooks")}:</span>
+      <section className="side-card" data-testid="ai-playbooks">
+        <h3>{t("Playbooks")}</h3>
+        <div className="toggle-group">
           {PLAYBOOKS.map((b) => (
-            <Button
+            <button
               key={b.name}
-              variant="ghost"
-              loading={pb.busy}
+              type="button"
+              className="toggle"
+              disabled={pb.busy}
               onClick={async () => {
                 const r = await pb.run(() => api.ai.playbook(b.name));
                 if (r) setPlaybook(r);
               }}
             >
               {b.label()}
-            </Button>
+            </button>
           ))}
         </div>
-      ) : null}
+        <p className="tiny">
+          {status.mutations && status.can_mutate
+            ? t(
+                "The assistant may propose any admin change you are allowed to make. Nothing changes until a person confirms.",
+              )
+            : t("Read-only: the assistant cannot change anything.")}
+        </p>
+      </section>
+    </aside>
+  );
+
+  const suggestions = compact
+    ? [t("Which products are running low?"), t("Find a product")]
+    : [t("Which products are running low?"), t("How are sales today?"), t("Show the purchase orders")];
+
+  const transcript = (
+    <div className="ai-transcript" aria-live="polite">
       {pb.error ? <Banner tone="danger">{pb.error}</Banner> : null}
       {playbook ? <PlaybookResult r={playbook} onAsk={(q) => (setText(q), setPlaybook(null))} /> : null}
       {conv?.untrusted_seen ? (
@@ -1191,207 +1437,453 @@ export function AiChat({
           {t("This conversation read customer messages, photos or scanned text. Check any proposal carefully.")}
         </Banner>
       ) : null}
-      <div className="card card-pad col gap-16" style={{ minHeight: compact ? 200 : 320 }}>
-        {!conv && !live ? (
-          <div className="empty">
-            <Bot size={28} />
-            <div>{t("Try: “Which products are running low?”, or type / for commands.")}</div>
+      {!conv && !live ? (
+        <div className="ai-empty" data-testid="ai-empty">
+          <div className="ai-empty-art" aria-hidden>
+            <Bot size={40} />
           </div>
-        ) : null}
-        {conv?.messages.map((m, i) => (
-          <MessageView key={i} m={m} />
-        ))}
-        {live ? <LiveView live={live} /> : null}
-        {conv?.proposals.map((p) => (
-          <ProposalCard key={p.proposal_id} p={p} onChanged={() => void reloadConv()} />
-        ))}
-        {slashResults.map((r, i) => (
-          <SlashResultCard
-            key={i}
-            r={r}
-            onClose={() => setSlashResults((x) => x.filter((_, j) => j !== i))}
-            onExplain={() =>
-              void ask(
-                t(
-                  "Use your tools to look at: {0}. Explain what needs attention and what I should do next.",
-                  `/${r.command}`,
-                ),
-              )
-            }
-          />
-        ))}
-        <div ref={end} />
-      </div>
-      {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-      {photos.length ? (
-        <div className="row wrap">
-          {photos.map((p) => (
-            <Chip key={p.id}>
-              {p.name}{" "}
-              <button
-                className="icon-btn"
-                aria-label={t("Remove")}
-                onClick={() => setPhotos((x) => x.filter((y) => y.id !== p.id))}
-              >
-                <X size={12} />
-              </button>
-            </Chip>
-          ))}
-          <span className="tiny">{t("Photos are sent to the AI provider and treated as outside text.")}</span>
-        </div>
-      ) : null}
-      {context ? (
-        <Checkbox label={t("Include the current cart")} checked={sendContext} onChange={setSendContext} />
-      ) : null}
-      <div style={{ position: "relative" }}>
-        {palette.length ? (
-          <div
-            className="card"
-            role="listbox"
-            data-testid="ai-slash-palette"
-            style={{
-              position: "absolute",
-              bottom: "100%",
-              insetInlineStart: 0,
-              insetInlineEnd: 0,
-              maxHeight: 280,
-              overflow: "auto",
-              zIndex: 5,
-            }}
-          >
-            {palette.map((s, i) => (
-              <button
-                key={s.name}
-                role="option"
-                aria-selected={i === paletteIdx}
-                className={`list-row ${i === paletteIdx ? "active" : ""}`}
-                style={{ display: "flex", gap: 8, width: "100%", textAlign: "start", padding: "6px 12px" }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setText(`/${s.name}${s.args ? " " : ""}`);
-                  box.current?.focus();
-                }}
-              >
-                <code dir="ltr">
-                  /{s.name}
-                  {s.args ? ` ${s.args}` : ""}
-                </code>
-                <span className="small muted">{s.desc()}</span>
+          <h2>{compact ? t("Ask about this sale or the store") : t("Ask about sales, stock and purchasing")}</h2>
+          <p>{t("The assistant reads with your permissions. Type / for commands.")}</p>
+          <div className="toggle-group center">
+            {suggestions.map((q) => (
+              <button key={q} type="button" className="toggle" onClick={() => void ask(q)}>
+                {q}
               </button>
             ))}
           </div>
-        ) : null}
-        <textarea
-          ref={box}
-          style={{ width: "100%" }}
-          className="input"
-          rows={compact ? 1 : 2}
-          maxLength={4000}
-          value={text}
-          aria-label={t("Question")}
-          placeholder={t("Ask a question, or type / for commands")}
-          data-testid="ai-composer"
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (palette.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-              e.preventDefault();
-              setPaletteIdx((i) => (i + (e.key === "ArrowDown" ? 1 : palette.length - 1)) % palette.length);
-            } else if (palette.length && e.key === "Tab") {
-              e.preventDefault();
-              const s = palette[paletteIdx];
-              setText(`/${s.name}${s.args ? " " : ""}`);
-            } else if (e.key === "Escape") {
+        </div>
+      ) : null}
+      {conv?.messages.map((m, i) => (
+        <MessageView
+          key={i}
+          m={m}
+          fallback={i === fallbackIdx && i === lastAssistantIdx ? { from: "", to: "" } : null}
+        />
+      ))}
+      {live ? <LiveView live={live} /> : null}
+      {compact ? proposalsPanel(true) : null}
+      {slashResults.map((r, i) => (
+        <SlashResultCard
+          key={i}
+          r={r}
+          onClose={() => setSlashResults((x) => x.filter((_, j) => j !== i))}
+          onExplain={() =>
+            void ask(
+              t(
+                "Use your tools to look at: {0}. Explain what needs attention and what I should do next.",
+                `/${r.command}`,
+              ),
+            )
+          }
+        />
+      ))}
+      {act.error && !live ? (
+        <div className="ai-error" role="alert">
+          <XCircle size={20} aria-hidden />
+          <span className="grow">{act.error}</span>
+          {lastQuestion.current ? (
+            <Button icon={<RotateCw size={18} />} onClick={() => void ask(lastQuestion.current)}>
+              {t("Retry")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <div ref={end} />
+    </div>
+  );
+
+  const groups = (["read", "write", "chat"] as const)
+    .map((g) => ({ g, items: palette.filter((d) => slashGroup(d) === g) }))
+    .filter((x) => x.items.length);
+  const flatPalette = groups.flatMap((x) => x.items);
+
+  const composer = (
+    <div className="ai-composer">
+      {groups.length ? (
+        <div className="slash-palette" role="listbox" data-testid="ai-slash-palette" aria-label={t("Commands")}>
+          {groups.map(({ g, items }) => (
+            <div key={g} role="group" aria-label={SLASH_GROUP_LABEL[g]()}>
+              <div className="sp-group">{SLASH_GROUP_LABEL[g]()}</div>
+              {items.map((sd) => {
+                const i = flatPalette.indexOf(sd);
+                return (
+                  <button
+                    key={sd.name}
+                    type="button"
+                    role="option"
+                    aria-selected={i === paletteIdx}
+                    className={`sp-row ${i === paletteIdx ? "on" : ""}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (sd.args) {
+                        setText(`/${sd.name} `);
+                        box.current?.focus();
+                      } else void runSlash(`/${sd.name}`);
+                    }}
+                  >
+                    <code dir="ltr">
+                      /{sd.name}
+                      {sd.args ? ` ${sd.args}` : ""}
+                    </code>
+                    <span className="sp-desc">{sd.desc()}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {conv?.pins?.length || photos.length ? (
+        <div className="pin-row">
+          {(conv?.pins ?? []).map((p) => (
+            <span key={`${p.kind}-${p.id}`} className="pin-chip">
+              <Pin size={14} aria-hidden />
+              <span className="ellipsis">
+                {PIN_LABEL[p.kind]()}: {p.label}
+              </span>
+              <button
+                type="button"
+                aria-label={t("Unpin {0}", p.label)}
+                onClick={async () => {
+                  if (conv && (await act.run(() => api.ai.unpin(conv.conversation_id, p.kind, p.id))))
+                    void reloadConv();
+                }}
+              >
+                <X size={16} aria-hidden />
+              </button>
+            </span>
+          ))}
+          {photos.map((p) => (
+            <span key={p.id} className="pin-chip photo">
+              <ImageIcon size={14} aria-hidden />
+              <span className="ellipsis">{p.name}</span>
+              <button
+                type="button"
+                aria-label={t("Remove {0}", p.name)}
+                onClick={() => setPhotos((x) => x.filter((y) => y.id !== p.id))}
+              >
+                <X size={16} aria-hidden />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <textarea
+        ref={box}
+        className="ai-input"
+        rows={1}
+        maxLength={4000}
+        value={text}
+        aria-label={t("Question")}
+        placeholder={t("Ask a question, or type / for commands")}
+        data-testid="ai-composer"
+        onChange={(e) => {
+          setText(e.target.value);
+          const el = e.target;
+          el.style.height = "auto";
+          el.style.height = `${Math.min(el.scrollHeight + 2, 124)}px`;
+        }}
+        onKeyDown={(e) => {
+          if (flatPalette.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+            e.preventDefault();
+            setPaletteIdx((i) => (i + (e.key === "ArrowDown" ? 1 : flatPalette.length - 1)) % flatPalette.length);
+          } else if (flatPalette.length && e.key === "Tab") {
+            e.preventDefault();
+            const sd = flatPalette[paletteIdx];
+            setText(`/${sd.name}${sd.args ? " " : ""}`);
+          } else if (e.key === "Escape") {
+            if (text) {
+              e.stopPropagation();
               setText("");
-            } else if (e.key === "ArrowUp" && !text && lastQuestion.current) {
-              e.preventDefault();
-              setText(lastQuestion.current);
-            } else if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              if (palette.length) {
-                // Complete the highlighted command; run it when it needs nothing more.
-                const s = palette[paletteIdx];
-                if (s.args) return setText(`/${s.name} `);
-                return void runSlash(`/${s.name}`);
-              }
-              submit();
             }
+          } else if (e.key === "ArrowUp" && !text && lastQuestion.current) {
+            e.preventDefault();
+            setText(lastQuestion.current);
+          } else if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (flatPalette.length) {
+              // Complete the highlighted command; run it when it needs nothing more.
+              const sd = flatPalette[paletteIdx];
+              if (sd.args) return setText(`/${sd.name} `);
+              return void runSlash(`/${sd.name}`);
+            }
+            submit();
+          }
+        }}
+      />
+      <div className="ai-actions">
+        <input
+          ref={file}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void attach(f);
           }}
         />
-        <div className="row" style={{ marginTop: 8 }}>
-          <input
-            ref={file}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            hidden
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (f) void attach(f);
-            }}
-          />
-          <select
-            className="select"
-            aria-label={t("Attach as")}
-            value={attachKind}
-            style={{ width: "auto" }}
-            onChange={(e) => setAttachKind(e.target.value as typeof attachKind)}
-          >
-            <option value="photo">{t("Photo for the assistant")}</option>
-            {has("ocr.scan") ? <option value="invoice">{t("Supplier invoice (OCR)")}</option> : null}
-            {has("payments.review") ? <option value="payment">{t("Payment screenshot (OCR)")}</option> : null}
-          </select>
-          <button
-            className="icon-btn"
-            aria-label={t("Attach")}
-            title={t("Attach")}
-            onClick={() => file.current?.click()}
-          >
-            <Paperclip size={18} />
-          </button>
-          <span className="grow" />
-          <Button
-            id="ai-send"
-            variant="primary"
-            icon={<Send size={16} />}
-            loading={act.busy}
-            disabled={!text.trim()}
-            onClick={submit}
-          >
-            {t("Ask")}
-          </Button>
-          <button
-            className="icon-btn"
-            aria-label={t("Keyboard shortcuts")}
-            title={t("Keyboard shortcuts")}
-            onClick={() => setShortcuts(true)}
-          >
-            <Keyboard size={18} />
-          </button>
-        </div>
+        <button
+          type="button"
+          className="ai-act"
+          aria-label={t("Attach")}
+          onClick={() =>
+            has("ocr.scan") || has("payments.review")
+              ? setSheet("attach")
+              : (setAttachKind("photo"), file.current?.click())
+          }
+        >
+          <Paperclip size={20} aria-hidden />
+        </button>
+        <button
+          type="button"
+          className="ai-act"
+          aria-label={t("Commands")}
+          onClick={() => (setText("/"), box.current?.focus())}
+        >
+          <Slash size={20} aria-hidden />
+        </button>
+        <span className="grow" />
+        <button
+          type="button"
+          className="ai-chip"
+          data-testid="ai-lang-chip"
+          aria-label={t("Answer language: {0}", langLabel)}
+          disabled={storeLang !== "ui"}
+          onClick={cycleLang}
+        >
+          <Languages size={16} aria-hidden />
+          {langLabel}
+        </button>
+        <button
+          type="button"
+          className="ai-chip model"
+          data-testid="ai-model-chip"
+          aria-label={t("Model: {0} · {1}", modelName, status.model_id)}
+          onClick={() => setSheet("model")}
+        >
+          <Cpu size={16} aria-hidden />
+          <span className="ellipsis">{status.active_provider === "fake" ? t("Test model") : status.model_id}</span>
+        </button>
+        <button
+          type="button"
+          id="ai-send"
+          className="ai-send"
+          aria-label={t("Send")}
+          disabled={!text.trim() || act.busy}
+          onClick={submit}
+        >
+          {act.busy ? <span className="spinner" aria-hidden /> : <Send size={22} aria-hidden />}
+        </button>
       </div>
+    </div>
+  );
+
+  const sheets = (
+    <>
+      {sheet === "model" ? (
+        <Modal title={t("Model")} size="sheet narrow" onClose={() => setSheet(null)}>
+          <div className="col gap-16">
+            <dl className="kv">
+              <dt>{t("Provider")}</dt>
+              <dd>{modelName}</dd>
+              <dt>{t("Model")}</dt>
+              <dd>
+                <code dir="ltr">{status.model_id}</code>
+              </dd>
+              <dt>{t("Tokens today")}</dt>
+              <dd className="num">
+                {status.daily_token_cap
+                  ? t("{0} of {1}", status.tokens_today ?? 0, status.daily_token_cap)
+                  : String(status.tokens_today ?? 0)}
+              </dd>
+              <dt>{t("Fallback")}</dt>
+              <dd>{status.fallback_ready ? t("Ready (OpenRouter free model)") : t("Off")}</dd>
+              <dt>{t("Answer language")}</dt>
+              <dd>{storeLang !== "ui" ? t("Set by the store: {0}", storeLang.toUpperCase()) : langLabel}</dd>
+            </dl>
+            <Button size="lg" icon={<Keyboard size={20} />} onClick={() => (setSheet(null), setShortcuts(true))}>
+              {t("Keyboard shortcuts")}
+            </Button>
+            {has("settings.manage") ? (
+              <Link className="btn lg" to="/admin/settings?section=ai" onClick={() => setSheet(null)}>
+                <Settings2 size={20} aria-hidden /> {t("Open Settings → AI")}
+              </Link>
+            ) : null}
+          </div>
+        </Modal>
+      ) : null}
+      {sheet === "attach" ? (
+        <Modal title={t("Attach")} size="sheet narrow" onClose={() => setSheet(null)}>
+          <div className="more-grid one">
+            {[
+              { k: "photo" as const, label: t("Photo for the assistant"), icon: <ImageIcon size={20} />, show: true },
+              {
+                k: "invoice" as const,
+                label: t("Supplier invoice (OCR)"),
+                icon: <FileScan size={20} />,
+                show: has("ocr.scan"),
+              },
+              {
+                k: "payment" as const,
+                label: t("Payment screenshot (OCR)"),
+                icon: <Receipt size={20} />,
+                show: has("payments.review"),
+              },
+            ]
+              .filter((x) => x.show)
+              .map((x) => (
+                <button
+                  key={x.k}
+                  type="button"
+                  className="more-row"
+                  onClick={() => {
+                    setAttachKind(x.k);
+                    setSheet(null);
+                    setTimeout(() => file.current?.click(), 0);
+                  }}
+                >
+                  {x.icon}
+                  <span>{x.label}</span>
+                </button>
+              ))}
+          </div>
+          <p className="tiny" style={{ marginTop: 12 }}>
+            {t("Photos are sent to the AI provider and treated as outside text.")}
+          </p>
+        </Modal>
+      ) : null}
+      {sheet === "history" ? (
+        <Modal title={t("Conversations")} size="sheet narrow" onClose={() => setSheet(null)}>
+          {rail}
+        </Modal>
+      ) : null}
+      {sheet === "side" ? (
+        <Modal title={t("Proposals and evidence")} size="sheet narrow" onClose={() => setSheet(null)}>
+          {side}
+        </Modal>
+      ) : null}
       {shortcuts ? <ShortcutsHelp onClose={() => setShortcuts(false)} /> : null}
+    </>
+  );
+
+  const head = (
+    <div className="ai-center-head">
+      {conv && renaming !== null ? (
+        <form
+          className="row grow"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (await act.run(() => api.ai.rename(conv.conversation_id, renaming))) {
+              setRenaming(null);
+              void reloadConv();
+            }
+          }}
+        >
+          <input
+            className="input"
+            autoFocus
+            aria-label={t("Conversation name")}
+            value={renaming}
+            onChange={(e) => setRenaming(e.target.value)}
+          />
+          <Button type="submit" variant="primary">
+            {t("Save")}
+          </Button>
+          <Button variant="ghost" onClick={() => setRenaming(null)}>
+            {t("Cancel")}
+          </Button>
+        </form>
+      ) : (
+        <>
+          <h2 className="ellipsis grow">
+            {view === "inbox"
+              ? t("Action inbox")
+              : view === "briefings"
+                ? t("Briefings")
+                : (conv?.title ?? t("New conversation"))}
+          </h2>
+          {conv && view === "chat" ? (
+            <button type="button" className="ai-act" aria-label={t("Rename")} onClick={() => setRenaming(conv.title)}>
+              <Pencil size={18} aria-hidden />
+            </button>
+          ) : null}
+          {!compact ? (
+            <button
+              type="button"
+              className="ai-act side-toggle"
+              aria-label={t("Proposals and evidence")}
+              onClick={() => setSheet("side")}
+            >
+              <Inbox size={18} aria-hidden />
+              {openProposals.length ? <span className="badge">{openProposals.length}</span> : null}
+            </button>
+          ) : null}
+        </>
+      )}
     </div>
   );
 
   if (compact) {
     return (
-      <div className="col gap-8">
-        {view === "inbox" ? <ActionInbox onOpen={(id) => (setCid(id), setView("chat"))} /> : null}
-        {view === "briefings" ? <BriefingsPanel /> : null}
-        {view === "chat" ? chat : null}
-        <details>
-          <summary className="small">{t("Conversations, inbox and briefings")}</summary>
-          {conversations}
-        </details>
+      <div className="ai-compact">
+        <div className="ai-compact-bar">
+          {context ? (
+            <button
+              type="button"
+              className={`ctx-chip ${sendContext && cartCtx ? "on" : ""}`}
+              aria-pressed={sendContext}
+              data-testid="ai-cart-chip"
+              onClick={() => setSendContext(!sendContext)}
+            >
+              <ShoppingCart size={16} aria-hidden />
+              {cartCtx
+                ? t("Cart: {0} lines · {1}", cartCtx.lines.length, formatMoney(cartCtx.total_minor))
+                : t("Cart is empty")}
+              <span className="ctx-state">{sendContext ? t("included") : t("not sent")}</span>
+            </button>
+          ) : null}
+          <span className="grow" />
+          <button type="button" className="ai-act" aria-label={t("Conversations")} onClick={() => setSheet("history")}>
+            <MessageSquare size={20} aria-hidden />
+          </button>
+        </div>
+        {view === "inbox" ? (
+          <div className="ai-transcript">
+            <ActionInbox onOpen={(id) => openChat(id)} />
+          </div>
+        ) : view === "briefings" ? (
+          <div className="ai-transcript">
+            <BriefingsPanel />
+          </div>
+        ) : (
+          transcript
+        )}
+        {view === "chat" ? composer : null}
+        {sheets}
       </div>
     );
   }
   return (
-    <div className="grid-2" style={{ gridTemplateColumns: "280px 1fr", gap: 16, alignItems: "start" }}>
-      {conversations}
-      {view === "inbox" ? <ActionInbox onOpen={(id) => (setCid(id), setView("chat"))} /> : null}
-      {view === "briefings" ? <BriefingsPanel /> : null}
-      {view === "chat" ? chat : null}
+    <div className="ai-page" data-testid="ai-page">
+      {rail}
+      <section className="ai-center">
+        {head}
+        {view === "inbox" ? (
+          <div className="ai-transcript">
+            <ActionInbox onOpen={(id) => openChat(id)} />
+          </div>
+        ) : view === "briefings" ? (
+          <div className="ai-transcript">
+            <BriefingsPanel />
+          </div>
+        ) : (
+          transcript
+        )}
+        {view === "chat" ? composer : null}
+      </section>
+      {side}
+      {sheets}
     </div>
   );
 }
@@ -1401,50 +1893,69 @@ export function AiReady({ children }: { children: (st: AiStatus) => ReactNode })
   const { has } = useSession();
   const status = useLoad(() => api.ai.status(), []);
   const st = status.data;
-  if (status.error) return <Banner tone="danger">{status.error}</Banner>;
+  if (status.error)
+    return (
+      <div className="ai-state">
+        <XCircle size={36} aria-hidden />
+        <h2>{t("The assistant could not be reached")}</h2>
+        <p>{status.error}</p>
+        <Button size="lg" icon={<RotateCw size={20} />} onClick={() => void status.reload()}>
+          {t("Retry")}
+        </Button>
+      </div>
+    );
   if (!st) return <Skeleton />;
   if (!st.ready) {
     return (
-      <Banner tone="info" title={t("The assistant is not set up yet")}>
-        <div className="col gap-8">
-          {!st.key_configured ? <div>• {t("No AI provider key is stored.")}</div> : null}
-          {st.settings.consent === false ? (
-            <div>• {t("An owner has not agreed to send store data to the provider.")}</div>
-          ) : null}
-          {has("settings.manage") ? (
-            <Link to="/admin/settings?section=ai">{t("Open Settings → AI")}</Link>
-          ) : (
-            <div>{t("Ask the owner to finish the setup in Settings → AI.")}</div>
-          )}
+      <div className="ai-state" data-testid="ai-not-ready">
+        <div className="ai-empty-art" aria-hidden>
+          <Bot size={40} />
         </div>
-      </Banner>
+        <h2>{!st.key_configured ? t("Add a key in Settings → AI") : t("The assistant is not set up yet")}</h2>
+        <p>
+          {!st.key_configured
+            ? t("No AI provider key is stored.")
+            : st.settings.consent === false
+              ? t("An owner has not agreed to send store data to the provider.")
+              : t("Finish the setup in Settings → AI.")}
+        </p>
+        {has("settings.manage") ? (
+          <Link className="btn primary lg" to="/admin/settings?section=ai">
+            <Settings2 size={20} aria-hidden /> {t("Open Settings → AI")}
+          </Link>
+        ) : (
+          <p className="tiny">{t("Ask the owner to finish the setup in Settings → AI.")}</p>
+        )}
+      </div>
     );
   }
   return <>{children(st)}</>;
 }
 
-export function AiAssistantPage() {
-  const [search] = useSearchParams();
-  const status = useLoad(() => api.ai.status(), []);
-  const st = status.data;
+/** ai.enabled is off: one sentence and the way to turn it on. */
+function AiOff() {
+  const { has } = useSession();
   return (
-    <div>
-      <PageHeader
-        title={t("AI Assistant")}
-        subtitle={t("Ask about sales, stock, margins and purchasing. The assistant reads data with your permissions.")}
-      />
-      {st ? (
-        <div className="row" style={{ marginBottom: 12 }} data-testid="ai-provider-chip">
-          <Chip tone={st.active_provider === "fake" ? "default" : "info"}>
-            {st.active_provider === "fake" ? t("Offline test model") : providerLabel(st.active_provider)} ·{" "}
-            {st.model_id}
-          </Chip>
-          <span className="tiny muted">{t("Press ? for shortcuts, / for commands.")}</span>
-        </div>
-      ) : null}
-      <FeatureGate feature="ai.enabled">
-        <AiReady>{(s) => <AiChat status={s} initialText={search.get("q") ?? ""} />}</AiReady>
-      </FeatureGate>
+    <div className="ai-state" data-testid="ai-off">
+      <div className="ai-empty-art" aria-hidden>
+        <Bot size={40} />
+      </div>
+      <h2>{t("The AI assistant is switched off")}</h2>
+      <p>{t("Selling, cash, refunds and reports work fully without it.")}</p>
+      {has("settings.manage") ? (
+        <Link className="btn primary lg" to="/admin/settings?section=features">
+          <Settings2 size={20} aria-hidden /> {t("Open Features")}
+        </Link>
+      ) : (
+        <p className="tiny">{t("Ask the owner to enable it in Settings → Features.")}</p>
+      )}
     </div>
   );
+}
+
+export function AiAssistantPage() {
+  const [search] = useSearchParams();
+  const on = useFeature("ai.enabled");
+  if (!on) return <AiOff />;
+  return <AiReady>{(s) => <AiChat status={s} initialText={search.get("q") ?? ""} />}</AiReady>;
 }

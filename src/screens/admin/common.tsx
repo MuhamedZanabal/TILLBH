@@ -255,14 +255,20 @@ export function Drawer({
   }, [onClose]);
   return createPortal(
     <>
-      <div className="backdrop" style={{ background: "rgba(15,28,46,0.25)" }} onMouseDown={onClose} />
+      <div className="backdrop" style={{ background: "var(--backdrop)", opacity: 0.55 }} onMouseDown={onClose} />
       <aside className="drawer" role="dialog" aria-modal="true">
         <div className="d-head">
           <h2 className="grow" style={{ fontSize: 18 }}>
             {title}
           </h2>
           {actions}
-          <Button variant="ghost" aria-label={t("Close")} icon={<X size={18} />} onClick={onClose} />
+          <Button
+            variant="ghost"
+            className="close-btn"
+            aria-label={t("Close")}
+            icon={<X size={22} />}
+            onClick={onClose}
+          />
         </div>
         <div className="d-body">{children}</div>
       </aside>

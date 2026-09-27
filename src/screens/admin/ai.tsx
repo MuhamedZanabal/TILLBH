@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Inbox } from "lucide-react";
+import { AlertTriangle, CalendarClock, Inbox } from "lucide-react";
 import { api } from "../../api";
 import type { AiPlaybookResult, AiProposal, AiProvider, AiSettings, AiTestResult, WaStatus } from "../../api/types";
 import { useSession } from "../../state/session";
@@ -29,38 +29,62 @@ export const TOOL_LABEL: Record<string, () => string> = {
 
 const n = (v: unknown) => (typeof v === "number" ? v : null);
 
+/** Field | before | after rows (the proposal card's diff). */
+function DiffRows({ rows }: { rows: [string, ReactNode, ReactNode, boolean][] }) {
+  return (
+    <table className="diff">
+      <thead>
+        <tr>
+          <th>{t("Field")}</th>
+          <th>{t("Before")}</th>
+          <th>{t("After")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([label, before, after, changed]) => (
+          <tr key={label} className={changed ? "changed" : ""}>
+            <th scope="row">{label}</th>
+            <td className="before">{before}</td>
+            <td className="after">{after}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function ProposalPreview({ p }: { p: AiProposal }) {
   const pv = p.preview;
+  const money = (v: unknown) => <span className="money">{formatMoney(n(v))}</span>;
   if (p.kind === "price_change") {
     return (
-      <dl className="kv">
-        <dt>{t("Product")}</dt>
-        <dd>{String(pv.product)}</dd>
-        <dt>{t("Current price")}</dt>
-        <dd>{formatMoney(n(pv.old_price_minor))}</dd>
-        <dt>{t("New price")}</dt>
-        <dd>
-          <strong>{formatMoney(n(pv.new_price_minor))}</strong>
-        </dd>
-        <dt>{t("Cost")}</dt>
-        <dd>{formatMoney(n(pv.cost_minor))}</dd>
-      </dl>
+      <div className="col gap-4">
+        <div className="p-subject">{String(pv.product)}</div>
+        <DiffRows
+          rows={[
+            [t("Price"), money(pv.old_price_minor), money(pv.new_price_minor), true],
+            [t("Cost"), money(pv.cost_minor), money(pv.cost_minor), false],
+          ]}
+        />
+      </div>
     );
   }
   if (p.kind === "stock_adjustment") {
     return (
-      <dl className="kv">
-        <dt>{t("Product")}</dt>
-        <dd>{String(pv.product)}</dd>
-        <dt>{t("Stock now")}</dt>
-        <dd>{formatQty(n(pv.old_stock_milli) ?? 0)}</dd>
-        <dt>{t("Stock after")}</dt>
-        <dd>
-          <strong>{formatQty(n(pv.new_stock_milli) ?? 0)}</strong>
-        </dd>
-        <dt>{t("Value change")}</dt>
-        <dd>{formatMoney(n(pv.value_change_minor))}</dd>
-      </dl>
+      <div className="col gap-4">
+        <div className="p-subject">{String(pv.product)}</div>
+        <DiffRows
+          rows={[
+            [
+              t("Stock"),
+              <span className="num">{formatQty(n(pv.old_stock_milli) ?? 0)}</span>,
+              <span className="num">{formatQty(n(pv.new_stock_milli) ?? 0)}</span>,
+              true,
+            ],
+            [t("Value change"), "—", money(pv.value_change_minor), true],
+          ]}
+        />
+      </div>
     );
   }
   const lines =
@@ -92,8 +116,8 @@ function ProposalPreview({ p }: { p: AiProposal }) {
 /** One value in a diff: fils as money, milli-units as quantities, the rest as text. */
 function DiffValue({ k, v }: { k: string; v: unknown }) {
   if (v === null || v === undefined || v === "") return <span className="muted">—</span>;
-  if (typeof v === "number" && k.endsWith("_minor")) return <>{formatMoney(v)}</>;
-  if (typeof v === "number" && k.endsWith("_milli")) return <>{formatQty(v)}</>;
+  if (typeof v === "number" && k.endsWith("_minor")) return <span className="money">{formatMoney(v)}</span>;
+  if (typeof v === "number" && k.endsWith("_milli")) return <span className="num">{formatQty(v)}</span>;
   if (typeof v === "boolean") return <>{v ? t("Yes") : t("No")}</>;
   if (typeof v === "object") {
     const text = JSON.stringify(v);
@@ -118,7 +142,29 @@ function flat(v: unknown, prefix = ""): Record<string, unknown> {
   return out;
 }
 
-/** F3: before → after for a command proposal; changed rows are highlighted. */
+/** "product.price_minor" → "Price" (money/qty/percent suffixes dropped). */
+function fieldLabel(k: string): string {
+  const last = k.split(".").pop() ?? k;
+  const base = last.replace(/_(minor|milli|bp|id)$/, "").replace(/_/g, " ");
+  const known: Record<string, () => string> = {
+    price: () => t("Price"),
+    "old price": () => t("Current price"),
+    "new price": () => t("New price"),
+    cost: () => t("Cost"),
+    name: () => t("Name"),
+    status: () => t("Status"),
+    active: () => t("Active"),
+    stock: () => t("Stock"),
+    points: () => t("Points"),
+    amount: () => t("Amount"),
+    balance: () => t("Balance"),
+    note: () => t("Note"),
+    reason: () => t("Reason"),
+  };
+  return known[base]?.() ?? base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+/** F3: field | before | after for a command proposal; changed rows are highlighted. */
 export function DiffView({ preview }: { preview: Record<string, unknown> }) {
   const before = flat(preview.before);
   const after = flat(preview.after ?? preview.changes);
@@ -126,38 +172,30 @@ export function DiffView({ preview }: { preview: Record<string, unknown> }) {
     (k) => !["approval_token", "operation_id", "pin"].includes(k.split(".").pop() ?? ""),
   );
   if (!keys.length) return <div className="small muted">{t("No preview is available for this change.")}</div>;
+  // Changed fields first, so the important rows are on screen.
+  const changed = (k: string) => k in after && JSON.stringify(before[k]) !== JSON.stringify(after[k]);
+  const ordered = [...keys.filter(changed), ...keys.filter((k) => !changed(k))].slice(0, 40);
   return (
-    <table className="table" data-testid="ai-diff">
+    <table className="diff" data-testid="ai-diff">
       <thead>
         <tr>
           <th>{t("Field")}</th>
-          <th>{t("Now")}</th>
-          <th>{t("After confirm")}</th>
+          <th>{t("Before")}</th>
+          <th>{t("After")}</th>
         </tr>
       </thead>
       <tbody>
-        {keys.slice(0, 40).map((k) => {
-          const changed = k in after && JSON.stringify(before[k]) !== JSON.stringify(after[k]);
-          return (
-            <tr key={k} style={changed ? { background: "var(--warning-soft, rgba(255,200,0,0.12))" } : undefined}>
-              <td>
-                <code dir="ltr" className="tiny">
-                  {k}
-                </code>
-              </td>
-              <td>{k in before ? <DiffValue k={k} v={before[k]} /> : <span className="muted">—</span>}</td>
-              <td>
-                {k in after ? (
-                  <strong>
-                    <DiffValue k={k} v={after[k]} />
-                  </strong>
-                ) : (
-                  <span className="muted">{t("unchanged")}</span>
-                )}
-              </td>
-            </tr>
-          );
-        })}
+        {ordered.map((k) => (
+          <tr key={k} className={changed(k) ? "changed" : ""}>
+            <th scope="row">{fieldLabel(k)}</th>
+            <td className="before">
+              {k in before ? <DiffValue k={k} v={before[k]} /> : <span className="muted">—</span>}
+            </td>
+            <td className="after">
+              {k in after ? <DiffValue k={k} v={after[k]} /> : <span className="muted">{t("unchanged")}</span>}
+            </td>
+          </tr>
+        ))}
       </tbody>
     </table>
   );
@@ -255,6 +293,55 @@ const KIND_LABEL: Record<string, () => string> = {
   purchase_order: () => t("Draft purchase order"),
 };
 
+/** Human title by proposing tool (never the raw command name). */
+const TOOL_TITLE: Record<string, () => string> = {
+  propose_price_change: () => t("Change a selling price"),
+  propose_bulk_price: () => t("Change selling prices"),
+  propose_margin_price: () => t("Set a price from a margin"),
+  propose_cost_update: () => t("Update a cost"),
+  propose_product_active: () => t("Archive or restore a product"),
+  propose_products_bulk_active: () => t("Archive or restore products"),
+  propose_stock_adjustment: () => t("Correct stock"),
+  propose_po_save: () => t("Draft a purchase order"),
+  propose_reorder: () => t("Reorder low stock"),
+  propose_loyalty_adjust: () => t("Adjust loyalty points"),
+  propose_credit_adjust: () => t("Adjust customer credit"),
+  propose_delivery_create: () => t("Create a delivery"),
+  propose_delivery_update: () => t("Update a delivery"),
+  propose_whatsapp_send: () => t("Send a WhatsApp message"),
+  propose_whatsapp_connect: () => t("Connect WhatsApp"),
+  propose_setting: () => t("Change a setting"),
+  propose_device_rename: () => t("Rename a device"),
+  propose_user_reset_pin: () => t("Reset a PIN"),
+};
+
+const PAGE_LABEL: Record<string, () => string> = {
+  products: () => t("Products"),
+  customers: () => t("Customers"),
+  suppliers: () => t("Suppliers"),
+  "purchase-orders": () => t("Purchase Orders"),
+  inventory: () => t("Inventory"),
+  sales: () => t("Sales"),
+  cash: () => t("Cash Events"),
+  users: () => t("Users"),
+  branches: () => t("Branches"),
+  devices: () => t("Devices"),
+  settings: () => t("Settings"),
+  backups: () => t("Backups"),
+  sync: () => t("Sync"),
+  updates: () => t("Updates"),
+  whatsapp: () => t("WhatsApp"),
+  "phone-view": () => t("Phone view"),
+  ai: () => t("AI Assistant"),
+  dashboard: () => t("Dashboard"),
+};
+
+function humanCommand(cmd: string): string {
+  const [area, action] = cmd.split(".");
+  const a = (area ?? "").replace(/_/g, " ");
+  return `${a.charAt(0).toUpperCase()}${a.slice(1)} · ${(action ?? "").replace(/_/g, " ")}`;
+}
+
 export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }) {
   const { has } = useSession();
   const toast = useToast();
@@ -269,9 +356,13 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
   // Decided by permissions (never the role's name): admin access plus at least
   // one write permission; the command itself re-checks on Confirm.
   const canDecide = (has("ai.mutate") || has("admin.access")) && WRITE_PERMISSIONS.some((x) => has(x));
-  const riskTone = p.risk === "high" ? "danger" : p.risk === "medium" ? "warning" : "success";
   const riskLabel = p.risk === "high" ? t("High risk") : p.risk === "medium" ? t("Medium risk") : t("Low risk");
-  const kindLabel = command ? t("Admin change") : KIND_LABEL[p.kind]?.();
+  const tool = typeof p.params.tool === "string" ? p.params.tool : "";
+  const title = command
+    ? (TOOL_TITLE[tool]?.() ?? humanCommand(p.kind.slice("command:".length)))
+    : (KIND_LABEL[p.kind]?.() ?? p.kind);
+  const page = typeof p.preview.page === "string" ? p.preview.page : null;
+  const pageName = page ? (PAGE_LABEL[page.split("/")[2] ?? ""]?.() ?? page) : null;
   const doConfirm = async () => {
     const r = await act.run(async () => {
       try {
@@ -296,97 +387,115 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
       else onChanged();
     }
   };
+  // High-risk changes and PIN resets get one review dialog; the rest confirm from the card (its diff is the review).
+  const onConfirm = () => (p.risk === "high" || needsPin ? setConfirm(true) : void doConfirm());
   return (
-    <div
-      className="card card-pad col gap-8"
-      data-testid="ai-proposal"
+    <article
+      className={`proposal risk-${p.risk} status-${p.status}`}
+      data-testid="ai-proposal-card"
       tabIndex={0}
+      aria-label={`${p.proposal_number} · ${title} · ${riskLabel}`}
       aria-keyshortcuts="Control+Enter Control+Backspace"
       onKeyDown={(e) => {
-        // F5: Ctrl+Enter reviews and confirms, Ctrl+Backspace rejects (focused card only).
+        // F5: Ctrl+Enter confirms, Ctrl+Backspace rejects (focused card only).
         if (!canDecide || p.status !== "proposed" || e.target !== e.currentTarget) return;
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
           e.preventDefault();
-          setConfirm(true);
+          onConfirm();
         } else if ((e.ctrlKey || e.metaKey) && e.key === "Backspace") {
           e.preventDefault();
           void act.run(() => api.ai.reject(p.proposal_id)).then((r) => r && onChanged());
         }
       }}
     >
-      <div className="row wrap">
-        <strong className="grow">
-          {p.proposal_number} · {kindLabel}
-          {command ? (
-            <>
-              {" "}
-              <code dir="ltr" className="tiny">
-                {p.kind.slice("command:".length)}
-              </code>
-            </>
-          ) : null}
-        </strong>
-        <Chip tone={riskTone}>{riskLabel}</Chip>
-        <Chip>{STATUS_LABEL[p.status]?.() ?? p.status}</Chip>
-      </div>
-      {command ? <DiffView preview={p.preview} /> : <ProposalPreview p={p} />}
-      {p.risk_reasons.length ? (
-        <ul className="small" style={{ margin: 0, paddingInlineStart: 18 }}>
-          {p.risk_reasons.map((r) => (
-            <li key={r}>{tb(r)}</li>
-          ))}
-        </ul>
-      ) : null}
-      {p.first_confirmed_by_name && p.status === "proposed" ? (
-        <Chip tone="info">{t("Confirmed by {0}; waiting for a second person", p.first_confirmed_by_name)}</Chip>
-      ) : null}
-      {p.error ? <Banner tone="danger">{tb(p.error)}</Banner> : null}
-      {act.error && !confirm ? <Banner tone="danger">{act.error}</Banner> : null}
-      {canDecide ? (
-        <div className="row wrap">
-          {p.status === "proposed" ? (
-            <>
-              <Button variant="primary" onClick={() => setConfirm(true)}>
-                {t("Review and confirm")}
-              </Button>
+      <div className="risk-stripe" data-testid="risk-stripe" aria-hidden />
+      <div className="p-body" data-testid="ai-proposal">
+        <header className="p-head">
+          <span className={`risk-chip ${p.risk}`}>{riskLabel}</span>
+          <span className="p-status">{STATUS_LABEL[p.status]?.() ?? p.status}</span>
+        </header>
+        <h3 className="p-title">{title}</h3>
+        <div className="p-number tiny">{p.proposal_number}</div>
+        <div data-testid="proposal-diff">{command ? <DiffView preview={p.preview} /> : <ProposalPreview p={p} />}</div>
+        {p.first_confirmed_by_name && p.status === "proposed" ? (
+          <div className="dual-line" role="status">
+            {t("Confirmed by {0}; waiting for a second person", p.first_confirmed_by_name)}
+          </div>
+        ) : null}
+        {p.risk_reasons.length ? (
+          <details className="p-reasons">
+            <summary>{t("Why this risk level")}</summary>
+            <ul>
+              {p.risk_reasons.map((r) => (
+                <li key={r}>{tb(r)}</li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {p.error ? <Banner tone="danger">{tb(p.error)}</Banner> : null}
+        {act.error && !confirm ? <Banner tone="danger">{act.error}</Banner> : null}
+        {canDecide ? (
+          <div className="p-actions">
+            {p.status === "proposed" ? (
+              <>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  block
+                  loading={act.busy}
+                  onClick={onConfirm}
+                  data-testid="ai-confirm"
+                >
+                  {t("Confirm")}
+                </Button>
+                <Button
+                  variant="ghost"
+                  block
+                  disabled={act.busy}
+                  onClick={async () => {
+                    if (await act.run(() => api.ai.reject(p.proposal_id))) onChanged();
+                  }}
+                >
+                  {t("Reject")}
+                </Button>
+              </>
+            ) : null}
+            {p.status === "executed" && (!command || p.preview.undo === true) ? (
               <Button
-                variant="ghost"
+                block
+                data-testid="ai-undo"
                 loading={act.busy}
                 onClick={async () => {
-                  if (await act.run(() => api.ai.reject(p.proposal_id))) onChanged();
+                  if (await act.run(() => api.ai.undo(p.proposal_id))) {
+                    toast("info", t("Undone with a correcting record"));
+                    onChanged();
+                  }
                 }}
               >
-                {t("Reject")}
+                {t("Undo")}
               </Button>
-            </>
-          ) : null}
-          {p.status === "executed" && (!command || p.preview.undo === true) ? (
-            <Button
-              data-testid="ai-undo"
-              loading={act.busy}
-              onClick={async () => {
-                if (await act.run(() => api.ai.undo(p.proposal_id))) {
-                  toast("info", t("Undone with a correcting record"));
-                  onChanged();
-                }
-              }}
-            >
-              {t("Undo")}
-            </Button>
-          ) : null}
-          {p.status === "executed" && command && p.preview.undo !== true ? (
-            <span className="tiny">
-              {t("This change cannot be undone from here. Correct it on the matching admin page.")}{" "}
-              {typeof p.preview.page === "string" ? <Link to={p.preview.page}>{t("Open the page")}</Link> : null}
-            </span>
-          ) : null}
-          {p.status === "executed" && p.kind === "purchase_order" && p.result?.po_id ? (
-            <Link to={`/admin/purchase-orders/${String(p.result.po_id)}`}>{t("Open order")}</Link>
-          ) : null}
-        </div>
-      ) : (
-        <div className="tiny">{t("A manager with permission to approve AI changes must confirm this.")}</div>
-      )}
+            ) : null}
+            {p.status === "executed" && command && p.preview.undo !== true ? (
+              page ? (
+                <Link className="btn block" to={page}>
+                  {t("Fix on {0}", pageName ?? page)}
+                </Link>
+              ) : (
+                <span className="tiny">
+                  {t("This change cannot be undone from here. Correct it on the matching admin page.")}
+                </span>
+              )
+            ) : null}
+            {p.status === "executed" && p.kind === "purchase_order" && p.result?.po_id ? (
+              <Link className="btn block" to={`/admin/purchase-orders/${String(p.result.po_id)}`}>
+                {t("Open order")}
+              </Link>
+            ) : null}
+          </div>
+        ) : (
+          <div className="tiny">{t("A manager with permission to approve AI changes must confirm this.")}</div>
+        )}
+      </div>
       {confirm ? (
         <Confirm
           title={t("Confirm {0}", p.proposal_number)}
@@ -454,7 +563,7 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
           </div>
         </Confirm>
       ) : null}
-    </div>
+    </article>
   );
 }
 
@@ -522,24 +631,24 @@ export function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
   const open = useLoad(() => api.ai.proposals("proposed"), []);
   const digest = useLoad(() => api.ai.digest(), []);
   const alerts = useLoad(() => api.ai.alerts(), []);
-  const reload = () => (void open.reload(), void digest.reload(), void alerts.reload());
+  const notes = useLoad(() => api.ai.notes(10), []);
+  const reload = () => (void open.reload(), void digest.reload(), void alerts.reload(), void notes.reload());
+  const unread = (notes.data ?? []).filter((n) => !n.read_at);
   return (
     <div className="col gap-16" data-testid="ai-inbox">
-      {alerts.data?.length ? (
-        <div className="card card-pad col gap-8" data-testid="ai-alerts">
-          <strong>{t("Alerts")}</strong>
-          <div className="tiny">
-            {t("Checked every 5 minutes while the app is open, against the limits in AI settings. Nothing is changed.")}
-          </div>
-          {alerts.data.map((a) => (
-            <div key={a.alert_id} className="row wrap" style={{ justifyContent: "space-between" }}>
-              <span className="row">
-                <Chip tone={a.severity === "danger" ? "danger" : a.severity === "warning" ? "warning" : "default"}>
-                  {ALERT_LABEL[a.kind]?.() ?? a.kind}
-                </Chip>
-                <span className="small">{tb(a.title)}</span>
-                <span className="tiny">{formatDateTime(a.created_at)}</span>
-              </span>
+      {alerts.data?.length || unread.length ? (
+        <section className="inbox-list" data-testid="ai-alerts">
+          {alerts.data?.map((a) => (
+            <div key={a.alert_id} className={`inbox-row alert ${a.severity}`}>
+              <AlertTriangle size={20} className="ir-icon" aria-hidden />
+              <div className="ir-main">
+                <div className="ir-title ellipsis">
+                  <span className="ir-kind">{ALERT_LABEL[a.kind]?.() ?? a.kind}</span> {tb(a.title)}
+                </div>
+                <div className="tiny">
+                  {t("Alert")} · {formatDateTime(a.created_at)}
+                </div>
+              </div>
               <Button
                 variant="ghost"
                 data-testid="ai-alert-dismiss"
@@ -549,10 +658,34 @@ export function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
               </Button>
             </div>
           ))}
-        </div>
+          {unread.map((n) => (
+            <details
+              key={n.note_id}
+              className="inbox-row note"
+              onToggle={(e) => {
+                if ((e.target as HTMLDetailsElement).open) void api.ai.noteRead(n.note_id);
+              }}
+            >
+              <summary>
+                <CalendarClock size={20} className="ir-icon" aria-hidden />
+                <div className="ir-main">
+                  <div className="ir-title ellipsis">{n.title}</div>
+                  <div className="tiny">
+                    {t("Briefing note")} · {formatDateTime(n.created_at)}
+                  </div>
+                </div>
+                <span className="chip info">{t("New")}</span>
+              </summary>
+              {n.summary ? <div className="ir-body">{n.summary}</div> : null}
+            </details>
+          ))}
+          <div className="tiny" style={{ padding: "8px 12px" }}>
+            {t("Checked every 5 minutes while the app is open, against the limits in AI settings. Nothing is changed.")}
+          </div>
+        </section>
       ) : null}
-      <div className="card card-pad col gap-8">
-        <strong>{t("Today's AI changes")}</strong>
+      <section className="side-card">
+        <h3>{t("Today's AI changes")}</h3>
         {digest.data ? (
           <div className="row wrap">
             {digest.data.counts.length ? (
@@ -574,23 +707,25 @@ export function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
           <Skeleton />
         )}
         <div className="tiny">{t("Open proposals expire after 60 minutes.")}</div>
-      </div>
+      </section>
       {open.error ? <Banner tone="danger">{open.error}</Banner> : null}
       {!open.data ? (
         <Skeleton />
       ) : open.data.length ? (
-        open.data.map((p) => (
-          <div key={p.proposal_id} className="col gap-4">
-            <ProposalCard p={p} onChanged={reload} />
-            <button className="link tiny" style={{ alignSelf: "flex-start" }} onClick={() => onOpen(p.conversation_id)}>
-              {t("Open the conversation")}
-            </button>
-          </div>
-        ))
+        <div className="inbox-proposals">
+          {open.data.map((p) => (
+            <div key={p.proposal_id} className="col gap-8">
+              <ProposalCard p={p} onChanged={reload} />
+              <Button variant="ghost" onClick={() => onOpen(p.conversation_id)}>
+                {t("Open the conversation")}
+              </Button>
+            </div>
+          ))}
+        </div>
       ) : (
-        <div className="empty">
-          <Inbox size={28} />
-          <div>{t("Nothing is waiting for a decision.")}</div>
+        <div className="ai-state small-state">
+          <Inbox size={28} aria-hidden />
+          <p>{t("Nothing is waiting for a decision.")}</p>
         </div>
       )}
     </div>

@@ -377,10 +377,22 @@ export function PosScreen({
     [cart],
   );
 
+  // Esc closes the till assistant (sheets opened from it handle Esc themselves).
+  useEffect(() => {
+    if (!aiOpen) return;
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector(".backdrop")) return;
+      setAiOpen(false);
+      focusScan();
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [aiOpen, focusScan]);
+
   // Global shortcuts and scanner capture when focus is outside the scan field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (modal.kind !== "none" || aiOpen) return;
+      if (modal.kind !== "none" || aiOpen || moreOpen) return;
       const target = e.target as HTMLElement;
       const inField =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT");
@@ -576,11 +588,15 @@ export function PosScreen({
       <header className="pos-header">
         <div className="brand" title={config?.business_name ?? undefined}>
           <Logo size={28} />
-          <span className="brand-name ellipsis">{config?.business_name || t("AMWAPOS")}</span>
+          <span className="brand-name ellipsis" dir="auto">
+            {config?.business_name || t("AMWAPOS")}
+          </span>
         </div>
         <span className="shift-chip">
           <UserRound size={16} aria-hidden />
-          <span className="ellipsis">{session?.display_name}</span>
+          <span className="ellipsis" dir="auto">
+            {session?.display_name}
+          </span>
           <span className="shift-no">{shift.shift_number}</span>
         </span>
         <div className="pills">

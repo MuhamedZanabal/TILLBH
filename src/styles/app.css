@@ -979,27 +979,7 @@ details.tech pre {
   }
 }
 
-/* AI assistant: chat bubbles, visible tool steps, icon buttons, till widget */
-.bubble {
-  padding: 10px 12px;
-  border-radius: var(--radius-card);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-.bubble.out {
-  background: var(--brand-soft);
-  border-color: transparent;
-}
-.ai-step {
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius);
-  padding: 6px 8px;
-  background: var(--surface);
-}
-.ai-step > summary,
-details > summary {
-  cursor: pointer;
-}
+/* AI assistant — see layout.css (.ai-*) for the page, composer and proposal card. */
 .icon-btn {
   position: relative;
   display: inline-flex;

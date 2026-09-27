@@ -274,7 +274,7 @@ test("Arabic RTL: cashier sale and admin are usable right-to-left", async ({ pag
   await page.getByLabel("الرمز السري").fill("7391");
   await page.getByRole("button", { name: "تسجيل الدخول" }).click();
   await expect(page.getByTestId("pos")).toBeVisible();
-  await expect(page.getByPlaceholder("امسح الباركود أو ابحث عن منتج…")).toBeVisible();
+  await expect(page.getByPlaceholder("امسح أو ابحث")).toBeVisible();
   await page.getByTestId("scan-input").focus();
   await page.keyboard.type("6281007031126", { delay: 5 });
   await page.keyboard.press("Enter");
@@ -380,7 +380,7 @@ test("AI assistant: live tool steps and thinking, slash commands, shortcuts, and
   await expect(page.getByTestId("ai-slash-result")).toContainText("/kpi");
   await shot(page, "31-ai-page");
   // F5: "?" opens the shortcut list when not typing.
-  await page.getByRole("heading", { name: "AI Assistant" }).click();
+  await composer.evaluate((el) => (el as HTMLTextAreaElement).blur());
   await page.keyboard.press("?");
   await expect(page.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
 });

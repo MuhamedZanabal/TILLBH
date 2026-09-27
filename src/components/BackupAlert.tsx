@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { DatabaseBackup } from "lucide-react";
+import { AlertTriangle, DatabaseBackup } from "lucide-react";
 import { api } from "../api";
 import type { DiagnosticItem } from "../api/types";
 import { t, tb } from "../i18n";
 import { explain } from "../lib/errors";
 import { useSession } from "../state/session";
 import { useToast } from "./toast";
-import { Banner, Button } from "./ui";
+import { Button } from "./ui";
 
 const POLL_MS = 5 * 60 * 1000;
 
@@ -57,27 +57,24 @@ export function BackupAlert() {
   const { health, refresh } = useBackupHealth();
   const now = useBackupNow(refresh);
   if (!health || health.state === "ok") return null;
+  const err = health.state === "error";
   return (
-    <div className="backup-alert" data-testid="backup-alert" role="alert">
-      <Banner
-        tone={health.state === "error" ? "danger" : "warning"}
-        title={health.state === "error" ? t("Backup failed") : t("Backup overdue")}
-        action={
-          has("backup.manage") ? (
-            <Button
-              variant="primary"
-              icon={<DatabaseBackup size={16} />}
-              loading={now.busy}
-              onClick={() => void now.run()}
-            >
-              {t("Backup Now")}
-            </Button>
-          ) : null
-        }
+    <div className={`backup-alert ${err ? "error" : ""}`} data-testid="backup-alert" role="alert">
+      <AlertTriangle size={20} className="ba-icon" aria-hidden />
+      <div
+        className="ba-text"
+        title={t(
+          "Automatic backups run only while AMWAPOS is open on this computer. Keep the hub running, or back up now.",
+        )}
       >
-        {tb(health.summary)}.{" "}
-        {t("Automatic backups run only while AMWAPOS is open on this computer. Keep the hub running, or back up now.")}
-      </Banner>
+        <strong>{err ? t("Backup failed") : t("Backup overdue")}</strong> — {tb(health.summary)}.{" "}
+        <span className="muted">{t("Automatic backups run only while AMWAPOS is open.")}</span>
+      </div>
+      {has("backup.manage") ? (
+        <Button variant="primary" icon={<DatabaseBackup size={18} />} loading={now.busy} onClick={() => void now.run()}>
+          {t("Backup Now")}
+        </Button>
+      ) : null}
     </div>
   );
 }
