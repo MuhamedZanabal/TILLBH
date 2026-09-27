@@ -44,8 +44,20 @@ pub fn latest_schema_version() -> i64 {
     MIGRATIONS.last().map(|m| m.version).unwrap_or(0)
 }
 
+/// Checksum of a migration with line endings normalised to LF, so a build
+/// from a Windows checkout (CRLF) and one from Linux (LF) agree.
 fn checksum(sql: &str) -> String {
-    hex::encode(Sha256::digest(sql.as_bytes()))
+    hex::encode(Sha256::digest(sql.replace("\r\n", "\n").as_bytes()))
+}
+
+/// A stored checksum matches if it equals the normalised one, or the raw hash
+/// of the LF or CRLF text (databases created before normalisation).
+fn checksum_matches(sql: &str, stored: &str) -> bool {
+    let lf = sql.replace("\r\n", "\n");
+    let crlf = lf.replace('\n', "\r\n");
+    stored == checksum(sql)
+        || stored == hex::encode(Sha256::digest(crlf.as_bytes()))
+        || stored == hex::encode(Sha256::digest(sql.as_bytes()))
 }
 
 const READ_POOL: usize = 4;
@@ -270,7 +282,7 @@ pub(crate) fn migrate(conn: &Connection, path: &Path) -> AppResult<MigrationRepo
     };
     for (v, sum) in &applied {
         match MIGRATIONS.iter().find(|m| m.version == *v) {
-            Some(m) if checksum(m.sql) == *sum => {}
+            Some(m) if checksum_matches(m.sql, sum) => {}
             Some(_) => {
                 return Err(AppError::new(
                     ErrorCode::Database,
@@ -376,6 +388,24 @@ mod tests {
         drop(db);
         let err = Db::open(&p, false).err().unwrap();
         assert!(err.message.contains("changed"));
+    }
+
+    #[test]
+    fn crlf_and_lf_checksums_are_accepted() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("t.db");
+        let (db, _) = Db::open(&p, true).unwrap();
+        let lf = MIGRATIONS[0].sql.replace("\r\n", "\n");
+        let crlf = lf.replace('\n', "\r\n");
+        for text in [crlf, lf] {
+            let sum = hex::encode(Sha256::digest(text.as_bytes()));
+            db.with_writer(|c| {
+                c.execute("UPDATE schema_migrations SET checksum=?1 WHERE version=1", [&sum])?;
+                Ok(())
+            })
+            .unwrap();
+            drop(Db::open(&p, false).expect("line endings alone must not block startup"));
+        }
     }
 
     #[test]
