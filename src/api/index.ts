@@ -357,6 +357,13 @@ export const api = {
     media: (seq: number) => call<T.FileBlob>("whatsapp.media", { seq }),
     markRead: (chat: string) => call<number>("whatsapp.mark_read", { chat }),
     summary: () => call<{ unread: number; queued: number; failed: number }>("whatsapp.summary"),
+    phoneContacts: () => call<T.WaPhoneContacts>("whatsapp.phone_contacts"),
+    phoneContactsRefresh: () => call<{ requested: boolean }>("whatsapp.phone_contacts_refresh"),
+    phoneContactsImport: (jids: string[] | null, update_existing: boolean) =>
+      call<{ created: number; updated: number; skipped: number }>("whatsapp.phone_contacts_import", {
+        jids,
+        update_existing,
+      }),
     importContacts: (chats?: string[]) =>
       call<{ created: number; linked: number; skipped: number }>("whatsapp.import_contacts", { chats }),
     triage: (limit?: number) =>

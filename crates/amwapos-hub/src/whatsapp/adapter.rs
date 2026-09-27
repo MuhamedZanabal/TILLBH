@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use amwapos_core::messaging::Inbound;
+pub use amwapos_core::wa_contacts::WaContact;
 use async_trait::async_trait;
 
 /// Resolves when the client's run loop has ended (stop, logout, crash).
@@ -89,6 +90,11 @@ pub trait AdapterSink: Send + Sync {
     /// messages to WhatsApp only after this returns `Ok`; on `Err` WhatsApp
     /// delivers them again.
     async fn inbound(&self, batch: Vec<Inbound>) -> Result<(), String>;
+    /// Contacts saved on the linked phone (from WhatsApp's contact sync).
+    async fn contacts(&self, batch: Vec<WaContact>) -> Result<(), String> {
+        let _ = batch;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -121,6 +127,11 @@ pub trait AdapterSession: Send + Sync {
     async fn stop(&self);
     /// Unlink this computer from the phone.
     async fn logout(&self);
+    /// Ask WhatsApp to send the phone's saved contacts again (a full contact
+    /// sync); they arrive through `AdapterSink::contacts`.
+    async fn resync_contacts(&self) -> Result<(), AdapterError> {
+        Err(AdapterError::temporary("This WhatsApp client cannot refresh contacts."))
+    }
 }
 
 /// `+97333334444` → `97333334444@s.whatsapp.net`.

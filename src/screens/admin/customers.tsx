@@ -1,3 +1,4 @@
+import { WhatsAppContactsButton } from "./waContacts";
 import { WhatsAppSendButton } from "./automation";
 import { AccountTab, AddressesTab } from "./customerAccount";
 import { useFeature } from "../../components/FeatureGate";
@@ -111,11 +112,14 @@ export function CustomersPage() {
       <PageHeader
         title={t("Customers")}
         actions={
-          has("customers.manage") ? (
-            <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
-              {t("Customer")}
-            </Button>
-          ) : null
+          <>
+            <WhatsAppContactsButton onImported={() => void reload()} />
+            {has("customers.manage") ? (
+              <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
+                {t("Customer")}
+              </Button>
+            ) : null}
+          </>
         }
       />
       <div className="filters">

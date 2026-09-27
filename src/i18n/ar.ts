@@ -3104,4 +3104,30 @@ export const AR: Record<string, string> = {
   "Makes text, buttons and spacing larger or smaller on this computer, for the till and admin. The till fits a 1024×768 screen at every size; above 125% admin pages scroll more.":
     "يكبّر النصوص والأزرار والمسافات أو يصغّرها على هذا الجهاز، في نقطة البيع والإدارة. تتسع نقطة البيع لشاشة 1024×768 بكل الأحجام؛ فوق 125% تحتاج صفحات الإدارة إلى تمرير أكثر.",
   "Scan a barcode, or type a product name in the search box.": "امسح باركود، أو اكتب اسم منتج في مربع البحث.",
+  "(no name saved)": "(بدون اسم محفوظ)",
+  "All ({0})": "الكل ({0})",
+  "Already customers ({0})": "عملاء مسجلون ({0})",
+  "Also update existing customers with the phone's name (and fill an empty address)":
+    "حدّث أيضًا العملاء الحاليين باسم الهاتف (واملأ العنوان الفارغ)",
+  "Contacts received {0}": "وصلت جهات الاتصال {0}",
+  "Customer: {0}": "العميل: {0}",
+  "Import WhatsApp customers": "استيراد عملاء واتساب",
+  "Import {0} contacts": "استيراد {0} جهة اتصال",
+  "New ({0})": "جديد ({0})",
+  "No contacts received yet": "لم تصل جهات اتصال بعد",
+  "No contacts yet": "لا توجد جهات اتصال بعد",
+  "No name": "بدون اسم",
+  "No number": "بدون رقم",
+  None: "لا شيء",
+  "Press Refresh from phone. WhatsApp sends the phone's saved contacts in the background; they appear here within a minute.":
+    "اضغط تحديث من الهاتف. يرسل واتساب جهات الاتصال المحفوظة في الهاتف في الخلفية، وتظهر هنا خلال دقيقة.",
+  "Refresh from phone": "تحديث من الهاتف",
+  "Search name or number…": "ابحث بالاسم أو الرقم…",
+  "Showing 400 of {0}. Search to narrow the list; Select all includes every match.":
+    "عرض 400 من {0}. ابحث لتضييق القائمة؛ «تحديد الكل» يشمل كل النتائج المطابقة.",
+  "The name saved on the shop's phone becomes the customer name, the number becomes the phone and WhatsApp number, and any numbers with hyphens or slashes in the name (e.g. “825 - 3325 husband”) become the address. Customers already saved with the same number are not duplicated.":
+    "يصبح الاسم المحفوظ في هاتف المتجر اسم العميل، والرقم رقم الهاتف وواتساب، وأي أرقام مع شرطات أو خطوط مائلة في الاسم (مثل «825 - 3325 زوج») تصبح العنوان. لا يتكرر العملاء المحفوظون بالرقم نفسه.",
+  "no number": "بدون رقم",
+  "{0} customers added, {1} updated": "أُضيف {0} عميل، وحُدّث {1}",
+  "{0} skipped": "تم تخطي {0}",
 };

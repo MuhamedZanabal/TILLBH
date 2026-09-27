@@ -376,6 +376,8 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "whatsapp.summary" => out(core.wa_summary(tk()?)),
         "whatsapp.recent" => out(core.wa_recent(tk()?, opt(&args, "limit")?)),
         "whatsapp.import_contacts" => out(core.wa_import_contacts(tk()?, opt(&args, "chats")?)),
+        "whatsapp.phone_contacts" => out(core.wa_contacts_preview(tk()?)),
+        "whatsapp.phone_contacts_import" => out(core.wa_contacts_import(tk()?, all(&args)?)),
         // payment screenshot reviews
         "payreviews.list" => out(core.pr_list(tk()?, opt(&args, "status")?)),
         "payreviews.get" => out(core.pr_get(tk()?, &req::<String>(&args, "review_id")?)),

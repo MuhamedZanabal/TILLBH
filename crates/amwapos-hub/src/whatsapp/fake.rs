@@ -38,6 +38,8 @@ pub struct FakeState {
     stop: Notify,
     crash: Mutex<Option<oneshot::Sender<()>>>,
     logged_out: AtomicBool,
+    /// Contacts "saved on the phone": sent by `resync_contacts`.
+    pub phone_contacts: Mutex<Vec<WaContact>>,
 }
 
 #[derive(Clone, Default)]
@@ -174,6 +176,17 @@ impl FakeSession {
 impl AdapterSession for FakeSession {
     fn connected(&self) -> bool {
         self.state.connected.load(Ordering::SeqCst)
+    }
+    async fn resync_contacts(&self) -> Result<(), AdapterError> {
+        if !self.state.connected.load(Ordering::SeqCst) {
+            return Err(AdapterError::temporary("WhatsApp is not connected."));
+        }
+        let sink = self.state.sink.lock().unwrap().clone();
+        let batch = self.state.phone_contacts.lock().unwrap().clone();
+        if let Some(s) = sink {
+            s.contacts(batch).await.map_err(AdapterError::temporary)?;
+        }
+        Ok(())
     }
     fn logged_in(&self) -> bool {
         !self.state.logged_out.load(Ordering::SeqCst)

@@ -61,6 +61,8 @@ pub struct WaStatus {
     pub inbox_rev: u64,
     pub last_send_at: Option<String>,
     pub last_send_error: Option<String>,
+    /// Last time contacts saved on the phone arrived from WhatsApp.
+    pub contacts_synced_at: Option<String>,
 }
 
 impl WaStatus {
@@ -83,6 +85,7 @@ impl WaStatus {
             inbox_rev: 0,
             last_send_at: None,
             last_send_error: None,
+            contacts_synced_at: None,
         }
     }
 }
@@ -233,6 +236,16 @@ impl WhatsAppService {
         self.send_cmd(|reply| Cmd::Logout { reply }).await?
     }
 
+    /// Ask WhatsApp to send the phone's saved contacts again.
+    pub async fn resync_contacts(&self) -> AppResult<()> {
+        let session = self.session.borrow().clone();
+        let s = session.ok_or_else(|| unavailable("WhatsApp is not connected. Link or start it first."))?;
+        if !s.connected() {
+            return Err(unavailable("WhatsApp is not connected. Link or start it first."));
+        }
+        s.resync_contacts().await.map_err(|e| unavailable(e.message))
+    }
+
     fn autostart(&self) -> bool {
         self.core.db.read(|c| amwapos_core::settings::get::<Option<bool>>(c, "local.whatsapp_autostart")).ok().flatten().unwrap_or(true)
     }
@@ -313,6 +326,13 @@ impl AdapterSink for Sink {
                 s.last_error = Some("WhatsApp rejected this client version. An AMWAPOS update is needed.".into());
             }
         });
+    }
+
+    async fn contacts(&self, batch: Vec<WaContact>) -> Result<(), String> {
+        let core = self.core.clone();
+        blocking(move || core.wa_contacts_store(&batch)).await.map_err(|e| e.message)?;
+        self.status.send_modify(|s| s.contacts_synced_at = Some(amwapos_core::time::now_str()));
+        Ok(())
     }
 
     async fn inbound(&self, batch: Vec<Inbound>) -> Result<(), String> {

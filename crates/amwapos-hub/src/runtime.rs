@@ -554,6 +554,19 @@ impl Runtime {
                 }
                 Ok(serde_json::to_value(self.whatsapp.status()).unwrap_or(Value::Null))
             }
+            "whatsapp.phone_contacts_refresh" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let c = self.core.clone();
+                blocking(move || {
+                    let s = c.session(&t)?;
+                    s.require("customers.manage")?;
+                    s.require("whatsapp.manage")?;
+                    c.require_feature("whatsapp.enabled")
+                })
+                .await?;
+                self.whatsapp.resync_contacts().await?;
+                Ok(json!({ "requested": true }))
+            }
             "whatsapp.session_backup" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 if args.get("acknowledge_risk").and_then(|v| v.as_bool()) != Some(true) {

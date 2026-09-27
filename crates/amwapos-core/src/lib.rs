@@ -51,6 +51,7 @@ pub mod time;
 pub mod transfers;
 pub mod users;
 pub mod validate;
+pub mod wa_contacts;
 
 pub use error::{AppError, AppResult, ErrorCode};
 pub use service::AppCore;

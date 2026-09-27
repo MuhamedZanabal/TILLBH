@@ -143,7 +143,26 @@ impl WhatsAppAdapter for RustWhatsAppAdapter {
             EventKind::TemporaryBan,
             EventKind::StreamReplaced,
             EventKind::ClientOutdated,
+            EventKind::ContactUpdate,
         ];
+        // Contact sync delivers one event per saved contact (thousands on a
+        // full sync): batch them before they reach the database.
+        let (ctx, mut crx) = tokio::sync::mpsc::unbounded_channel::<WaContact>();
+        let csink = sink.clone();
+        tokio::spawn(async move {
+            while let Some(first) = crx.recv().await {
+                let mut batch = vec![first];
+                while let Ok(Some(c)) = tokio::time::timeout(Duration::from_millis(300), crx.recv()).await {
+                    batch.push(c);
+                    if batch.len() >= 500 {
+                        break;
+                    }
+                }
+                if let Err(e) = csink.contacts(batch).await {
+                    tracing::warn!("WhatsApp contacts not stored: {e}");
+                }
+            }
+        });
         let mut builder = Bot::builder()
             .with_backend(store)
             .skip_history_sync()
@@ -164,6 +183,16 @@ impl WhatsAppAdapter for RustWhatsAppAdapter {
                     }),
                     Event::StreamReplaced(_) => Some(AdapterEvent::StreamReplaced),
                     Event::ClientOutdated(_) => Some(AdapterEvent::ClientOutdated),
+                    Event::ContactUpdate(c) => {
+                        let a = &c.action;
+                        let _ = ctx.send(WaContact {
+                            jid: c.jid.to_string(),
+                            phone: a.pn_jid.clone(),
+                            full_name: a.full_name.clone().filter(|n| !n.trim().is_empty()),
+                            first_name: a.first_name.clone().filter(|n| !n.trim().is_empty()),
+                        });
+                        None
+                    }
                     _ => None,
                 };
                 if let Some(e) = e {
@@ -292,5 +321,20 @@ impl AdapterSession for RustSession {
 
     async fn logout(&self) {
         self.client.logout().await;
+    }
+
+    async fn resync_contacts(&self) -> Result<(), AdapterError> {
+        use whatsapp_rust::sync_task::MajorSyncTask;
+        use whatsapp_rust::wacore::appstate::patch_decode::WAPatchName;
+        if !self.client.is_logged_in() {
+            return Err(AdapterError::temporary("WhatsApp is not connected."));
+        }
+        let client = self.client.clone();
+        // Contacts live in the critical_unblock_low collection; a full sync
+        // replays every saved contact as a ContactUpdate event.
+        tokio::spawn(async move {
+            client.process_sync_task(MajorSyncTask::AppStateSync { name: WAPatchName::CriticalUnblockLow, full_sync: true }).await;
+        });
+        Ok(())
     }
 }

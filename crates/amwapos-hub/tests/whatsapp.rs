@@ -281,3 +281,89 @@ async fn reconnects_after_app_restart_without_a_new_qr() {
     drop(dir2);
     let _ = std::fs::remove_dir_all(&path);
 }
+
+/// Contacts saved on the linked phone become POS customers: the saved name is
+/// the customer name, the number the phone, the digits/hyphens/slashes in the
+/// name the address. Re-importing never duplicates; existing customers change
+/// only when asked.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn phone_contacts_import_as_customers() {
+    use amwapos_hub::whatsapp::WaContact;
+    let e = env_at(tempfile::tempdir().unwrap(), true).await;
+    let (rt, t) = (&e.rt, e.t.as_str());
+    call(rt, "settings.save", Some(t), json!({ "key": "features", "value": { "whatsapp.enabled": true } })).await;
+
+    // Not connected yet: refreshing is refused with a clear message.
+    let err = rt.dispatch("whatsapp.phone_contacts_refresh", Some(t.to_string()), json!({})).await.unwrap_err();
+    assert!(err.message.contains("not connected"), "{}", err.message);
+
+    call(rt, "whatsapp.start", Some(t), json!({})).await;
+    e.fake.scan();
+    let c = |jid: &str, pn: Option<&str>, full: Option<&str>| WaContact {
+        jid: jid.into(),
+        phone: pn.map(str::to_string),
+        full_name: full.map(str::to_string),
+        first_name: None,
+    };
+    *e.fake.state.phone_contacts.lock().unwrap() = vec![
+        c("97333001122@s.whatsapp.net", None, Some("825 - 3325 husband")),
+        c("123456789012345@lid", Some("97333004455@s.whatsapp.net"), Some("Maryam 1203/45 Riffa")),
+        c("97333007788@s.whatsapp.net", None, Some("Ahmed Plumber")),
+        c("97333009900@s.whatsapp.net", None, Some("Old Name In POS")),
+        c("999888777666@lid", None, Some("No number")),
+        c("120363000@g.us", None, Some("Family group")),
+    ];
+    // An existing customer with the same number as one phone contact.
+    let old = call(rt, "customers.save", Some(t), json!({ "customer": { "name": "Fatima", "phone": "33009900" } })).await;
+
+    call(rt, "whatsapp.phone_contacts_refresh", Some(t), json!({})).await;
+    until("contacts stored", || count(&e.core, "SELECT COUNT(*) FROM wa_contacts") == 5).await;
+    assert!(wa(rt).contacts_synced_at.is_some());
+
+    let p = call(rt, "whatsapp.phone_contacts", Some(t), json!({})).await;
+    assert_eq!(p["counts"]["new"], 3, "{p}");
+    assert_eq!(p["counts"]["exists"], 1, "{p}");
+    assert_eq!(p["counts"]["no_phone"], 1, "{p}");
+    let row = |name: &str| p["contacts"].as_array().unwrap().iter().find(|r| r["name"] == name).unwrap().clone();
+    assert_eq!(row("825 - 3325 husband")["address"], "825 - 3325");
+    assert_eq!(row("825 - 3325 husband")["phone"], "+97333001122");
+    assert_eq!(row("Maryam 1203/45 Riffa")["phone"], "+97333004455", "LID contact uses its phone JID");
+    assert_eq!(row("Maryam 1203/45 Riffa")["address"], "1203/45");
+    assert!(row("Ahmed Plumber")["address"].is_null());
+    assert_eq!(row("Old Name In POS")["customer_name"], "Fatima");
+
+    // Import: three new customers; the existing one is left alone.
+    let r = call(rt, "whatsapp.phone_contacts_import", Some(t), json!({})).await;
+    assert_eq!((r["created"].as_i64(), r["updated"].as_i64()), (Some(3), Some(0)), "{r}");
+    let cust = |phone: &str| {
+        e.core
+            .db
+            .read(|c| {
+                Ok(c.query_row("SELECT name, address, whatsapp FROM customers WHERE phone=?1", [phone], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, Option<String>>(2)?))
+                })?)
+            })
+            .unwrap()
+    };
+    assert_eq!(cust("+97333001122"), ("825 - 3325 husband".into(), Some("825 - 3325".into()), Some("+97333001122".into())));
+    assert_eq!(cust("+97333009900").0, "Fatima");
+
+    // Again: nothing duplicated. With "update existing" the phone's name wins
+    // and an empty address is filled from it.
+    let r = call(rt, "whatsapp.phone_contacts_import", Some(t), json!({})).await;
+    assert_eq!(r["created"], 0);
+    assert_eq!(count(&e.core, "SELECT COUNT(*) FROM customers"), 4);
+    let r = call(rt, "whatsapp.phone_contacts_import", Some(t), json!({ "update_existing": true, "jids": ["97333009900@s.whatsapp.net"] }))
+        .await;
+    assert_eq!(r["updated"], 1, "{r}");
+    assert_eq!(cust("+97333009900").0, "Old Name In POS");
+    assert!(old["customer_id"].as_str().is_some());
+    assert!(count(&e.core, "SELECT COUNT(*) FROM audit_logs WHERE event_type='customers.imported_whatsapp'") >= 3);
+
+    // A cashier without customers.manage cannot see the phone's contacts.
+    let roles = call(rt, "roles.list", Some(t), json!({})).await;
+    let cashier = roles.as_array().unwrap().iter().find(|r| r["role_id"] == "role_cashier").unwrap()["role_id"].clone();
+    let u = call(rt, "users.create", Some(t), json!({ "user": { "display_name": "Sara", "role_id": cashier, "pin": "7391" } })).await;
+    let ct = call(rt, "auth.login", None, json!({ "user_id": u["user_id"], "pin": "7391" })).await["token"].as_str().unwrap().to_string();
+    assert!(rt.dispatch("whatsapp.phone_contacts", Some(ct), json!({})).await.is_err());
+}

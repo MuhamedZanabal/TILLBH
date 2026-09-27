@@ -883,6 +883,8 @@ export interface WaStatus {
   inbox_rev: number;
   last_send_at: string | null;
   last_send_error: string | null;
+  /** Last time contacts saved on the phone arrived from WhatsApp. */
+  contacts_synced_at?: string | null;
 }
 
 export interface OcrWorkerStatus {
@@ -1530,4 +1532,22 @@ export interface CompanionToken {
   created_at: string;
   expires_at: string;
   last_used_at: string | null;
+}
+
+/** Contacts saved on the linked WhatsApp phone, with what an import would do. */
+export interface WaPhoneContact {
+  jid: string;
+  phone: string | null;
+  name: string | null;
+  /** Digits with their hyphens/slashes taken from the saved name ("825 - 3325"). */
+  address: string | null;
+  status: "new" | "exists" | "no_phone" | "no_name";
+  customer_id: string | null;
+  customer_name: string | null;
+  updated_at: string;
+}
+export interface WaPhoneContacts {
+  contacts: WaPhoneContact[];
+  counts: { new: number; exists: number; no_phone: number; no_name: number };
+  last_sync_at: string | null;
 }
