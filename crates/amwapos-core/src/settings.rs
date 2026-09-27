@@ -213,6 +213,9 @@ pub struct AppearanceSettings {
     pub theme: String,
     pub density: String,
     pub cashier_font: String,
+    /// Display size in percent (90, 100, 110, 125, 150); empty means 100.
+    /// Zooms the whole app on this computer: text, buttons and spacing.
+    pub scale: String,
 }
 
 /// Optional modules. Every flag defaults to off; a module whose flag is off

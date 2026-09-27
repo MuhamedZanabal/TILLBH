@@ -3100,4 +3100,8 @@ export const AR: Record<string, string> = {
   included: "مُضمّنة",
   "not sent": "لا تُرسل",
   "{0} of {1}": "{0} من {1}",
+  "Display size": "حجم العرض",
+  "Makes text, buttons and spacing larger or smaller on this computer, for the till and admin. The till fits a 1024×768 screen at every size; above 125% admin pages scroll more.":
+    "يكبّر النصوص والأزرار والمسافات أو يصغّرها على هذا الجهاز، في نقطة البيع والإدارة. تتسع نقطة البيع لشاشة 1024×768 بكل الأحجام؛ فوق 125% تحتاج صفحات الإدارة إلى تمرير أكثر.",
+  "Scan a barcode, or type a product name in the search box.": "امسح باركود، أو اكتب اسم منتج في مربع البحث.",
 };

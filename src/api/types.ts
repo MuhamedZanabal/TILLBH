@@ -127,7 +127,7 @@ export interface PosConfig {
   features: FeatureFlags;
   payments: TenderConfig[];
   shift: { blind_close: boolean };
-  appearance: { theme: string; density: string; cashier_font: string };
+  appearance: { theme: string; density: string; cashier_font: string; scale?: string };
   printer_configured: boolean;
   currency: string;
   currency_digits: number;

@@ -27,7 +27,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { api } from "../../api";
-import type { Cart, CategoryRow, PosSearchRow, SaleResult, ShiftSummary } from "../../api/types";
+import type { Cart, PosSearchRow, SaleResult, ShiftSummary } from "../../api/types";
 import { useSession } from "../../state/session";
 import { useApproval, ApprovalCancelled } from "../../components/approval";
 import { useToast } from "../../components/toast";
@@ -120,9 +120,6 @@ export function PosScreen({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PosSearchRow[] | null>(null);
   const [sel, setSel] = useState(0);
-  const [grid, setGrid] = useState<PosSearchRow[]>([]);
-  const [categories, setCategories] = useState<CategoryRow[]>([]);
-  const [activeCat, setActiveCat] = useState<string>("fav");
   const [selectedLine, setSelectedLine] = useState<string | null>(null);
   const [flashLine, setFlashLine] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>({ kind: "none" });
@@ -165,35 +162,14 @@ export function PosScreen({
     }
   }, []);
 
-  // Initial load: current cart, categories and quick products.
+  // Initial load: the current cart. The till shows no catalogue grid: scan or search.
   useEffect(() => {
     api.pos
       .cart()
       .then((c) => applyCart(c))
       .catch(fail);
-    api.categories
-      .list()
-      .then(setCategories)
-      .catch(() => {});
     focusScan();
   }, [applyCart, fail, focusScan]);
-
-  useEffect(() => {
-    const opts =
-      activeCat === "fav"
-        ? { favorites: true, limit: 60 }
-        : activeCat === "all"
-          ? { limit: 60 }
-          : { category_id: activeCat, limit: 120 };
-    api.pos
-      .search("", opts)
-      .then((r) => {
-        // If there are no favourites yet, fall back to all products.
-        if (activeCat === "fav" && r.length === 0) return api.pos.search("", { limit: 60 }).then(setGrid);
-        setGrid(r);
-      })
-      .catch(() => {});
-  }, [activeCat]);
 
   useEffect(() => {
     const tv = setInterval(() => setClock(formatClock(new Date())), 15000);
@@ -657,7 +633,7 @@ export function PosScreen({
         </button>
       </header>
       <main className="pos-main">
-        <section className="pos-left">
+        <div className="pos-toolbar">
           <div className="scan-box">
             <ScanBarcode size={22} className="scan-icon" aria-hidden />
             <input
@@ -681,35 +657,8 @@ export function PosScreen({
                 onClick={() => (setQuery(""), focusScan())}
               />
             ) : null}
-          </div>
-          {notice ? (
-            <div className={`pos-notice ${notice.tone}`} role={notice.tone === "info" ? "status" : "alert"}>
-              <span className="grow">{notice.text}</span>
-              <button type="button" className="notice-x" aria-label={t("Dismiss")} onClick={() => setNotice(null)}>
-                <X size={18} aria-hidden />
-              </button>
-            </div>
-          ) : null}
-          {printFailed && modal.kind === "none" ? (
-            <div className="pos-notice warning" role="alert">
-              <span className="grow">
-                {t("Sale {0} completed — receipt could not be printed", lastSale!.receipt_number)}
-              </span>
-              <Button
-                size="sm"
-                onClick={async () => {
-                  const r = await api.print.retry(lastSale!.print!.job_id!);
-                  setLastSale({ ...lastSale!, print: r });
-                  if (r.status === "printed") toast("success", t("Receipt printed"));
-                }}
-              >
-                {t("Retry Print")}
-              </Button>
-            </div>
-          ) : null}
-          <div className="pos-panel products">
             {results ? (
-              <div className="results" role="listbox" aria-label={t("Search results")}>
+              <div className="results scan-results" role="listbox" aria-label={t("Search results")}>
                 {results.length === 0 ? (
                   <div className="empty">
                     <h3>{t("No products found")}</h3>
@@ -738,55 +687,7 @@ export function PosScreen({
                   ))
                 )}
               </div>
-            ) : (
-              <>
-                <div className="cat-chips" role="tablist" aria-label={t("Categories")}>
-                  <button
-                    role="tab"
-                    aria-selected={activeCat === "fav"}
-                    className={`filter-chip ${activeCat === "fav" ? "active" : ""}`}
-                    onClick={() => setActiveCat("fav")}
-                  >
-                    {t("Favorites")}
-                  </button>
-                  <button
-                    role="tab"
-                    aria-selected={activeCat === "all"}
-                    className={`filter-chip ${activeCat === "all" ? "active" : ""}`}
-                    onClick={() => setActiveCat("all")}
-                  >
-                    {t("All")}
-                  </button>
-                  {categories
-                    .filter((c) => c.product_count > 0)
-                    .map((c) => (
-                      <button
-                        key={c.category_id}
-                        role="tab"
-                        aria-selected={activeCat === c.category_id}
-                        className={`filter-chip ${activeCat === c.category_id ? "active" : ""}`}
-                        onClick={() => setActiveCat(c.category_id)}
-                      >
-                        {c.name}
-                      </button>
-                    ))}
-                </div>
-                <div className="tile-grid">
-                  {grid.map((p) => (
-                    <button key={p.product_id} className="p-tile" onClick={() => void addProduct(p)}>
-                      <span className="p-name">{p.name}</span>
-                      <span className="p-price money">{p.price_minor === null ? "—" : formatMoney(p.price_minor)}</span>
-                    </button>
-                  ))}
-                  {grid.length === 0 ? (
-                    <div className="empty" style={{ gridColumn: "1 / -1" }}>
-                      <h3>{t("Ready to scan")}</h3>
-                      <p>{t("Scan a barcode or type a product name.")}</p>
-                    </div>
-                  ) : null}
-                </div>
-              </>
-            )}
+            ) : null}
           </div>
           <div className="quick-actions">
             <button type="button" className="q-btn" onClick={() => setModal({ kind: "customer" })}>
@@ -818,7 +719,32 @@ export function PosScreen({
               <span>{t("Refund")}</span>
             </button>
           </div>
-        </section>
+        </div>
+        {notice ? (
+          <div className={`pos-notice ${notice.tone}`} role={notice.tone === "info" ? "status" : "alert"}>
+            <span className="grow">{notice.text}</span>
+            <button type="button" className="notice-x" aria-label={t("Dismiss")} onClick={() => setNotice(null)}>
+              <X size={18} aria-hidden />
+            </button>
+          </div>
+        ) : null}
+        {printFailed && modal.kind === "none" ? (
+          <div className="pos-notice warning" role="alert">
+            <span className="grow">
+              {t("Sale {0} completed — receipt could not be printed", lastSale!.receipt_number)}
+            </span>
+            <Button
+              size="sm"
+              onClick={async () => {
+                const r = await api.print.retry(lastSale!.print!.job_id!);
+                setLastSale({ ...lastSale!, print: r });
+                if (r.status === "printed") toast("success", t("Receipt printed"));
+              }}
+            >
+              {t("Retry Print")}
+            </Button>
+          </div>
+        ) : null}
         <section className="pos-right">
           <CartPanel
             cart={cart}
@@ -842,7 +768,7 @@ export function PosScreen({
             <dt>{t("Subtotal")}</dt>
             <dd className="money">{formatMoney(cart.totals.subtotal_minor)}</dd>
           </div>
-          <div>
+          <div className="opt">
             <dt>{t("Discount")}</dt>
             <dd className="money">
               {cart.totals.discount_minor ? formatMoney(-cart.totals.discount_minor) : formatMoney(0)}
@@ -854,7 +780,7 @@ export function PosScreen({
             </dt>
             <dd className="money">{formatMoney(cart.totals.tax_minor)}</dd>
           </div>
-          <div>
+          <div className="opt">
             <dt>{t("Items")}</dt>
             <dd className="num">{formatQty(cart.totals.item_count_milli)}</dd>
           </div>

@@ -39,11 +39,24 @@ Compact density is the default (`data-density="compact"`): tighter rows, same
 
 ## Cashier layout
 
+The till lists no catalogue: products are added by scanning or by typing in the
+scan field (results drop down under it).
+
 ```
 | 56  brand · shift · backup/sync/printer pills · Held · clock · AI · More |
-| 320 scan (56) / chips / tiles / quick actions | cart lines (56 min)      |
+| 56  scan / search field ............ | Customer | Hold | Discount | Refund |
+|     cart lines (56 min), full width                                       |
 | 88  dock: subtotal · discount · VAT · items · TOTAL (36) · PAY 224×64    |
 ```
+
+## Display size
+
+Settings → Appearance → Display size (90, 100, 110, 125, 150 %) zooms the whole
+app on that computer (the WebView's own zoom; CSS zoom in a browser). At 125 %
+a 1024×768 panel behaves as 819×614 CSS px and at 150 % as 683×512: the header
+drops the business name and clock, the dock keeps TOTAL and PAY only below
+760 px, and the AI page folds its side columns into sheets. The layout spec
+checks the till and the payment sheet at both sizes.
 
 PAY sits in the top 72 px of the dock, so a 16 px taskbar overlap never hides
 it. The till assistant opens over the search column, between the top bar and

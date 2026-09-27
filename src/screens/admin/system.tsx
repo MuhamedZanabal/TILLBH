@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { DISPLAY_SCALES, applyDisplayScale, scaleFactor } from "../../lib/display";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -1988,7 +1989,8 @@ function AppearanceSettings() {
   const toast = useToast();
   const { reloadConfig } = useSession();
   const { data, setData } = useLoad(
-    () => api.settings.get<{ theme: string; density: string; cashier_font: string }>("local.appearance"),
+    () =>
+      api.settings.get<{ theme: string; density: string; cashier_font: string; scale?: string }>("local.appearance"),
     [],
   );
   const act = useAction();
@@ -2027,6 +2029,37 @@ function AppearanceSettings() {
             <option value="large">{t("Large")}</option>
           </select>
         </Field>
+      </div>
+      <div className="field">
+        <div className="field-label" id="display-size-label">
+          {t("Display size")}
+        </div>
+        <div className="toggle-group" role="radiogroup" aria-labelledby="display-size-label" data-testid="display-size">
+          {DISPLAY_SCALES.map((n) => {
+            const on = Math.round(scaleFactor(data.scale) * 100) === n;
+            return (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                className={`toggle num ${on ? "on" : ""}`}
+                onClick={() => {
+                  setData({ ...data, scale: String(n) });
+                  // Preview immediately; Save keeps it (reopening the page shows the saved size).
+                  void applyDisplayScale(n);
+                }}
+              >
+                {n}%
+              </button>
+            );
+          })}
+        </div>
+        <div className="hint">
+          {t(
+            "Makes text, buttons and spacing larger or smaller on this computer, for the till and admin. The till fits a 1024×768 screen at every size; above 125% admin pages scroll more.",
+          )}
+        </div>
       </div>
       <SaveBar
         busy={act.busy}

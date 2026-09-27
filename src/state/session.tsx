@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { applyDisplayScale } from "../lib/display";
 import { api, setToken } from "../api";
 import { ApiError } from "../api/transport";
 import type { PosConfig, Session, SetupStatus } from "../api/types";
@@ -56,6 +57,7 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
           : "light";
     document.documentElement.dataset.density = c.appearance.density || "compact";
     document.documentElement.dataset.cashierFont = c.appearance.cashier_font || "normal";
+    void applyDisplayScale(c.appearance.scale);
     setConfig(c);
   }, []);
 

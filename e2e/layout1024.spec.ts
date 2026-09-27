@@ -397,3 +397,59 @@ test("1024×768: Arabic RTL, dark compact, backup + update-needed", async ({ pag
   await page.getByRole("menuitem", { name: "English" }).click();
   await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
 });
+
+test("Display size: the setting zooms the app; at 125% and 150% the till still fits", async ({ page }) => {
+  await page.goto("/");
+  await login(page, "Zana", "4826");
+  await expect(page.getByTestId("pos")).toBeVisible();
+  // No catalogue grid on the till: scan bar, quick actions and the cart only.
+  await expect(page.locator(".tile-grid, .p-tile, .cat-chips")).toHaveCount(0);
+
+  // Settings → Appearance → Display size.
+  await page.getByTestId("pos-more").click();
+  await page.getByRole("menuitem", { name: "Admin" }).click();
+  await page.evaluate(() => (location.hash = "#/admin/settings?section=appearance"));
+  const sizes = page.getByTestId("display-size");
+  await expect(sizes).toBeVisible();
+  await sizes.getByRole("radio", { name: "125%" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-scale", "125");
+  await shot(page, "11a-settings-display-size");
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect(page.getByText("Appearance saved")).toBeVisible();
+  // Back to 100% so later runs start from the default.
+  await sizes.getByRole("radio", { name: "100%" }).click();
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-scale", "100");
+  await page.getByTestId("back-to-pos").click();
+
+  // The desktop zooms the WebView, which is the same as a smaller CSS viewport:
+  // 1024×768 at 125% = 819×614, at 150% = 683×512.
+  for (const [w, h, tag] of [
+    [819, 614, "125"],
+    [683, 512, "150"],
+  ] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    for (const code of barcodes.slice(0, 5)) await scan(page, code);
+    await shot(page, `11-scale-${tag}-pos`);
+    const pay = (await page.getByTestId("pay").boundingBox())!;
+    expect(pay.width).toBeGreaterThanOrEqual(200);
+    expect(pay.height).toBeGreaterThanOrEqual(56);
+    expect(pay.x + pay.width).toBeLessThanOrEqual(w);
+    expect(pay.y + pay.height).toBeLessThanOrEqual(h - 16);
+    await expect(page.getByTestId("cart-total")).toBeInViewport();
+    await expect(page.getByTestId("scan-input")).toBeInViewport();
+    const sw = await page.evaluate(() => document.documentElement.scrollWidth);
+    expect(sw, "no horizontal scroll").toBeLessThanOrEqual(w);
+    await page.getByTestId("pay").click();
+    await page.waitForTimeout(300); // the sheet slides in (170 ms)
+    const done = (await page.getByTestId("complete-sale").boundingBox())!;
+    expect(done.y + done.height).toBeLessThanOrEqual(h - 8);
+    expect(done.x + done.width).toBeLessThanOrEqual(w);
+    await shot(page, `11-scale-${tag}-payment`);
+    await page.keyboard.press("Escape");
+    await page.getByTestId("pos-more").click();
+    await page.getByRole("menuitem", { name: "Cancel sale" }).click();
+    await expect(page.getByTestId("cart-total")).toHaveText("BHD 0.000");
+  }
+  await page.setViewportSize({ width: 1024, height: 768 });
+});

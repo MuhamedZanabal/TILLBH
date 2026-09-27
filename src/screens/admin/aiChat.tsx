@@ -1803,6 +1803,16 @@ export function AiChat({
                 ? t("Briefings")
                 : (conv?.title ?? t("New conversation"))}
           </h2>
+          {!compact ? (
+            <button
+              type="button"
+              className="ai-act history-toggle"
+              aria-label={t("Conversations")}
+              onClick={() => setSheet("history")}
+            >
+              <MessageSquare size={18} aria-hidden />
+            </button>
+          ) : null}
           {conv && view === "chat" ? (
             <button type="button" className="ai-act" aria-label={t("Rename")} onClick={() => setRenaming(conv.title)}>
               <Pencil size={18} aria-hidden />

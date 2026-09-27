@@ -18,8 +18,6 @@ body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
-  min-width: 1024px;
-  min-height: 700px;
   overflow: hidden;
 }
 button,
@@ -548,11 +546,11 @@ table.table {
   background: var(--surface);
   border-radius: var(--radius-modal);
   box-shadow: var(--shadow-lg);
-  max-height: calc(100vh - 48px);
+  max-height: calc(100% - 48px);
   display: flex;
   flex-direction: column;
   width: 600px;
-  max-width: calc(100vw - 48px);
+  max-width: calc(100% - 48px);
   animation: pop 200ms ease-out;
 }
 .modal.sm {
@@ -565,8 +563,8 @@ table.table {
   width: 1100px;
 }
 .modal.full {
-  width: calc(100vw - 48px);
-  height: calc(100vh - 48px);
+  width: calc(100% - 48px);
+  height: calc(100% - 48px);
 }
 /* Sheets: full height, docked to the inline-end edge (payment, refund, shift close, More). */
 .backdrop.sheet-backdrop {
@@ -574,10 +572,10 @@ table.table {
   align-items: stretch;
 }
 .modal.sheet {
-  width: min(720px, 100vw);
-  max-width: 100vw;
-  height: 100vh;
-  max-height: 100vh;
+  width: min(720px, 100%);
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
   border-radius: var(--radius-modal) 0 0 var(--radius-modal);
   animation: sheet-in var(--dur) ease-out;
 }

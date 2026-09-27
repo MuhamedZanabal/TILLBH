@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Minus, Percent, Plus, Tag, Trash2, Hash, Star, UserRound } from "lucide-react";
+import { Minus, Percent, Plus, ScanBarcode, Tag, Trash2, Hash, Star, UserRound } from "lucide-react";
 import type { Cart } from "../../api/types";
 import { formatMoney, formatQty, formatPercent } from "../../lib/money";
 import { Button } from "../../components/ui";
@@ -59,9 +59,12 @@ export function CartPanel({
       </div>
       <div className="cart-lines" ref={listRef} role="list" aria-label={t("Cart")}>
         {cart.lines.length === 0 ? (
-          <div className="empty">
+          <div className="cart-empty">
+            <div className="ce-art" aria-hidden>
+              <ScanBarcode size={40} />
+            </div>
             <h3>{t("No items yet")}</h3>
-            <p>{t("Scan a barcode to start a sale.")}</p>
+            <p>{t("Scan a barcode, or type a product name in the search box.")}</p>
           </div>
         ) : null}
         {cart.lines.map((l) => {
