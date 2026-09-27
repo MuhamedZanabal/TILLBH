@@ -107,8 +107,16 @@ async fn whatsapp_service_end_to_end_with_fake_adapter() {
 
     call(rt, "settings.save", Some(t), json!({ "key": "features", "value": { "whatsapp.enabled": true, "whatsapp.send_receipts": true } }))
         .await;
-    // Enabled but never linked: stopped until someone presses Link.
-    let st = call(rt, "whatsapp.status", Some(t), json!({})).await;
+    // Enabled but never linked: stopped until someone presses Link (the
+    // supervisor sees the flag change on its next tick).
+    let mut st = call(rt, "whatsapp.status", Some(t), json!({})).await;
+    for _ in 0..200 {
+        if st["whatsapp"]["process"] != "disabled" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        st = call(rt, "whatsapp.status", Some(t), json!({})).await;
+    }
     assert_eq!((st["whatsapp"]["process"].as_str(), st["whatsapp"]["session"].as_str()), (Some("stopped"), Some("none")));
 
     // Link: QR shown; separate flags say running + pairing, not connected.
