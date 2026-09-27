@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Check, Search } from "lucide-react";
+import { ArrowLeft, Check, Minus, Plus, Search } from "lucide-react";
 import { api } from "../../api";
 import type { RefundPreview, RefundResult, SaleDetail } from "../../api/types";
 import { useApproval, ApprovalCancelled } from "../../components/approval";
@@ -125,27 +125,46 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
     }
   };
 
+  const stepNo = step === "search" ? 1 : step === "select" ? 2 : 3;
+  const stepper = (
+    <ol className="stepper" aria-label={t("Refund steps")}>
+      {[t("Find receipt"), t("Items"), t("Confirm")].map((label, i) => (
+        <li
+          key={label}
+          className={i + 1 < stepNo ? "done" : i + 1 === stepNo ? "current" : ""}
+          aria-current={i + 1 === stepNo ? "step" : undefined}
+        >
+          <span className="n">{i + 1 < stepNo ? <Check size={16} aria-hidden /> : i + 1}</span>
+          <span>{label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+  const bump = (id: string, delta: number, avail: number) => {
+    const cur = parseQty(qty[id] ?? "") ?? 0;
+    const next = Math.max(0, Math.min(avail, cur + delta * 1000));
+    setQty({ ...qty, [id]: next ? formatQty(next) : "" });
+  };
+
   if (step === "search") {
     return (
       <Modal
         title={t("Refund")}
-        size="md"
+        size="sheet"
         onClose={onClose}
         footer={
-          <>
-            <Button onClick={onClose}>{t("Cancel")}</Button>
-            <Button variant="primary" className="right" onClick={find} loading={busy} disabled={!receipt.trim()}>
-              {t("Open Refund")}
-            </Button>
-          </>
+          <Button variant="primary" size="xl" block onClick={find} loading={busy} disabled={!receipt.trim()}>
+            {t("Open Refund")}
+          </Button>
         }
       >
         <div className="col gap-16">
+          {stepper}
           <label className="field-label" htmlFor="refund-receipt">
             {t("Receipt number")}
           </label>
           <div className="scan-box">
-            <Search size={18} className="scan-icon" />
+            <Search size={20} className="scan-icon" />
             <input
               id="refund-receipt"
               className="input"
@@ -167,88 +186,86 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
     return (
       <Modal
         title={t("Refund — receipt {0}", sale.receipt_number)}
-        size="full"
+        size="sheet"
         onClose={onClose}
         footer={
-          <>
-            <Button icon={<ArrowLeft size={16} />} onClick={() => setStep("search")}>
+          <div className="row" style={{ width: "100%" }}>
+            <Button size="lg" icon={<ArrowLeft size={18} />} onClick={() => setStep("search")}>
               {t("Back")}
             </Button>
-            <Button variant="primary" className="right" onClick={review} loading={busy}>
+            <Button variant="primary" size="xl" className="grow" onClick={review} loading={busy}>
               {t("Review Refund")}
             </Button>
-          </>
+          </div>
         }
       >
-        <div className="grid-3">
-          <div>
-            <div className="tiny" style={{ marginBottom: 8 }}>
-              {t("{0} · {1} · {2} · paid", formatDateTime(sale.completed_at), sale.cashier_name, sale.device_name)}{" "}
-              {sale.payments.map((p) => methodLabel(p.method)).join(", ")}
-            </div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t("Item")}</th>
-                  <th className="num">{t("Purchased")}</th>
-                  <th className="num">{t("Refunded")}</th>
-                  <th className="num">{t("Available")}</th>
-                  <th className="num">{t("Refund qty")}</th>
-                  <th>{t("Restock")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sale.items.map((i) => {
-                  const avail = i.qty_milli - i.refunded_qty_milli;
-                  const v = qty[i.sale_item_id] ?? "";
-                  const pv = parseQty(v);
-                  const bad = v !== "" && (pv === null || pv <= 0 || pv > avail);
-                  return (
-                    <tr key={i.sale_item_id}>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{i.name}</div>
-                        <div className="tiny">
-                          {formatMoney(i.line_total_minor)} · {i.sku ?? (i.is_custom ? t("Custom") : "")}
-                        </div>
-                      </td>
-                      <td className="num">{formatQty(i.qty_milli)}</td>
-                      <td className="num">{formatQty(i.refunded_qty_milli)}</td>
-                      <td className="num">{formatQty(avail)}</td>
-                      <td className="num">
-                        <div className="row" style={{ justifyContent: "flex-end" }}>
-                          <input
-                            className={`input num ${bad ? "invalid" : ""}`}
-                            style={{ width: 90 }}
-                            inputMode="decimal"
-                            disabled={avail <= 0}
-                            value={v}
-                            aria-label={t("Refund quantity for {0}", i.name)}
-                            onChange={(e) => setQty({ ...qty, [i.sale_item_id]: e.target.value })}
-                          />
-                          <Button
-                            size="sm"
-                            disabled={avail <= 0}
-                            onClick={() => setQty({ ...qty, [i.sale_item_id]: formatQty(avail) })}
-                          >
-                            {t("All")}
-                          </Button>
-                        </div>
-                      </td>
-                      <td>
-                        <Checkbox
-                          label=""
-                          checked={restock[i.sale_item_id] ?? true}
-                          onChange={(b) => setRestock({ ...restock, [i.sale_item_id]: b })}
-                          disabled={!i.product_id}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div className="col gap-16" data-testid="refund-step-2">
+          {stepper}
+          <div className="tiny">
+            {t("{0} · {1} · {2} · paid", formatDateTime(sale.completed_at), sale.cashier_name, sale.device_name)}{" "}
+            {sale.payments.map((p) => methodLabel(p.method)).join(", ")}
           </div>
-          <div className="col gap-16">
+          <div className="refund-items" role="list">
+            {sale.items.map((i) => {
+              const avail = i.qty_milli - i.refunded_qty_milli;
+              const v = qty[i.sale_item_id] ?? "";
+              const pv = parseQty(v);
+              const bad = v !== "" && (pv === null || pv <= 0 || pv > avail);
+              return (
+                <div key={i.sale_item_id} role="listitem" className={`refund-item ${avail <= 0 ? "spent" : ""}`}>
+                  <div className="ri-info">
+                    <div className="ri-name ellipsis">{i.name}</div>
+                    <div className="tiny">
+                      <span className="money">{formatMoney(i.line_total_minor)}</span> ·{" "}
+                      {t(
+                        "Bought {0} · refunded {1} · left {2}",
+                        formatQty(i.qty_milli),
+                        formatQty(i.refunded_qty_milli),
+                        formatQty(avail),
+                      )}
+                    </div>
+                    <Checkbox
+                      label={t("Restock")}
+                      checked={restock[i.sale_item_id] ?? true}
+                      onChange={(b) => setRestock({ ...restock, [i.sale_item_id]: b })}
+                      disabled={!i.product_id}
+                    />
+                  </div>
+                  <span className="qty-ctl">
+                    <button
+                      type="button"
+                      aria-label={t("Decrease {0}", i.name)}
+                      disabled={avail <= 0}
+                      onClick={() => bump(i.sale_item_id, -1, avail)}
+                    >
+                      <Minus size={20} aria-hidden />
+                    </button>
+                    <input
+                      className={`qty-input num ${bad ? "invalid" : ""}`}
+                      inputMode="decimal"
+                      disabled={avail <= 0}
+                      value={v}
+                      placeholder="0"
+                      aria-label={t("Refund quantity for {0}", i.name)}
+                      onChange={(e) => setQty({ ...qty, [i.sale_item_id]: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      aria-label={t("Increase {0}", i.name)}
+                      disabled={avail <= 0}
+                      onClick={() => bump(i.sale_item_id, 1, avail)}
+                    >
+                      <Plus size={20} aria-hidden />
+                    </button>
+                  </span>
+                  <Button disabled={avail <= 0} onClick={() => setQty({ ...qty, [i.sale_item_id]: formatQty(avail) })}>
+                    {t("All")}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="form-grid">
             <div className="field">
               <label htmlFor="reason">{t("Reason")}</label>
               <select id="reason" className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
@@ -256,14 +273,6 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
                   <option key={r}>{r}</option>
                 ))}
               </select>
-              {reason === t("Other") ? (
-                <input
-                  className="input"
-                  placeholder={t("Describe the reason")}
-                  value={other}
-                  onChange={(e) => setOther(e.target.value)}
-                />
-              ) : null}
             </div>
             <div className="field">
               <label htmlFor="refund-method">{t("Refund to")}</label>
@@ -275,11 +284,20 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
                 ))}
               </select>
             </div>
-            <div className="tiny">
-              {t("Refunds are limited to quantities not yet refunded. Restocked items return to inventory.")}
-            </div>
-            {error ? <Banner tone="danger">{error}</Banner> : null}
+            {reason === t("Other") ? (
+              <input
+                className="input span-2"
+                placeholder={t("Describe the reason")}
+                aria-label={t("Describe the reason")}
+                value={other}
+                onChange={(e) => setOther(e.target.value)}
+              />
+            ) : null}
           </div>
+          <div className="tiny">
+            {t("Refunds are limited to quantities not yet refunded. Restocked items return to inventory.")}
+          </div>
+          {error ? <Banner tone="danger">{error}</Banner> : null}
         </div>
       </Modal>
     );
@@ -289,20 +307,21 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
     return (
       <Modal
         title={t("Review refund")}
-        size="md"
+        size="sheet"
         onClose={onClose}
         footer={
-          <>
-            <Button icon={<ArrowLeft size={16} />} onClick={() => setStep("select")}>
+          <div className="row" style={{ width: "100%" }}>
+            <Button size="lg" icon={<ArrowLeft size={18} />} onClick={() => setStep("select")}>
               {t("Back")}
             </Button>
-            <Button variant="danger" className="right" onClick={confirm} loading={busy}>
+            <Button variant="danger" size="xl" className="grow" onClick={confirm} loading={busy}>
               {t("Confirm Refund {0}", formatMoney(preview.total_minor))}
             </Button>
-          </>
+          </div>
         }
       >
         <div className="col gap-16">
+          {stepper}
           <table className="table">
             <tbody>
               {preview.lines.map((l) => (
@@ -319,7 +338,7 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
             <dt>{t("VAT reversed")}</dt>
             <dd className="money">{formatMoney(preview.tax_minor)}</dd>
             <dt>{t("Refund amount")}</dt>
-            <dd className="money" style={{ fontWeight: 700 }}>
+            <dd className="money" style={{ fontWeight: 700, fontSize: 22 }}>
               {formatMoney(preview.total_minor)}
             </dd>
             <dt>{t("Refunded to")}</dt>
@@ -341,10 +360,10 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
     return (
       <Modal
         title={t("Refund completed")}
-        size="sm"
+        size="sheet narrow"
         onClose={onClose}
         footer={
-          <Button variant="primary" className="right" onClick={onClose} autoFocus>
+          <Button variant="primary" size="xl" block onClick={onClose} autoFocus>
             {t("Done")}
           </Button>
         }

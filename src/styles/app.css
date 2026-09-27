@@ -13,8 +13,8 @@ body,
 }
 body {
   font-family: var(--font);
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 16px;
+  line-height: 1.4;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -33,7 +33,19 @@ textarea {
 .money,
 td.num,
 th.num {
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--money-figures);
+}
+/* A price never breaks mid-number. */
+.money {
+  white-space: nowrap;
+}
+button,
+[role="button"],
+[role="menuitem"],
+[role="option"],
+[role="tab"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 :focus-visible {
   outline: none;
@@ -62,7 +74,7 @@ h2 {
   margin: 0;
 }
 h3 {
-  font-size: 15px;
+  font-size: 16px;
   line-height: 22px;
   font-weight: 600;
   margin: 0;
@@ -71,14 +83,15 @@ h3 {
   color: var(--text-2);
 }
 .small {
-  font-size: 13px;
+  font-size: 14px;
 }
 .tiny {
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.35;
   color: var(--text-2);
 }
 .mono {
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-family: var(--mono);
   font-size: 13px;
 }
 .row {
@@ -126,44 +139,80 @@ h3 {
 }
 
 /* ---------- buttons ---------- */
+/* Every control: default / hover (pointer only) / pressed (≤80 ms) / disabled / focus-visible.
+   Minimum hit target 48×48; small buttons extend their hit area with ::after. */
 .btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-height: var(--control-h);
   height: var(--control-h);
-  padding: 0 14px;
+  min-width: var(--control-h);
+  padding: 0 16px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-weight: 550;
+  font-weight: 600;
+  font-size: 15px;
   cursor: pointer;
   white-space: nowrap;
+  user-select: none;
   transition:
     background var(--dur),
     border-color var(--dur),
-    color var(--dur);
+    color var(--dur),
+    transform var(--dur-press);
 }
-.btn:hover:not(:disabled) {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+  .btn.primary:hover:not(:disabled) {
+    background: var(--brand-hover);
+  }
+  .btn.pay:hover:not(:disabled) {
+    background: var(--pos-pay-hover);
+  }
+  .btn.ghost:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+}
+.btn:active:not(:disabled) {
+  background: var(--surface-press);
+  transform: scale(0.98);
+  transition-duration: var(--dur-press);
 }
 .btn:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 .btn.primary {
   background: var(--brand);
   border-color: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
-.btn.primary:hover:not(:disabled) {
-  background: var(--brand-hover);
+.btn.primary:active:not(:disabled) {
+  background: var(--brand-press);
+}
+.btn.pay {
+  background: var(--pos-pay);
+  border-color: var(--pos-pay);
+  color: var(--on-pay);
+  font-weight: 750;
+}
+.btn.pay:active:not(:disabled) {
+  background: var(--pos-pay-press);
 }
 .btn.danger {
   background: var(--danger);
   border-color: var(--danger);
   color: #fff;
+}
+[data-theme="dark"] .btn.danger {
+  color: #2a0707;
 }
 .btn.danger-outline {
   color: var(--danger);
@@ -173,23 +222,29 @@ h3 {
   border-color: transparent;
   background: transparent;
 }
-.btn.ghost:hover:not(:disabled) {
-  background: var(--surface-hover);
-}
 .btn.sm {
-  height: 30px;
-  padding: 0 10px;
-  font-size: 13px;
+  height: 40px;
+  min-height: 40px;
+  min-width: 40px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+.btn.sm::after,
+.icon-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
 }
 .btn.lg {
-  height: 48px;
-  padding: 0 20px;
-  font-size: 15px;
+  height: 56px;
+  padding: 0 22px;
+  font-size: 16px;
 }
 .btn.xl {
-  height: 56px;
-  font-size: 17px;
-  font-weight: 700;
+  height: 64px;
+  font-size: 19px;
+  font-weight: 750;
+  padding: 0 24px;
 }
 .btn.block {
   width: 100%;
@@ -198,17 +253,19 @@ h3 {
   width: var(--control-h);
   padding: 0;
 }
+.btn.sm.icon {
+  width: 40px;
+}
+.btn kbd,
 .btn .kbd {
   font-size: 11px;
   font-weight: 600;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(15, 28, 46, 0.08);
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border: 0;
   color: inherit;
-  opacity: 0.8;
-}
-.btn.primary .kbd {
-  background: rgba(255, 255, 255, 0.2);
+  opacity: 0.9;
 }
 
 /* ---------- forms ---------- */
@@ -220,7 +277,7 @@ h3 {
 }
 .field > label,
 .field-label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 550;
   color: var(--text);
 }
@@ -229,21 +286,22 @@ h3 {
   color: var(--danger);
 }
 .field .hint {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-2);
 }
 .field .error {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--danger);
 }
 .input,
 .select,
 .textarea {
   height: var(--control-h);
-  padding: 0 11px;
-  border: 1px solid var(--border);
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
+  font-size: 16px;
   width: 100%;
   min-width: 0;
   transition: border-color var(--dur);
@@ -268,19 +326,20 @@ h3 {
   text-align: end;
 }
 .input.lg {
-  height: 52px;
-  font-size: 18px;
+  height: 56px;
+  font-size: 20px;
 }
 .checkbox {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  min-height: 48px;
   cursor: pointer;
   user-select: none;
 }
 .checkbox input {
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   accent-color: var(--brand);
 }
 .form-grid {
@@ -341,10 +400,10 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 11px;
-  font-size: 12px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 12px;
+  font-size: 13px;
   font-weight: 600;
   background: var(--surface-hover);
   color: var(--text-2);
@@ -378,15 +437,23 @@ h3 {
   background: currentColor;
 }
 .filter-chip {
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 16px;
-  border: 1px solid var(--border);
+  height: 48px;
+  min-width: 48px;
+  padding: 0 16px;
+  border-radius: 24px;
+  border: 1px solid var(--border-strong);
   background: var(--surface);
   cursor: pointer;
-  font-weight: 550;
-  font-size: 13px;
+  font-weight: 600;
+  font-size: 15px;
   white-space: nowrap;
+  transition:
+    background var(--dur),
+    transform var(--dur-press);
+}
+.filter-chip:active {
+  transform: scale(0.97);
+  background: var(--surface-press);
 }
 .filter-chip.active {
   background: var(--brand-soft);
@@ -410,12 +477,12 @@ table.table {
   z-index: 1;
   background: var(--surface-2);
   text-align: start;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   color: var(--text-2);
   text-transform: none;
   padding: 0 12px;
-  height: 38px;
+  height: 44px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
   user-select: none;
@@ -427,7 +494,7 @@ table.table {
   padding: 0 12px;
   height: var(--row-h);
   border-bottom: 1px solid var(--border);
-  font-size: 13.5px;
+  font-size: 15px;
   vertical-align: middle;
 }
 .table tr:last-child td {
@@ -440,8 +507,13 @@ table.table {
 .table tbody tr.clickable {
   cursor: pointer;
 }
-.table tbody tr:hover td {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .table tbody tr:hover td {
+    background: var(--surface-hover);
+  }
+}
+.table tbody tr.clickable:active td {
+  background: var(--surface-press);
 }
 .table tbody tr.selected td {
   background: var(--brand-soft);
@@ -496,11 +568,59 @@ table.table {
   width: calc(100vw - 48px);
   height: calc(100vh - 48px);
 }
+/* Sheets: full height, docked to the inline-end edge (payment, refund, shift close, More). */
+.backdrop.sheet-backdrop {
+  justify-content: flex-end;
+  align-items: stretch;
+}
+.modal.sheet {
+  width: min(720px, 100vw);
+  max-width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: var(--radius-modal) 0 0 var(--radius-modal);
+  animation: sheet-in var(--dur) ease-out;
+}
+[dir="rtl"] .modal.sheet {
+  border-radius: 0 var(--radius-modal) var(--radius-modal) 0;
+  animation-name: sheet-in-rtl;
+}
+.modal.sheet.narrow {
+  width: 440px;
+}
+.modal.sheet .modal-head {
+  min-height: 64px;
+  padding: 8px 12px 8px 20px;
+}
+.modal.sheet .modal-body {
+  padding: 16px 20px;
+}
+.modal.sheet .modal-foot {
+  padding: 12px 20px 24px;
+}
+.modal-head .close-btn {
+  width: 48px;
+  height: 48px;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateX(32px);
+    opacity: 0.4;
+  }
+}
+@keyframes sheet-in-rtl {
+  from {
+    transform: translateX(-32px);
+    opacity: 0.4;
+  }
+}
 .modal-head {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 20px;
+  padding: 8px 12px 8px 20px;
+  padding-inline: 20px 12px;
+  min-height: 60px;
   border-bottom: 1px solid var(--border);
 }
 .modal-body {
@@ -512,7 +632,7 @@ table.table {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 20px;
+  padding: 12px 20px;
   border-top: 1px solid var(--border);
 }
 @keyframes fade {
@@ -536,7 +656,7 @@ table.table {
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface-2);
-  font-size: 13.5px;
+  font-size: 15px;
 }
 .banner.info {
   background: var(--info-soft);
@@ -570,25 +690,40 @@ table.table {
 .banner.danger .banner-icon {
   color: var(--danger);
 }
+/* Toasts: top-centre, 48 px, clear of the scan field (which sits below the 56 px bar). */
 .toasts {
   position: fixed;
-  top: 16px;
-  inset-inline-end: 16px;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   z-index: 100;
+  pointer-events: none;
 }
 .toast {
-  width: 360px;
+  pointer-events: auto;
+  min-height: 48px;
+  max-width: min(560px, calc(100vw - 32px));
   display: flex;
+  align-items: center;
   gap: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
+  padding: 6px 8px 6px 14px;
+  padding-inline: 14px 8px;
+  border-radius: 24px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-md);
-  animation: pop 160ms ease-out;
+  font-size: 15px;
+  animation: toast-in var(--dur) ease-out;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
 }
 .toast .t-title {
   font-weight: 650;
@@ -651,7 +786,9 @@ table.table {
   margin-bottom: 20px;
 }
 .tab {
-  padding: 10px 14px;
+  min-height: 48px;
+  padding: 10px 16px;
+  font-size: 15px;
   border: 0;
   background: none;
   cursor: pointer;
@@ -673,18 +810,27 @@ table.table {
 }
 .keypad button {
   height: 56px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
   background: var(--surface);
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 650;
+  font-variant-numeric: var(--money-figures);
   cursor: pointer;
+  user-select: none;
+  transition:
+    background var(--dur),
+    transform var(--dur-press);
 }
-.keypad button:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .keypad button:hover {
+    background: var(--surface-hover);
+  }
 }
 .keypad button:active {
   background: var(--brand-soft);
+  transform: scale(0.97);
+  transition-duration: var(--dur-press);
 }
 .pin-dots {
   display: flex;
@@ -769,6 +915,9 @@ kbd {
 .link:hover {
   text-decoration: underline;
 }
+.link:active {
+  opacity: 0.7;
+}
 details.tech summary {
   cursor: pointer;
   color: var(--text-2);
@@ -852,9 +1001,12 @@ details > summary {
   cursor: pointer;
 }
 .icon-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
   padding: 4px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -862,8 +1014,13 @@ details > summary {
   color: inherit;
   cursor: pointer;
 }
-.icon-btn:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .icon-btn:hover {
+    background: var(--surface-hover);
+  }
+}
+.icon-btn:active {
+  background: var(--surface-press);
 }
 .icon-btn:focus-visible,
 [data-testid="ai-proposal"]:focus-visible {

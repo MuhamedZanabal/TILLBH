@@ -1,0 +1,356 @@
+import { expect, test, type Page } from "@playwright/test";
+
+// The primary cashier display: 1024×768 CSS pixels at 100% scaling, touch-first.
+// Each state is screenshotted (E2E_SHOTS) and the PAY button is measured: it must be
+// at least 200×56, fully on screen with an 8 px bottom margin, never horizontally
+// scrolled away, and the topmost element at its centre (nothing covers it).
+test.use({ viewport: { width: 1024, height: 768 } });
+test.describe.configure({ mode: "serial" });
+
+const shots = process.env.E2E_SHOTS;
+async function shot(page: Page, name: string) {
+  await page.waitForTimeout(250); // let 150–200 ms transitions settle
+  if (shots) await page.screenshot({ path: `${shots}/1024-${name}.png` });
+}
+
+async function rpc(page: Page, cmd: string, args: Record<string, unknown> = {}, token: string | null = null) {
+  const res = await page.request.post("/rpc", { data: { cmd, token, args } });
+  const body = await res.json();
+  if (!body.ok) throw new Error(`${cmd}: ${JSON.stringify(body.error)}`);
+  return body.data;
+}
+
+async function noHorizontalScroll(page: Page) {
+  const w = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth));
+  expect(w, "no horizontal scroll").toBeLessThanOrEqual(1024);
+}
+
+async function payIsTappable(page: Page) {
+  const pay = page.getByTestId("pay");
+  await expect(pay).toBeVisible();
+  const b = (await pay.boundingBox())!;
+  expect(b.width, "PAY width").toBeGreaterThanOrEqual(200);
+  expect(b.height, "PAY height").toBeGreaterThanOrEqual(56);
+  expect(b.x).toBeGreaterThanOrEqual(0);
+  expect(b.x + b.width).toBeLessThanOrEqual(1024);
+  expect(b.y + b.height, "PAY clear of a 16 px taskbar strip").toBeLessThanOrEqual(768 - 16);
+  const top = await page.evaluate(
+    ([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      return !!el?.closest('[data-testid="pay"]');
+    },
+    [b.x + b.width / 2, b.y + b.height / 2],
+  );
+  expect(top, "nothing covers PAY").toBe(true);
+  // Chrome budget: top bar ≤ 56, dock ≤ 88.
+  const bars = await page.evaluate(() => ({
+    top: document.querySelector(".pos-header")?.getBoundingClientRect().height ?? 0,
+    dock: document.querySelector(".pos-dock")?.getBoundingClientRect().height ?? 0,
+  }));
+  expect(bars.top).toBeLessThanOrEqual(56);
+  expect(bars.dock).toBeLessThanOrEqual(88);
+  await noHorizontalScroll(page);
+}
+
+/** Every visible button on the page is at least 48×48 (hit area, pseudo-elements included via data). */
+async function touchTargets(page: Page, scope = "body") {
+  const small = await page.evaluate((sel) => {
+    const out: string[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>(
+      `${sel} button, ${sel} [role=button], ${sel} [role=menuitem]`,
+    )) {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height || getComputedStyle(el).visibility === "hidden") continue;
+      // A hit area may be extended by an absolutely positioned ::after with negative insets.
+      const after = getComputedStyle(el, "::after");
+      const on = after.content !== "none" && after.position === "absolute";
+      const ey = on ? Math.max(0, -parseFloat(after.top) || 0) * 2 : 0;
+      const ex = on ? Math.max(0, -parseFloat(after.left) || 0) * 2 : 0;
+      if (r.width + ex < 47.5 || r.height + ey < 47.5)
+        out.push(
+          `${el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 30)} ${Math.round(r.width)}×${Math.round(r.height)}`,
+        );
+    }
+    return out;
+  }, scope);
+  expect(small, "touch targets under 48×48").toEqual([]);
+}
+
+let barcodes: string[] = [];
+
+async function login(page: Page, name: string, pin: string) {
+  await page.getByRole("button", { name: new RegExp(name) }).click();
+  await page.getByLabel(/PIN|الرمز السري/).fill(pin);
+  await page.getByRole("button", { name: /Log in|تسجيل الدخول/ }).click();
+}
+
+async function scan(page: Page, code: string) {
+  await page.getByTestId("scan-input").focus();
+  await page.keyboard.type(code, { delay: 2 });
+  await page.keyboard.press("Enter");
+}
+
+test("1024×768: POS, payment, shift close, refund", async ({ page }) => {
+  await page.goto("/");
+  const status = await rpc(page, "setup.status");
+  if (!status.setup_complete) {
+    await rpc(page, "setup.initialize", {
+      business_name: "Al Noor Supermarket",
+      branch_name: "Main",
+      vat_rate_bp: 1000,
+      owner_name: "Zana",
+      owner_pin: "4826",
+      device_name: "Till",
+      device_code: "T01",
+    });
+    await page.reload();
+  }
+  const users = await rpc(page, "auth.users");
+  const owner = users.find((u: { display_name: string }) => u.display_name === "Zana");
+  const token = (await rpc(page, "auth.login", { user_id: owner.user_id, pin: "4826" })).token;
+  const tax = (await rpc(page, "tax.list", {}, token))[0].tax_rule_id;
+  const cat = await rpc(page, "categories.save", { name: "Grocery 1024" }, token);
+  const names = [
+    "Basmati Rice 5kg Premium Long Grain",
+    "Sunflower Oil 1.8L",
+    "Nido Milk Powder 900g",
+    "Lipton Yellow Label 100 bags",
+    "Kiri Cream Cheese 12 portions",
+    "Tang Orange 2kg",
+    "Al Kabeer Samosa 20pcs",
+    "Galaxy Chocolate 36g",
+    "Pril Dishwashing Liquid 1L",
+    "Fine Tissues 200 sheets",
+    "Masafi Water 1.5L × 6",
+    "Americana Chicken Nuggets 400g",
+  ];
+  barcodes = names.map((_, i) => `77012300${String(i + 10).padStart(4, "0")}`);
+  const existing = await rpc(page, "pos.search", { query: barcodes[0], limit: 1 }, token).catch(() => []);
+  if (!existing.length)
+    for (let i = 0; i < names.length; i++)
+      await rpc(
+        page,
+        "products.create",
+        {
+          name: names[i],
+          tax_rule_id: tax,
+          category_id: cat.category_id,
+          price_minor: 350 + i * 1275,
+          cost_minor: 200 + i * 700,
+          barcodes: [barcodes[i]],
+          // Three items sit at the reorder point, so one sale leaves them low.
+          opening_stock_milli: i % 4 === 0 ? 6000 : 80000,
+          reorder_point_milli: 5000,
+          is_favorite: true,
+          unit: "pcs",
+          track_inventory: true,
+        },
+        token,
+      );
+  await rpc(page, "auth.logout", {}, token);
+
+  await page.reload();
+  await login(page, "Zana", "4826");
+  const gate = page.getByRole("heading", { name: "Start Shift" });
+  await expect(gate.or(page.getByTestId("pos"))).toBeVisible();
+  if (await gate.isVisible()) {
+    await page.getByLabel("Opening float (cash in drawer)").fill("20.000");
+    await page.getByRole("button", { name: "Open Shift" }).click();
+  }
+  await expect(page.getByTestId("pos")).toBeVisible();
+
+  // ---- 1. Empty cart ----
+  await expect(page.getByTestId("cart-total")).toHaveText("BHD 0.000");
+  await shot(page, "01-pos-empty");
+  await payIsTappable(page);
+  await touchTargets(page, ".pos-root");
+
+  // ---- 2. Twelve lines, low stock, a held ticket ----
+  await scan(page, barcodes[1]);
+  await page.getByRole("button", { name: /^Hold/ }).click();
+  await page.getByRole("button", { name: "Hold Sale" }).click();
+  await expect(page.getByTestId("held-count")).toHaveText("1");
+  for (const code of barcodes) await scan(page, code);
+  await expect(page.getByTestId("line-count")).toContainText("12 lines");
+  await expect(page.getByTestId("low-stock-hint").first()).toBeVisible();
+  await shot(page, "02-pos-12-lines");
+  await payIsTappable(page);
+  await touchTargets(page, ".pos-root");
+
+  // ---- 3. Payment sheet: cash with change ----
+  await page.getByTestId("pay").click();
+  await expect(page.getByTestId("amount-due")).toBeVisible();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByTestId("tender-cash")).toBeVisible();
+  await page.getByTestId("pay-amount").fill("200.000");
+  await expect(page.getByTestId("change")).toBeVisible();
+  const confirm = page.getByTestId("complete-sale");
+  const cb = (await confirm.boundingBox())!;
+  expect(cb.height).toBeGreaterThanOrEqual(64);
+  expect(cb.y + cb.height).toBeLessThanOrEqual(768 - 8);
+  for (const tid of ["tender-cash", "tender-card", "tender-benefitpay", "tender-split"]) {
+    const tb = await sheet.getByTestId(tid).boundingBox();
+    if (tb) expect(tb.height, tid).toBeGreaterThanOrEqual(72);
+  }
+  await shot(page, "03-payment-cash-change");
+  await touchTargets(page, "[role=dialog]");
+  await confirm.click();
+  const receipt = (await page.getByTestId("receipt-number").textContent())!.trim();
+  await page.getByTestId("new-sale").click();
+
+  // ---- 4. Shift close ----
+  await page.getByTestId("pos-more").click();
+  await shot(page, "04a-more-sheet");
+  await touchTargets(page, "[role=dialog]");
+  await page.getByRole("menuitem", { name: "Close shift" }).click();
+  await expect(page.getByRole("heading", { name: /Close shift/ })).toBeVisible();
+  const counted = page.getByLabel(/Counted cash/);
+  await counted.fill("150.000");
+  const closeBtn = page.getByTestId("close-shift-confirm");
+  const clb = (await closeBtn.boundingBox())!;
+  expect(clb.y + clb.height, "Close shift button on screen").toBeLessThanOrEqual(768 - 8);
+  await expect(page.getByTestId("expected-cash")).toBeInViewport();
+  await shot(page, "04-shift-close");
+  await page.keyboard.press("Escape");
+
+  // ---- 5. Refund step 2 ----
+  await page.getByRole("button", { name: "Refund", exact: true }).click();
+  await page.getByLabel("Receipt number").fill(receipt);
+  await page.getByRole("button", { name: "Open Refund" }).click();
+  await expect(page.getByTestId("refund-step-2")).toBeVisible();
+  const plus = page.getByRole("button", { name: /^Increase/ }).first();
+  await plus.click();
+  await shot(page, "05-refund-step2");
+  await touchTargets(page, "[role=dialog]");
+  await page.keyboard.press("Escape");
+});
+
+test("1024×768: AI page and till drawer", async ({ page }) => {
+  await page.goto("/");
+  const users = await rpc(page, "auth.users");
+  const owner = users.find((u: { display_name: string }) => u.display_name === "Zana");
+  const token = (await rpc(page, "auth.login", { user_id: owner.user_id, pin: "4826" })).token;
+  const features = await rpc(page, "settings.get", { key: "features" }, token);
+  await rpc(
+    page,
+    "settings.save",
+    { key: "features", value: { ...features, "ai.enabled": true, "ai.mutations": true } },
+    token,
+  );
+  await rpc(page, "auth.logout", {}, token);
+  await page.reload();
+  await login(page, "Zana", "4826");
+  await expect(page.getByTestId("pos")).toBeVisible();
+
+  // ---- 7. Till drawer over a six-line cart: PAY stays fully tappable ----
+  for (const code of barcodes.slice(0, 6)) await scan(page, code);
+  await expect(page.getByTestId("line-count")).toContainText("6 lines");
+  await page.getByTestId("till-ai").click();
+  await expect(page.getByTestId("ai-composer")).toBeVisible();
+  await page.getByTestId("ai-composer").fill("low stock");
+  await page.getByTestId("ai-composer").press("Enter");
+  await expect(page.getByTestId("ai-tool-step").first()).toBeVisible();
+  await shot(page, "07-till-drawer-6-lines");
+  await payIsTappable(page);
+  await page.keyboard.press("Escape");
+
+  // ---- 6. AI page: empty, streaming + thinking + two tools, proposal with diff ----
+  await page.getByTestId("pos-more").click();
+  await page.getByRole("menuitem", { name: "Admin" }).click();
+  await page.getByRole("link", { name: "AI Assistant" }).click();
+  await page.getByTestId("ai-new-chat").click();
+  await expect(page.getByTestId("ai-empty")).toBeVisible();
+  await shot(page, "06a-ai-empty");
+  await noHorizontalScroll(page);
+  const composer = page.getByTestId("ai-composer");
+  const cbox = (await composer.boundingBox())!;
+  expect(cbox.height).toBeGreaterThanOrEqual(56);
+  await composer.fill(`set price of ${"Galaxy Chocolate 36g".toLowerCase()} to 0.100`);
+  await composer.press("Enter");
+  await expect(page.getByTestId("ai-tool-step")).toHaveCount(2);
+  await expect(page.getByTestId("ai-thinking").first()).toBeVisible();
+  await shot(page, "06b-ai-tools-thinking");
+  const card = page.getByTestId("ai-proposal-card").first();
+  await expect(card).toBeVisible();
+  await expect(card.getByTestId("proposal-diff")).toBeVisible();
+  await expect(card.getByTestId("risk-stripe")).toBeVisible();
+  const conf = (await card.getByRole("button", { name: "Confirm" }).boundingBox())!;
+  expect(conf.height).toBeGreaterThanOrEqual(56);
+  await shot(page, "06c-ai-proposal");
+  await noHorizontalScroll(page);
+  await touchTargets(page, "[data-testid=ai-page]");
+  // Leave the price alone.
+  await card.getByRole("button", { name: "Reject" }).click();
+});
+
+test("1024×768: Arabic RTL, dark compact, backup + update-needed", async ({ page }) => {
+  await page.goto("/");
+  // ---- 10. Terminal whose hub needs an update, and backups overdue ----
+  await page.route("**/rpc", async (route) => {
+    const body = route.request().postDataJSON() as { cmd: string };
+    if (body.cmd !== "sync.status") return route.fallback();
+    await route.fulfill({
+      json: {
+        ok: true,
+        data: {
+          mode: "terminal",
+          pending: 3,
+          last_error: "The hub runs a newer version. Update this till.",
+          last_error_kind: "version_mismatch",
+        },
+      },
+    });
+  });
+  await login(page, "Zana", "4826");
+  await expect(page.getByTestId("pos")).toBeVisible();
+  await expect(page.getByTestId("sync-pill")).toContainText("Update needed");
+  await expect(page.getByTestId("backup-pill")).toBeVisible();
+  await shot(page, "10-backup-and-update-needed");
+  await payIsTappable(page);
+  await page.getByTestId("pos-more").click();
+  await page.getByRole("menuitem", { name: "Admin" }).click();
+  await expect(page.getByTestId("backup-alert")).toBeVisible();
+  const bh = (await page.getByTestId("backup-alert").boundingBox())!;
+  expect(bh.height, "backup banner is one line").toBeLessThanOrEqual(72);
+  await shot(page, "10b-admin-backup-banner");
+  await noHorizontalScroll(page);
+  await page.getByTestId("back-to-pos").click();
+  await page.unroute("**/rpc");
+
+  // ---- 9. Dark + compact ----
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.density = "compact";
+  });
+  for (const code of barcodes.slice(0, 3)) await scan(page, code);
+  await shot(page, "09-dark-compact-pos");
+  await payIsTappable(page);
+  await touchTargets(page, ".pos-root");
+  await page.getByTestId("till-ai").click();
+  await shot(page, "09b-dark-compact-ai");
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "light";
+    document.documentElement.dataset.density = "compact";
+  });
+
+  // ---- 8. Arabic RTL POS + AI ----
+  await page.getByTestId("pos-more").click();
+  await page.getByRole("menuitem", { name: "العربية" }).click();
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await expect(page.getByTestId("pos")).toBeVisible();
+  // Cart column sits on the left in RTL (search on the right).
+  const search = (await page.getByTestId("scan-input").boundingBox())!;
+  const cartBox = (await page.locator(".cart-lines").boundingBox())!;
+  expect(search.x).toBeGreaterThan(cartBox.x);
+  await shot(page, "08a-ar-pos");
+  await payIsTappable(page);
+  await page.getByTestId("till-ai").click();
+  await expect(page.getByTestId("ai-composer")).toBeVisible();
+  await shot(page, "08b-ar-ai-drawer");
+  await payIsTappable(page);
+  await page.keyboard.press("Escape");
+  await page.getByTestId("pos-more").click();
+  await page.getByRole("menuitem", { name: "English" }).click();
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+});

@@ -1,21 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Bot,
-  Banknote,
-  CreditCard,
+  DoorClosed,
+  Inbox,
+  Languages,
+  ListRestart,
   Lock,
+  LogOut,
   MoreHorizontal,
   PauseCircle,
+  Percent,
+  PlusSquare,
   Printer,
+  ReceiptText,
   RotateCcw,
   ScanBarcode,
   Settings2,
-  Smartphone,
+  ShoppingBag,
   Truck,
   UserRound,
   Users,
+  Vault,
   X,
-  ListRestart,
+  XCircle,
 } from "lucide-react";
 import { api } from "../../api";
 import type { Cart, CategoryRow, PosSearchRow, SaleResult, ShiftSummary } from "../../api/types";
@@ -27,10 +36,9 @@ import { formatMoney, formatQty } from "../../lib/money";
 import { formatClock } from "../../lib/time";
 import { BurstDetector, DuplicateGuard, looksLikeBarcode } from "../../lib/scanner";
 import { setSoundEnabled, sounds } from "../../lib/sound";
-import { Banner, Button, Chip, Modal } from "../../components/ui";
+import { Banner, Button, Modal } from "../../components/ui";
 import { Logo } from "../../components/Logo";
 import { ConnectionPill } from "./ConnectionPill";
-import { Drawer } from "../admin/common";
 import { AiChat, AiReady } from "../admin/aiChat";
 import { HashRouter } from "react-router-dom";
 import type { AiContext } from "../../api/types";
@@ -495,59 +503,151 @@ export function PosScreen({
   );
   const printFailed = lastSale?.print?.status === "failed";
 
+  const moreItems: { label: string; show: boolean | undefined; icon?: React.ReactNode; run: () => void }[] = [
+    { label: t("Admin"), show: has("admin.access"), icon: <Settings2 size={20} />, run: () => setMode("admin") },
+    {
+      label: getLang() === "ar" ? "English" : "العربية",
+      show: true,
+      icon: <Languages size={20} />,
+      run: () => switchLang(getLang() === "ar" ? "en" : "ar"),
+    },
+    { label: t("Lock terminal"), show: true, icon: <Lock size={20} />, run: () => void lock() },
+    {
+      label: t("Delivery for last sale"),
+      show: !!lastSale,
+      icon: <Truck size={20} />,
+      run: () => setModal({ kind: "delivery", saleId: lastSale?.sale_id ?? null }),
+    },
+    {
+      label: t("Digital orders"),
+      show: ordersOn,
+      icon: <ShoppingBag size={20} />,
+      run: () => setModal({ kind: "orders" }),
+    },
+    {
+      label: t("Custom item"),
+      show: has("pos.custom_item") || config?.pos.allow_custom_item,
+      icon: <PlusSquare size={20} />,
+      run: () => setModal({ kind: "custom" }),
+    },
+    {
+      label: t("Reprint / recent sales"),
+      show: has("pos.reprint"),
+      icon: <ReceiptText size={20} />,
+      run: () => setModal({ kind: "recent" }),
+    },
+    { label: t("Print queue"), show: true, icon: <Printer size={20} />, run: () => setModal({ kind: "print_queue" }) },
+    {
+      label: t("Open drawer (no sale)"),
+      show: true,
+      icon: <Inbox size={20} />,
+      run: () => setModal({ kind: "cash", cashKind: "no_sale" }),
+    },
+    {
+      label: t("Paid in"),
+      show: true,
+      icon: <ArrowDownToLine size={20} />,
+      run: () => setModal({ kind: "cash", cashKind: "paid_in" }),
+    },
+    {
+      label: t("Paid out"),
+      show: true,
+      icon: <ArrowUpFromLine size={20} />,
+      run: () => setModal({ kind: "cash", cashKind: "paid_out" }),
+    },
+    {
+      label: t("Safe drop"),
+      show: true,
+      icon: <Vault size={20} />,
+      run: () => setModal({ kind: "cash", cashKind: "safe_drop" }),
+    },
+    { label: t("Cancel sale"), show: hasLines, icon: <XCircle size={20} />, run: () => void cancelSale() },
+    {
+      label: t("Close shift"),
+      show: has("shift.close"),
+      icon: <DoorClosed size={20} />,
+      run: () => setModal({ kind: "close_shift" }),
+    },
+    { label: t("Logout"), show: true, icon: <LogOut size={20} />, run: () => void doLogout() },
+  ];
+
   return (
     <div className="pos-root" data-testid="pos">
       <header className="pos-header">
-        <div className="brand">
-          <Logo size={28} /> {t("AMWAPOS")}
+        <div className="brand" title={config?.business_name ?? undefined}>
+          <Logo size={28} />
+          <span className="brand-name ellipsis">{config?.business_name || t("AMWAPOS")}</span>
         </div>
-        <div className="sep" />
-        <div className="hitem">{config?.business_name}</div>
-        <div className="grow" style={{ display: "flex", justifyContent: "center" }}>
-          {cart.customer ? (
-            <span className="customer-pill">
-              <UserRound size={14} style={{ verticalAlign: -2 }} /> {cart.customer.name}
-            </span>
+        <span className="shift-chip">
+          <UserRound size={16} aria-hidden />
+          <span className="ellipsis">{session?.display_name}</span>
+          <span className="shift-no">{shift.shift_number}</span>
+        </span>
+        <div className="pills">
+          <BackupPill />
+          <ConnectionPill />
+          <span className={`status-pill ${printFailed ? "err" : config?.printer_configured ? "" : "warn"}`}>
+            <Printer size={14} aria-hidden />
+            {config?.printer_configured ? (printFailed ? t("Print failed") : t("Printer")) : t("No printer")}
+          </span>
+          {shift.safe_drop_minor > 0 ? (
+            <span className="status-pill">{t("Dropped {0}", formatMoney(shift.safe_drop_minor))}</span>
           ) : null}
         </div>
-        <ConnectionPill />
-        <span
-          className="status-pill"
-          title={config?.printer_configured ? t("Receipt printer configured") : t("No receipt printer configured")}
-        >
-          <Printer size={13} />{" "}
-          {config?.printer_configured ? (printFailed ? t("Print failed") : t("Printer")) : t("No printer")}
-        </span>
-        <BackupPill />
-        <div className="hitem">{t("Shift {0}", shift.shift_number)}</div>
-        {shift.safe_drop_minor > 0 ? (
-          <div className="hitem" title={t("Safe drops this shift")}>
-            {t("Dropped {0}", formatMoney(shift.safe_drop_minor))}
-          </div>
+        <span className="grow" />
+        {has("pos.hold") ? (
+          <button
+            type="button"
+            className={`top-btn held-btn ${heldTickets.length ? "has" : ""}`}
+            onClick={() => setModal({ kind: "held" })}
+            aria-label={
+              heldTickets.length ? t("Held tickets: {0}", heldTickets.map((n) => `#${n}`).join(" ")) : t("Held tickets")
+            }
+          >
+            <ListRestart size={20} aria-hidden />
+            <span className="top-label">{t("Held")}</span>
+            {heldTickets.length ? (
+              <span className="badge" data-testid="held-count">
+                {heldTickets.length}
+              </span>
+            ) : null}
+          </button>
         ) : null}
-        <div className="hitem">
-          <UserRound size={15} /> {session?.display_name}
-        </div>
-        <div className="hitem num" style={{ fontWeight: 650, color: "#fff" }}>
+        <span className="clock num" aria-label={t("Time")}>
           {clock}
-        </div>
+        </span>
         {aiOn ? (
-          <Button size="sm" icon={<Bot size={15} />} data-testid="till-ai" onClick={() => setAiOpen(true)}>
-            {t("Assistant")}
-          </Button>
+          <button
+            type="button"
+            className={`top-btn icon-only ${aiOpen ? "on" : ""}`}
+            data-testid="till-ai"
+            aria-label={t("Assistant")}
+            aria-pressed={aiOpen}
+            onClick={() => setAiOpen((v) => !v)}
+          >
+            <Bot size={22} aria-hidden />
+          </button>
         ) : null}
-        <Button size="sm" icon={<Lock size={15} />} onClick={() => void lock()} title={t("Lock (Ctrl+L)")}>
-          {t("Lock")}
-        </Button>
+        <button
+          type="button"
+          className="top-btn"
+          data-testid="pos-more"
+          aria-haspopup="menu"
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen(true)}
+        >
+          <MoreHorizontal size={22} aria-hidden />
+          <span className="top-label">{t("More")}</span>
+        </button>
       </header>
       <main className="pos-main">
         <section className="pos-left">
           <div className="scan-box">
-            <ScanBarcode size={20} className="scan-icon" aria-hidden />
+            <ScanBarcode size={22} className="scan-icon" aria-hidden />
             <input
               ref={scanRef}
               className="input"
-              placeholder={t("Scan barcode or search product…")}
+              placeholder={t("Scan or search")}
               aria-label={t("Scan barcode or search product")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -559,51 +659,39 @@ export function PosScreen({
             {query ? (
               <Button
                 variant="ghost"
-                size="sm"
                 className="clear"
                 aria-label={t("Clear search")}
-                icon={<X size={16} />}
+                icon={<X size={20} />}
                 onClick={() => (setQuery(""), focusScan())}
               />
             ) : null}
           </div>
           {notice ? (
-            <Banner
-              tone={notice.tone}
-              action={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={t("Dismiss")}
-                  icon={<X size={14} />}
-                  onClick={() => setNotice(null)}
-                />
-              }
-            >
-              {notice.text}
-            </Banner>
+            <div className={`pos-notice ${notice.tone}`} role={notice.tone === "info" ? "status" : "alert"}>
+              <span className="grow">{notice.text}</span>
+              <button type="button" className="notice-x" aria-label={t("Dismiss")} onClick={() => setNotice(null)}>
+                <X size={18} aria-hidden />
+              </button>
+            </div>
           ) : null}
           {printFailed && modal.kind === "none" ? (
-            <Banner
-              tone="warning"
-              title={t("Sale {0} completed — receipt could not be printed", lastSale!.receipt_number)}
-              action={
-                <Button
-                  size="sm"
-                  onClick={async () => {
-                    const r = await api.print.retry(lastSale!.print!.job_id!);
-                    setLastSale({ ...lastSale!, print: r });
-                    if (r.status === "printed") toast("success", t("Receipt printed"));
-                  }}
-                >
-                  {t("Retry Print")}
-                </Button>
-              }
-            >
-              {lastSale!.print!.message}
-            </Banner>
+            <div className="pos-notice warning" role="alert">
+              <span className="grow">
+                {t("Sale {0} completed — receipt could not be printed", lastSale!.receipt_number)}
+              </span>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  const r = await api.print.retry(lastSale!.print!.job_id!);
+                  setLastSale({ ...lastSale!, print: r });
+                  if (r.status === "printed") toast("success", t("Receipt printed"));
+                }}
+              >
+                {t("Retry Print")}
+              </Button>
+            </div>
           ) : null}
-          <div className="pos-panel">
+          <div className="pos-panel products">
             {results ? (
               <div className="results" role="listbox" aria-label={t("Search results")}>
                 {results.length === 0 ? (
@@ -621,16 +709,13 @@ export function PosScreen({
                       onMouseDown={(e) => (e.preventDefault(), void addProduct(r))}
                     >
                       <div className="grow">
-                        <div style={{ fontWeight: 600 }}>{r.name}</div>
-                        <div className="tiny">
-                          {t("{0} · SKU {1}", r.category_name ?? "—", r.sku)}{" "}
-                          {r.primary_barcode ? `· ${r.primary_barcode}` : ""}
+                        <div className="r-name ellipsis">{r.name}</div>
+                        <div className="tiny ellipsis">
+                          {r.primary_barcode ?? r.sku}
+                          {r.track_inventory ? ` · ${t("Stock {0}", formatQty(r.stock_milli))}` : ""}
                         </div>
                       </div>
-                      <div className="tiny" style={{ minWidth: 70, textAlign: "end" }}>
-                        {r.track_inventory ? t("Stock {0}", formatQty(r.stock_milli)) : ""}
-                      </div>
-                      <div className="r-price">
+                      <div className="r-price money">
                         {r.price_minor === null ? t("No price") : formatMoney(r.price_minor)}
                       </div>
                     </div>
@@ -641,12 +726,16 @@ export function PosScreen({
               <>
                 <div className="cat-chips" role="tablist" aria-label={t("Categories")}>
                   <button
+                    role="tab"
+                    aria-selected={activeCat === "fav"}
                     className={`filter-chip ${activeCat === "fav" ? "active" : ""}`}
                     onClick={() => setActiveCat("fav")}
                   >
                     {t("Favorites")}
                   </button>
                   <button
+                    role="tab"
+                    aria-selected={activeCat === "all"}
                     className={`filter-chip ${activeCat === "all" ? "active" : ""}`}
                     onClick={() => setActiveCat("all")}
                   >
@@ -657,6 +746,8 @@ export function PosScreen({
                     .map((c) => (
                       <button
                         key={c.category_id}
+                        role="tab"
+                        aria-selected={activeCat === c.category_id}
                         className={`filter-chip ${activeCat === c.category_id ? "active" : ""}`}
                         onClick={() => setActiveCat(c.category_id)}
                       >
@@ -666,10 +757,9 @@ export function PosScreen({
                 </div>
                 <div className="tile-grid">
                   {grid.map((p) => (
-                    <button key={p.product_id} className="p-tile" onClick={() => void addProduct(p)} title={p.name}>
+                    <button key={p.product_id} className="p-tile" onClick={() => void addProduct(p)}>
                       <span className="p-name">{p.name}</span>
-                      <span className="tiny">{p.sku}</span>
-                      <span className="p-price">{p.price_minor === null ? "—" : formatMoney(p.price_minor)}</span>
+                      <span className="p-price money">{p.price_minor === null ? "—" : formatMoney(p.price_minor)}</span>
                     </button>
                   ))}
                   {grid.length === 0 ? (
@@ -682,115 +772,35 @@ export function PosScreen({
               </>
             )}
           </div>
-          <div className="quick-actions" style={{ position: "relative" }}>
-            <Button icon={<Users size={20} />} onClick={() => setModal({ kind: "customer" })} title="F3">
-              {t("Customer")}
-            </Button>
-            <Button
-              icon={<PauseCircle size={20} />}
+          <div className="quick-actions">
+            <button type="button" className="q-btn" onClick={() => setModal({ kind: "customer" })}>
+              <Users size={20} aria-hidden />
+              <span>{t("Customer")}</span>
+              <kbd>F3</kbd>
+            </button>
+            <button
+              type="button"
+              className="q-btn"
               onClick={() => setModal({ kind: "hold" })}
               disabled={!hasLines || !has("pos.hold")}
-              title="F4"
             >
-              {t("Hold")}
-            </Button>
-            <Button
-              icon={<ListRestart size={20} />}
-              onClick={() => setModal({ kind: "held" })}
-              disabled={!has("pos.hold")}
-              title={heldTickets.length ? t("Held tickets: {0}", heldTickets.map((n) => `#${n}`).join(" ")) : "F5"}
+              <PauseCircle size={20} aria-hidden />
+              <span>{t("Hold")}</span>
+              <kbd>F4</kbd>
+            </button>
+            <button
+              type="button"
+              className="q-btn"
+              onClick={() => setModal({ kind: "discount", lineId: null })}
+              disabled={!hasLines}
             >
-              {t("Held")}
-              {heldTickets.length ? (
-                <span className="chip brand" data-testid="held-count" style={{ marginInlineStart: 6 }}>
-                  {heldTickets.length}
-                </span>
-              ) : null}
-            </Button>
-            <Button icon={<RotateCcw size={20} />} onClick={() => setModal({ kind: "refund" })} title={t("Refund")}>
-              {t("Refund")}
-            </Button>
-            <Button
-              icon={<MoreHorizontal size={20} />}
-              onClick={() => setMoreOpen((v) => !v)}
-              aria-expanded={moreOpen}
-              title="F10"
-            >
-              {t("More")}
-            </Button>
-            {moreOpen ? (
-              <div
-                className="menu"
-                style={{ bottom: 64, top: "auto", insetInlineEnd: 0 }}
-                role="menu"
-                onMouseLeave={() => setMoreOpen(false)}
-              >
-                {[
-                  {
-                    label: t("Custom item"),
-                    show: has("pos.custom_item") || config?.pos.allow_custom_item,
-                    run: () => setModal({ kind: "custom" }),
-                  },
-                  {
-                    label: t("Sale discount"),
-                    show: hasLines,
-                    run: () => setModal({ kind: "discount", lineId: null }),
-                  },
-                  {
-                    label: t("Reprint / recent sales"),
-                    show: has("pos.reprint"),
-                    run: () => setModal({ kind: "recent" }),
-                  },
-                  { label: t("Print queue"), show: true, run: () => setModal({ kind: "print_queue" }) },
-                  {
-                    label: t("Delivery for last sale"),
-                    show: !!lastSale,
-                    run: () => setModal({ kind: "delivery", saleId: lastSale?.sale_id ?? null }),
-                  },
-                  {
-                    label: t("Open drawer (no sale)"),
-                    show: true,
-                    run: () => setModal({ kind: "cash", cashKind: "no_sale" }),
-                  },
-                  { label: t("Paid in"), show: true, run: () => setModal({ kind: "cash", cashKind: "paid_in" }) },
-                  { label: t("Paid out"), show: true, run: () => setModal({ kind: "cash", cashKind: "paid_out" }) },
-                  { label: t("Safe drop"), show: true, run: () => setModal({ kind: "cash", cashKind: "safe_drop" }) },
-                  {
-                    label: t("Digital orders"),
-                    show: ordersOn,
-                    run: () => setModal({ kind: "orders" }),
-                  },
-                  { label: t("Cancel sale"), show: hasLines, run: () => void cancelSale() },
-                  { label: t("Close shift"), show: has("shift.close"), run: () => setModal({ kind: "close_shift" }) },
-                  { label: t("Admin"), show: has("admin.access"), run: () => setMode("admin") },
-                  { label: t("Lock terminal"), show: true, run: () => void lock() },
-                  {
-                    label: getLang() === "ar" ? "English" : "العربية",
-                    show: true,
-                    run: () => switchLang(getLang() === "ar" ? "en" : "ar"),
-                  },
-                  { label: t("Logout"), show: true, run: () => void doLogout() },
-                ]
-                  .filter((i) => i.show)
-                  .map((i) => (
-                    <button
-                      key={i.label}
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreOpen(false);
-                        i.run();
-                      }}
-                    >
-                      {i.label === t("Admin") ? (
-                        <Settings2 size={15} />
-                      ) : i.label.startsWith(t("Delivery")) ? (
-                        <Truck size={15} />
-                      ) : null}
-                      {i.label}
-                    </button>
-                  ))}
-              </div>
-            ) : null}
+              <Percent size={20} aria-hidden />
+              <span>{t("Sale discount")}</span>
+            </button>
+            <button type="button" className="q-btn" onClick={() => setModal({ kind: "refund" })}>
+              <RotateCcw size={20} aria-hidden />
+              <span>{t("Refund")}</span>
+            </button>
           </div>
         </section>
         <section className="pos-right">
@@ -806,81 +816,77 @@ export function PosScreen({
             onPrice={(id) => setModal({ kind: "price", lineId: id })}
             canPriceOverride
             onRedeem={cart.loyalty ? () => setModal({ kind: "redeem" }) : undefined}
+            onCustomer={() => setModal({ kind: "customer" })}
           />
-          <div className="pos-panel" style={{ flex: "none" }}>
-            <div className="totals">
-              <div className="t-row">
-                <span>{t("Subtotal")}</span>
-                <span>{formatMoney(cart.totals.subtotal_minor)}</span>
-              </div>
-              <div className="t-row">
-                <span>{t("Discount")}</span>
-                <span>{cart.totals.discount_minor ? formatMoney(-cart.totals.discount_minor) : formatMoney(0)}</span>
-              </div>
-              <div className="t-row">
-                <span>
-                  {t("VAT")} {cart.lines.some((l) => l.tax_inclusive) ? t("(included)") : ""}
-                </span>
-                <span>{formatMoney(cart.totals.tax_minor)}</span>
-              </div>
-              <div className="t-total">
-                <span style={{ fontWeight: 700, color: "var(--text-2)" }}>{t("TOTAL")}</span>
-                <span className="amount" data-testid="cart-total">
-                  {formatMoney(cart.totals.total_minor)}
-                </span>
-              </div>
-              <div className="row pay-btn">
-                <Button
-                  size="xl"
-                  variant="primary"
-                  className="grow"
-                  onClick={() => openPay(tenders[0]?.method ?? "cash")}
-                  disabled={!hasLines}
-                  data-testid="pay"
-                >
-                  {t("PAY {0}", formatMoney(cart.totals.total_minor))}
-                </Button>
-              </div>
-              <div className="row" style={{ marginTop: 8 }}>
-                <Button
-                  className="grow"
-                  icon={<Banknote size={16} />}
-                  kbd="F6"
-                  onClick={() => openPay("cash")}
-                  disabled={!hasLines}
-                >
-                  {t("Cash")}
-                </Button>
-                {tenderEnabled("card") ? (
-                  <Button
-                    className="grow"
-                    icon={<CreditCard size={16} />}
-                    kbd="F7"
-                    onClick={() => openPay("card")}
-                    disabled={!hasLines}
-                  >
-                    {t("Card")}
-                  </Button>
-                ) : null}
-                {tenderEnabled("benefitpay") ? (
-                  <Button
-                    className="grow"
-                    icon={<Smartphone size={16} />}
-                    kbd="F8"
-                    onClick={() => openPay("benefitpay")}
-                    disabled={!hasLines}
-                  >
-                    {t("BenefitPay")}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </div>
-          {selected && selected.stock_milli !== null && selected.stock_milli <= 0 ? (
-            <Chip tone="warning">{t("{0}: recorded stock {1}", selected.name, formatQty(selected.stock_milli))}</Chip>
-          ) : null}
         </section>
       </main>
+      <footer className="pos-dock" aria-label={t("Totals")}>
+        <dl className="dock-sums">
+          <div>
+            <dt>{t("Subtotal")}</dt>
+            <dd className="money">{formatMoney(cart.totals.subtotal_minor)}</dd>
+          </div>
+          <div>
+            <dt>{t("Discount")}</dt>
+            <dd className="money">
+              {cart.totals.discount_minor ? formatMoney(-cart.totals.discount_minor) : formatMoney(0)}
+            </dd>
+          </div>
+          <div>
+            <dt>
+              {t("VAT")} {cart.lines.some((l) => l.tax_inclusive) ? t("(included)") : ""}
+            </dt>
+            <dd className="money">{formatMoney(cart.totals.tax_minor)}</dd>
+          </div>
+          <div>
+            <dt>{t("Items")}</dt>
+            <dd className="num">{formatQty(cart.totals.item_count_milli)}</dd>
+          </div>
+        </dl>
+        <div className="dock-total">
+          <span className="label">{t("TOTAL")}</span>
+          <span className="amount money" data-testid="cart-total">
+            {formatMoney(cart.totals.total_minor)}
+          </span>
+        </div>
+        <Button
+          variant="pay"
+          className="pay-btn"
+          onClick={() => openPay(tenders[0]?.method ?? "cash")}
+          disabled={!hasLines}
+          data-testid="pay"
+          aria-label={t("PAY {0}", formatMoney(cart.totals.total_minor))}
+        >
+          <span className="pay-word">{t("PAY")}</span>
+          <kbd>F9</kbd>
+        </Button>
+      </footer>
+      {moreOpen ? (
+        <Modal title={t("More")} size="sheet narrow" onClose={() => (setMoreOpen(false), focusScan())}>
+          <div className="more-grid" role="menu" aria-label={t("More")}>
+            {moreItems
+              .filter((i) => i.show)
+              .map((i) => (
+                <button
+                  key={i.label}
+                  type="button"
+                  role="menuitem"
+                  className="more-row"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    i.run();
+                  }}
+                >
+                  {i.icon}
+                  <span>{i.label}</span>
+                </button>
+              ))}
+          </div>
+        </Modal>
+      ) : null}
+      {selected && selected.stock_milli !== null && selected.stock_milli <= 0 ? (
+        <span className="sr-only">{t("{0}: recorded stock {1}", selected.name, formatQty(selected.stock_milli))}</span>
+      ) : null}
 
       {modal.kind === "pay" && cart.cart_id ? (
         <PaymentModal
@@ -1082,12 +1088,23 @@ export function PosScreen({
         />
       ) : null}
       {aiOpen ? (
-        <Drawer title={t("AI Assistant")} onClose={() => setAiOpen(false)}>
+        <aside className="till-ai" role="complementary" aria-label={t("AI Assistant")} data-testid="till-ai-drawer">
+          <div className="till-ai-head">
+            <Bot size={20} aria-hidden />
+            <h2 className="grow">{t("AI Assistant")}</h2>
+            <Button
+              variant="ghost"
+              className="close-btn"
+              aria-label={t("Close")}
+              icon={<X size={22} />}
+              onClick={() => (setAiOpen(false), focusScan())}
+            />
+          </div>
           {/* The till has no router; links in answers set the admin page shown on switching to Admin. */}
           <HashRouter>
             <AiReady>{(st) => <AiChat status={st} compact context={cartContext} />}</AiReady>
           </HashRouter>
-        </Drawer>
+        </aside>
       ) : null}
       <span className="sr-only" aria-live="polite">
         {t("{0} items, total {1}", cart.lines.length, formatMoney(cart.totals.total_minor))}

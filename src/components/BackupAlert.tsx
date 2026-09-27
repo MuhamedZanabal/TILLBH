@@ -91,8 +91,8 @@ export function BackupPill() {
   const label = health.state === "error" ? t("Backup failed") : t("Backup overdue");
   if (!has("backup.manage"))
     return (
-      <span className="status-pill err" data-testid="backup-pill" title={tb(health.summary)}>
-        <DatabaseBackup size={13} /> {label}
+      <span className="status-pill err" data-testid="backup-pill" aria-label={`${label}. ${tb(health.summary)}`}>
+        <DatabaseBackup size={14} aria-hidden /> {label}
       </span>
     );
   return (
@@ -100,11 +100,11 @@ export function BackupPill() {
       type="button"
       className="status-pill err"
       data-testid="backup-pill"
-      title={`${tb(health.summary)} — ${t("Backup Now")}`}
+      aria-label={`${label}. ${tb(health.summary)}. ${t("Backup Now")}`}
       disabled={now.busy}
       onClick={() => void now.run()}
     >
-      <DatabaseBackup size={13} /> {now.busy ? t("Backing up…") : `${label} · ${t("Backup Now")}`}
+      <DatabaseBackup size={14} aria-hidden /> {now.busy ? t("Backing up…") : t("Back up now")}
     </button>
   );
 }

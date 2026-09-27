@@ -1,6 +1,18 @@
 import { WhatsAppSendButton } from "../admin/automation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Banknote, Check, CreditCard, Landmark, Plus, Smartphone, Split, Trash2, Truck, Printer } from "lucide-react";
+import {
+  Banknote,
+  Check,
+  CreditCard,
+  Delete,
+  Landmark,
+  Plus,
+  Smartphone,
+  Split,
+  Trash2,
+  Truck,
+  Printer,
+} from "lucide-react";
 import { api } from "../../api";
 import type { Cart, PrintOutcome, SaleResult, TenderConfig, TenderInput } from "../../api/types";
 import { useApproval, ApprovalCancelled } from "../../components/approval";
@@ -92,10 +104,11 @@ export function PaymentModal({
           ? t("Enter the cash received or press Exact.")
           : t("Enter the amount.");
     if (nonCash > due) return t("Card and other non-cash payments cannot exceed the amount due.");
-    if (remaining > 0) return `Remaining ${formatMoney(remaining)}.`;
+    if (remaining > 0) return t("Remaining {0}.", formatMoney(remaining));
     if (change > cashIn) return t("Change can only be given from cash.");
     for (const tv of tenderList) {
-      if (cfg(tv.method)?.requires_reference && !tv.reference) return `${methodLabel(tv.method)} requires a reference.`;
+      if (cfg(tv.method)?.requires_reference && !tv.reference)
+        return t("{0} requires a reference.", methodLabel(tv.method));
     }
     return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,71 +161,137 @@ export function PaymentModal({
   };
 
   const denoms = [5, 10, 20, 50].map((d) => d * unit);
+  // The numpad writes to the single amount, or to the split row last touched.
+  const [activeRow, setActiveRow] = useState(0);
+  const editValue = (fn: (v: string) => string) => {
+    if (split) setRows(rows.map((x, j) => (j === activeRow ? { ...x, amount: fn(x.amount) } : x)));
+    else setAmount(fn(amount));
+  };
+  const onPad = (k: string) => {
+    if (k === "Backspace") editValue((v) => v.slice(0, -1));
+    else if (k === "C") editValue(() => "");
+    else if (k === "Exact")
+      editValue(() => formatAmount(split ? Math.max(0, remaining) + parseMoneyOr0(rows[activeRow]?.amount) : due));
+    else if (k === ".") editValue((v) => (v.includes(".") ? v : `${v || "0"}.`));
+    else
+      editValue((v) => {
+        const [, frac] = v.split(".");
+        if (frac !== undefined && frac.length >= digits()) return v;
+        return v + k;
+      });
+    amountRef.current?.focus();
+  };
+  const tiles = [
+    ...tenders.map((tv) => ({ method: tv.method, label: t(tv.label) })),
+    { method: "split", label: t("Split") },
+  ];
 
   return (
     <Modal
       title={t("Payment")}
-      size="xl"
+      size="sheet"
+      testId="payment-sheet"
       onClose={busy ? undefined : onClose}
       footer={
-        <>
-          <Button onClick={onClose} disabled={busy}>
-            {t("Back to sale")}
-          </Button>
-          <span className="small muted grow" style={{ textAlign: "end" }}>
-            {validation ?? (change > 0 ? t("Change {0}", formatMoney(change)) : t("Ready"))}
-          </span>
+        <div className="pay-foot">
+          <div className={`pay-status ${validation ? "" : "ok"}`} role="status">
+            {validation ?? (change > 0 ? t("Give change {0}", formatMoney(change)) : t("Ready"))}
+          </div>
           <Button
-            variant="primary"
-            size="lg"
+            variant="pay"
+            size="xl"
+            block
             onClick={complete}
             disabled={!!validation}
             loading={busy}
             data-testid="complete-sale"
           >
-            {t("Complete Sale")} <span className="kbd">{t("Enter")}</span>
+            {t("Complete Sale")} <span className="money">{formatMoney(due)}</span> <kbd>{t("Enter")}</kbd>
           </Button>
-        </>
+        </div>
       }
     >
       <div
-        className="pay-grid"
+        className="pay-sheet"
         onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void complete())}
       >
-        <div className="col gap-16">
+        <div className="pay-due">
           <div>
-            <div className="tiny">{t("Amount Due")}</div>
-            <div className="due" data-testid="amount-due">
+            <div className="label">{t("Amount Due")}</div>
+            <div className="due money" data-testid="amount-due">
               {formatMoney(due)}
             </div>
           </div>
-          <div className="method-cards" role="radiogroup" aria-label={t("Payment method")}>
-            {tenders.map((tv) => {
-              const Icon = icons[tv.method] ?? CreditCard;
-              const active = !split && method === tv.method;
-              return (
-                <button
-                  key={tv.method}
-                  role="radio"
-                  aria-checked={active}
-                  className={`method-card ${active ? "active" : ""}`}
-                  onClick={() => pickMethod(tv.method)}
-                >
-                  <Icon size={20} /> {t(tv.label)}
-                </button>
-              );
-            })}
-            <button
-              role="radio"
-              aria-checked={split}
-              className={`method-card ${split ? "active" : ""}`}
-              onClick={() => pickMethod("split")}
-            >
-              <Split size={20} /> {t("Split")}
-            </button>
+          <dl className="pay-mini">
+            <div>
+              <dt>{t("Paid")}</dt>
+              <dd className="money">{formatMoney(paid)}</dd>
+            </div>
+            <div>
+              <dt>{t("Remaining")}</dt>
+              <dd className="money">{formatMoney(Math.max(0, remaining))}</dd>
+            </div>
+          </dl>
+        </div>
+        <div className="pay-cols">
+          <div className="pay-left">
+            <div className="tender-tiles" role="radiogroup" aria-label={t("Payment method")}>
+              {tiles.map((tv) => {
+                const Icon = tv.method === "split" ? Split : (icons[tv.method] ?? CreditCard);
+                const active = tv.method === "split" ? split : !split && method === tv.method;
+                return (
+                  <button
+                    key={tv.method}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    data-testid={`tender-${tv.method}`}
+                    className={`tender-tile ${active ? "active" : ""}`}
+                    onClick={() => pickMethod(tv.method)}
+                  >
+                    <Icon size={24} aria-hidden />
+                    <span>{tv.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {!split && method === "cash" ? (
+              <div className="denoms" aria-label={t("Quick cash")}>
+                {denoms.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className="denom money"
+                    onClick={() => setAmount(formatAmount(d))}
+                    disabled={d < due}
+                  >
+                    {formatAmount(d).replace(/\.0+$/, "")}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {!split && method !== "cash" ? (
+              <div className="field">
+                <label htmlFor="pay-ref">
+                  {t("Reference")} {cfg(method)?.requires_reference ? "" : t("(optional)")}
+                </label>
+                <input
+                  id="pay-ref"
+                  className="input"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder={t("Approval code / last 4 digits / transfer ref")}
+                />
+                <div className="hint">
+                  {method === "benefitpay"
+                    ? t("Recorded tender — not verified with the bank. Check the customer's BenefitPay confirmation.")
+                    : t("Recorded tender. AMWAPOS does not verify card settlement.")}
+                </div>
+              </div>
+            ) : null}
           </div>
-          {!split ? (
-            <>
+          <div className="pay-right">
+            {!split ? (
               <div className="field">
                 <label htmlFor="pay-amount">
                   {method === "cash" ? t("Cash received") : t("{0} amount", methodLabel(method))}
@@ -228,149 +307,137 @@ export function PaymentModal({
                   data-testid="pay-amount"
                 />
               </div>
-              {method === "cash" ? (
-                <div className="denoms">
-                  <Button size="lg" onClick={() => setAmount(formatAmount(due))}>
-                    {t("Exact")}
-                  </Button>
-                  {denoms.map((d) => (
-                    <Button key={d} size="lg" onClick={() => setAmount(formatAmount(d))} disabled={d < due}>
-                      {formatAmount(d).replace(/\.0+$/, "")}
-                    </Button>
-                  ))}
-                </div>
-              ) : (
-                <div className="field">
-                  <label htmlFor="pay-ref">
-                    {t("Reference")} {cfg(method)?.requires_reference ? "" : t("(optional)")}
-                  </label>
-                  <input
-                    id="pay-ref"
-                    className="input"
-                    value={reference}
-                    onChange={(e) => setReference(e.target.value)}
-                    placeholder={t("Approval code / last 4 digits / transfer ref")}
-                  />
-                  <div className="hint">
-                    {method === "benefitpay"
-                      ? t("Recorded tender — not verified with the bank. Check the customer's BenefitPay confirmation.")
-                      : t("Recorded tender. AMWAPOS does not verify card settlement.")}
+            ) : (
+              <div className="split-rows">
+                {rows.map((r, i) => (
+                  <div key={i} className={`split-row ${i === activeRow ? "active" : ""}`}>
+                    <select
+                      className="select"
+                      value={r.method}
+                      aria-label={t("Payment {0} method", i + 1)}
+                      onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}
+                    >
+                      {tenders.map((tv) => (
+                        <option key={tv.method} value={tv.method}>
+                          {t(tv.label)}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="input num"
+                      inputMode="decimal"
+                      value={r.amount}
+                      aria-label={t("Payment {0} amount", i + 1)}
+                      onFocus={() => setActiveRow(i)}
+                      onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))}
+                      ref={i === activeRow ? amountRef : undefined}
+                    />
+                    <Button
+                      variant="ghost"
+                      aria-label={t("Remove payment")}
+                      icon={<Trash2 size={20} />}
+                      onClick={() => (setRows(rows.filter((_, j) => j !== i)), setActiveRow(0))}
+                    />
+                    {cfg(r.method)?.requires_reference || r.reference ? (
+                      <input
+                        className="input ref"
+                        placeholder={t("Reference")}
+                        aria-label={t("Payment {0} reference", i + 1)}
+                        value={r.reference}
+                        onChange={(e) =>
+                          setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))
+                        }
+                      />
+                    ) : null}
                   </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="col">
-              {rows.map((r, i) => (
-                <div key={i} className="row">
-                  <select
-                    className="select"
-                    style={{ width: 160 }}
-                    value={r.method}
-                    onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}
-                  >
-                    {tenders.map((tv) => (
-                      <option key={tv.method} value={tv.method}>
-                        {t(tv.label)}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className="input num"
-                    style={{ width: 140 }}
-                    inputMode="decimal"
-                    value={r.amount}
-                    aria-label={t("Payment {0} amount", i + 1)}
-                    onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))}
-                    ref={i === 0 ? amountRef : undefined}
-                  />
-                  <input
-                    className="input grow"
-                    placeholder={t("Reference (optional)")}
-                    value={r.reference}
-                    onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))}
-                  />
-                  <Button
-                    variant="ghost"
-                    aria-label={t("Remove payment")}
-                    icon={<Trash2 size={16} />}
-                    onClick={() => setRows(rows.filter((_, j) => j !== i))}
-                  />
-                </div>
+                ))}
+                <Button
+                  icon={<Plus size={20} />}
+                  onClick={() => {
+                    setRows([
+                      ...rows,
+                      {
+                        method: tenders.find((tv) => tv.method !== rows.at(-1)?.method)?.method ?? "cash",
+                        amount: remaining > 0 ? formatAmount(remaining) : "",
+                        reference: "",
+                      },
+                    ]);
+                    setActiveRow(rows.length);
+                  }}
+                >
+                  {t("Add Payment")}
+                </Button>
+              </div>
+            )}
+            <div className="numpad" aria-label={t("Number pad")}>
+              {["7", "8", "9", "Backspace", "4", "5", "6", "C", "1", "2", "3", "Exact", "0", "00", "."].map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`np-key ${k === "Exact" ? "exact" : ""} ${k === "Backspace" || k === "C" ? "fn" : ""}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onPad(k)}
+                  aria-label={
+                    k === "Backspace"
+                      ? t("Delete digit")
+                      : k === "C"
+                        ? t("Clear amount")
+                        : k === "Exact"
+                          ? t("Exact")
+                          : k
+                  }
+                >
+                  {k === "Backspace" ? <Delete size={22} aria-hidden /> : k === "Exact" ? t("Exact") : k}
+                </button>
               ))}
-              <Button
-                icon={<Plus size={16} />}
-                onClick={() =>
-                  setRows([
-                    ...rows,
-                    {
-                      method: tenders.find((tv) => tv.method !== rows.at(-1)?.method)?.method ?? "cash",
-                      amount: remaining > 0 ? formatAmount(remaining) : "",
-                      reference: "",
-                    },
-                  ])
-                }
-              >
-                {t("Add Payment")}
-              </Button>
             </div>
-          )}
-          {change > 0 && !validation ? (
-            <div className="change-panel" data-testid="change">
-              <div className="label">{t("CHANGE")}</div>
-              <div className="amount">{formatMoney(change)}</div>
-            </div>
-          ) : null}
-          {error ? (
-            <Banner tone="danger" title={t("Sale was not completed")}>
-              {error}
-            </Banner>
-          ) : null}
-        </div>
-        <div className="card" style={{ alignSelf: "start" }}>
-          <div className="card-head">
-            <h3>{t("Sale summary")}</h3>
-            <span className="right tiny">{cart.lines.length} lines</span>
           </div>
-          <div className="card-body" style={{ maxHeight: 320, overflow: "auto" }}>
+        </div>
+        {change > 0 && !validation ? (
+          <div className="change-panel" data-testid="change">
+            <span className="label">{t("CHANGE")}</span>
+            <span className="amount money">{formatMoney(change)}</span>
+          </div>
+        ) : null}
+        {error ? (
+          <Banner tone="danger" title={t("Sale was not completed")}>
+            {error}
+          </Banner>
+        ) : null}
+        <details className="pay-summary">
+          <summary>
+            {t(
+              cart.lines.length === 1 ? "{0} line · {1} items" : "{0} lines · {1} items",
+              cart.lines.length,
+              formatQty(cart.totals.item_count_milli),
+            )}{" "}
+            · {t("VAT")} <span className="money">{formatMoney(cart.totals.tax_minor)}</span>
+            {cart.totals.discount_minor ? (
+              <>
+                {" "}
+                · {t("Discount")} <span className="money">{formatMoney(-cart.totals.discount_minor)}</span>
+              </>
+            ) : null}
+          </summary>
+          <div className="pay-lines">
             {cart.lines.map((l) => (
-              <div key={l.line_id} className="row small" style={{ padding: "3px 0" }}>
+              <div key={l.line_id} className="row small">
                 <span className="grow ellipsis">{l.name}</span>
                 <span className="num muted">{formatQty(l.qty_milli)}×</span>
-                <span className="num" style={{ minWidth: 90, textAlign: "end" }}>
+                <span className="money" style={{ minWidth: 96, textAlign: "end" }}>
                   {formatMoney(l.line_total_minor)}
                 </span>
               </div>
             ))}
           </div>
-          <div className="totals">
-            <div className="t-row">
-              <span>{t("Subtotal")}</span>
-              <span>{formatMoney(cart.totals.subtotal_minor)}</span>
-            </div>
-            {cart.totals.discount_minor ? (
-              <div className="t-row">
-                <span>{t("Discount")}</span>
-                <span>{formatMoney(-cart.totals.discount_minor)}</span>
-              </div>
-            ) : null}
-            <div className="t-row">
-              <span>{t("VAT")}</span>
-              <span>{formatMoney(cart.totals.tax_minor)}</span>
-            </div>
-            <div className="t-row" style={{ fontWeight: 700, color: "var(--text)" }}>
-              <span>{t("Paid")}</span>
-              <span>{formatMoney(paid)}</span>
-            </div>
-            <div className="t-row">
-              <span>{t("Remaining")}</span>
-              <span>{formatMoney(Math.max(0, remaining))}</span>
-            </div>
-          </div>
-        </div>
+        </details>
       </div>
     </Modal>
   );
+}
+
+function parseMoneyOr0(v: string | undefined): number {
+  return (v ? parseMoney(v) : 0) ?? 0;
 }
 
 export function SaleSuccess({
@@ -403,20 +470,20 @@ export function SaleSuccess({
   return (
     <Modal
       title={t("Sale completed")}
-      size="md"
+      size="sheet narrow"
       onClose={onClose}
       footer={
         <>
-          <Button icon={<Printer size={16} />} onClick={() => (setPaused(true), onReprint())}>
+          <Button icon={<Printer size={18} />} onClick={() => (setPaused(true), onReprint())}>
             {t("Reprint")}
           </Button>
           <span onClickCapture={() => setPaused(true)}>
             <WhatsAppSendButton kind="receipt" saleId={sale.sale_id} />
           </span>
-          <Button icon={<Truck size={16} />} onClick={() => (setPaused(true), onDelivery())}>
+          <Button icon={<Truck size={18} />} onClick={() => (setPaused(true), onDelivery())}>
             {t("Delivery")}
           </Button>
-          <Button variant="primary" size="lg" className="right" onClick={onClose} autoFocus data-testid="new-sale">
+          <Button variant="primary" size="xl" block onClick={onClose} autoFocus data-testid="new-sale">
             {t("New Sale")} {returnSeconds > 0 && !paused && print?.status !== "failed" ? `(${Math.max(0, left)})` : ""}
           </Button>
         </>

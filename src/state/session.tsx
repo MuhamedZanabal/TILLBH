@@ -54,7 +54,7 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
         : c.appearance.theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches
           ? "dark"
           : "light";
-    document.documentElement.dataset.density = c.appearance.density || "comfortable";
+    document.documentElement.dataset.density = c.appearance.density || "compact";
     document.documentElement.dataset.cashierFont = c.appearance.cashier_font || "normal";
     setConfig(c);
   }, []);

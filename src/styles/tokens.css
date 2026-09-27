@@ -1,82 +1,119 @@
-/* AMWAPOS design tokens — see the UI/UX visual specification §1–3. */
+/* AMWAPOS design tokens. One accent (deep teal), one PAY green, one danger,
+   one success, one warning; radius 10–12; 150–200 ms motion. The cashier
+   display is designed for 1024×768 CSS px, touch-first (see docs/UI.md). */
 :root {
-  --bg: #f5f7fa;
+  --bg: #f2f5f6;
   --surface: #ffffff;
-  --surface-2: #f8fafc;
-  --surface-hover: #f1f5f9;
-  --text: #172033;
-  --text-2: #667085;
-  --text-3: #98a2b3;
-  --border: #dde3ea;
-  --border-strong: #c4cdd8;
-  --brand: #2563eb;
-  --brand-hover: #1d4ed8;
-  --brand-soft: #eaf1ff;
-  --brand-dark: #0f1c2e;
-  --brand-dark-2: #16263d;
-  --success: #16a34a;
-  --success-soft: #e8f7ee;
-  --warning: #d97706;
-  --warning-soft: #fdf3e2;
-  --danger: #dc2626;
-  --danger-soft: #fdecec;
-  --info: #0284c7;
-  --info-soft: #e6f4fb;
-  --focus: 0 0 0 3px rgba(37, 99, 235, 0.35);
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
-  --shadow-lg: 0 16px 40px rgba(16, 24, 40, 0.18);
-  --backdrop: rgba(15, 28, 46, 0.42);
-  --radius-sm: 6px;
-  --radius: 8px;
+  --surface-2: #f6f8f9;
+  --surface-hover: #ebf0f2;
+  --surface-press: #dde5e8;
+  --text: #13212a;
+  --text-2: #4f5e69;
+  --text-3: #65727d;
+  --border: #d6dee3;
+  --border-strong: #b7c4cc;
+  --brand: #0b6e79;
+  --brand-hover: #095c65;
+  --brand-press: #074a52;
+  --brand-soft: #e1f1f2;
+  --on-brand: #ffffff;
+  --brand-dark: #0d2830;
+  --brand-dark-2: #15363f;
+  --success: #15803d;
+  --success-soft: #e5f5ea;
+  --warning: #a8530a;
+  --warning-soft: #fcf1df;
+  --danger: #c42b2b;
+  --danger-soft: #fbeaea;
+  --info: #0b6e79;
+  --info-soft: #e1f1f2;
+  --focus: 0 0 0 3px color-mix(in srgb, var(--brand) 45%, transparent);
+  --shadow-sm: 0 1px 2px rgba(13, 40, 48, 0.06);
+  --shadow-md: 0 4px 14px rgba(13, 40, 48, 0.1);
+  --shadow-lg: 0 18px 44px rgba(13, 40, 48, 0.22);
+  --backdrop: rgba(9, 26, 32, 0.46);
+  --radius-sm: 8px;
+  --radius: 10px;
   --radius-card: 12px;
-  --radius-modal: 14px;
+  --radius-modal: 12px;
   --font:
     "Inter Variable", "Inter", "Noto Sans Arabic Variable", "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
-  --row-h: 46px;
-  --control-h: 38px;
-  --pos-control-h: 48px;
-  --dur: 150ms;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --row-h: 52px;
+  --control-h: 48px;
+  --dur: 170ms;
+  --dur-press: 60ms;
+
+  /* Point of sale */
+  --pos-bg: var(--bg);
+  --pos-surface: var(--surface);
+  --pos-raised: #ffffff;
+  --pos-border: var(--border);
+  --pos-accent: var(--brand);
+  --pos-pay: #0f7a3e;
+  --pos-pay-hover: #0c6733;
+  --pos-pay-press: #09532a;
+  --on-pay: #ffffff;
+  --pos-danger: var(--danger);
+  --pos-warn: var(--warning);
+  --pos-touch-min: 48px;
+  --pos-touch-lg: 60px;
+  --pos-top-h: 56px;
+  --pos-dock-h: 88px;
+  --pos-left-w: 320px;
+  --money-figures: tabular-nums lining-nums;
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --bg: #0b1320;
-  --surface: #121c2c;
-  --surface-2: #162235;
-  --surface-hover: #1b2940;
-  --text: #e8edf5;
-  --text-2: #a3afc2;
-  --text-3: #7384a0;
-  --border: #25344b;
-  --border-strong: #33455f;
-  --brand: #3b82f6;
-  --brand-hover: #60a5fa;
-  --brand-soft: #172b4d;
-  --success: #22c55e;
-  --success-soft: #0f2e1d;
-  --warning: #f59e0b;
+  --bg: #0a1419;
+  --surface: #0f1d23;
+  --surface-2: #13242b;
+  --surface-hover: #182d35;
+  --surface-press: #1f3842;
+  --text: #e5eef1;
+  --text-2: #a3b3bb;
+  --text-3: #869aa4;
+  --border: #22373f;
+  --border-strong: #31505b;
+  --brand: #3cc2cc;
+  --brand-hover: #62d0d8;
+  --brand-press: #8adde3;
+  --brand-soft: #123840;
+  --on-brand: #05252a;
+  --brand-dark: #07161b;
+  --brand-dark-2: #0f262d;
+  --success: #34c46a;
+  --success-soft: #0e2d1b;
+  --warning: #f0a132;
   --warning-soft: #33250c;
-  --danger: #f87171;
+  --danger: #f37b7b;
   --danger-soft: #3a1717;
-  --info: #38bdf8;
-  --info-soft: #0f2a3a;
-  --backdrop: rgba(0, 0, 0, 0.55);
+  --info: #3cc2cc;
+  --info-soft: #123840;
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --pos-raised: #13242b;
+  --pos-pay: #2fbf68;
+  --pos-pay-hover: #4cd07f;
+  --pos-pay-press: #6ddc97;
+  --on-pay: #04210f;
   color-scheme: dark;
 }
 
+/* Compact is the default on the 1024×768 till: tighter rows and padding,
+   but every control keeps its 48 px hit target. */
 [data-density="compact"] {
-  --row-h: 38px;
-  --control-h: 34px;
+  --row-h: 44px;
 }
 
 [data-cashier-font="large"] .pos-root {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur: 0ms;
+    --dur-press: 0ms;
   }
   *,
   *::before,

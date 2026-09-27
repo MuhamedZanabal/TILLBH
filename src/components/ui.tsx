@@ -5,7 +5,7 @@ import { formatMoney } from "../lib/money";
 import { t } from "../i18n";
 
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "danger" | "danger-outline" | "ghost" | "default";
+  variant?: "primary" | "pay" | "danger" | "danger-outline" | "ghost" | "default";
   size?: "sm" | "md" | "lg" | "xl";
   block?: boolean;
   icon?: ReactNode;
@@ -213,15 +213,18 @@ export function Modal({
   closeOnBackdrop = false,
   initialFocus,
   labelledBy,
+  testId,
 }: {
   title: ReactNode;
   onClose?: () => void;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg" | "xl" | "full";
+  /** "sheet": full height from the inline-end edge (POS flows on 1024×768). */
+  size?: "sm" | "md" | "lg" | "xl" | "full" | "sheet" | "sheet narrow";
   closeOnBackdrop?: boolean;
   initialFocus?: string;
   labelledBy?: string;
+  testId?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -258,9 +261,13 @@ export function Modal({
     }
   };
   return createPortal(
-    <div className="backdrop" onMouseDown={(e) => closeOnBackdrop && e.target === e.currentTarget && onClose?.()}>
+    <div
+      className={`backdrop ${size.startsWith("sheet") ? "sheet-backdrop" : ""}`}
+      onMouseDown={(e) => closeOnBackdrop && e.target === e.currentTarget && onClose?.()}
+    >
       <div
         ref={ref}
+        data-testid={testId}
         className={`modal ${size}`}
         role="dialog"
         aria-modal="true"
@@ -271,7 +278,15 @@ export function Modal({
           <h2 id={titleId} className="grow" style={{ fontSize: 18 }}>
             {title}
           </h2>
-          {onClose ? <Button variant="ghost" aria-label={t("Close")} icon={<X size={18} />} onClick={onClose} /> : null}
+          {onClose ? (
+            <Button
+              variant="ghost"
+              className="close-btn"
+              aria-label={t("Close")}
+              icon={<X size={22} />}
+              onClick={onClose}
+            />
+          ) : null}
         </div>
         <div className="modal-body">{children}</div>
         {footer ? <div className="modal-foot">{footer}</div> : null}

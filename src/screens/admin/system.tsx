@@ -2010,7 +2010,7 @@ function AppearanceSettings() {
         <Field label={t("Density")}>
           <select
             className="select"
-            value={data.density || "comfortable"}
+            value={data.density || "compact"}
             onChange={(e) => setData({ ...data, density: e.target.value })}
           >
             <option value="comfortable">{t("Comfortable")}</option>

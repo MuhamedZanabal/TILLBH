@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Percent, Tag, Trash2, Hash, Star } from "lucide-react";
+import { Minus, Percent, Plus, Tag, Trash2, Hash, Star, UserRound } from "lucide-react";
 import type { Cart } from "../../api/types";
 import { formatMoney, formatQty, formatPercent } from "../../lib/money";
 import { Button } from "../../components/ui";
@@ -17,6 +17,7 @@ export function CartPanel({
   onPrice,
   canPriceOverride,
   onRedeem,
+  onCustomer,
 }: {
   cart: Cart;
   selectedLine: string | null;
@@ -30,6 +31,7 @@ export function CartPanel({
   canPriceOverride: boolean;
   /** Loyalty: open the redeem dialog (only when loyalty is on and a customer is set). */
   onRedeem?: () => void;
+  onCustomer?: () => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -37,10 +39,17 @@ export function CartPanel({
     listRef.current?.querySelector(`[data-line="${flashLine}"]`)?.scrollIntoView({ block: "nearest" });
   }, [flashLine, cart]);
   return (
-    <div className="pos-panel">
+    <div className="pos-panel cart">
       <div className="cart-head">
-        <h3 className="grow">{t("Current Sale")}</h3>
-        <span className="tiny" data-testid="line-count">
+        <h3>{t("Current Sale")}</h3>
+        {cart.customer ? (
+          <button type="button" className="customer-pill" onClick={onCustomer}>
+            <UserRound size={16} aria-hidden />
+            <span className="ellipsis">{cart.customer.name}</span>
+          </button>
+        ) : null}
+        <span className="grow" />
+        <span className="line-count" data-testid="line-count">
           {t(
             cart.lines.length === 1 ? "{0} line · {1} items" : "{0} lines · {1} items",
             cart.lines.length,
@@ -57,6 +66,7 @@ export function CartPanel({
         ) : null}
         {cart.lines.map((l) => {
           const sel = l.line_id === selectedLine;
+          const low = lowStock(l);
           return (
             <div
               key={l.line_id}
@@ -65,64 +75,69 @@ export function CartPanel({
               className={`cart-line ${sel ? "sel" : ""} ${l.line_id === flashLine ? "flash" : ""}`}
               onClick={() => onSelect(l.line_id)}
             >
-              <div className="l1">
-                <span className="l-name ellipsis">{l.name}</span>
-                <span className="l-total">{formatMoney(l.line_total_minor)}</span>
-              </div>
-              <div className="l2">
+              <div className="l-main">
+                <div className="l-info">
+                  <span className="l-name ellipsis">{l.name}</span>
+                  <span className="l-meta">
+                    <span className="ellipsis l-code">
+                      {l.barcode ?? l.sku ?? (l.is_custom ? t("Custom item") : "")}
+                    </span>
+                    <span className="money">× {formatMoney(l.unit_price_minor)}</span>
+                    {low !== null ? (
+                      <span className="chip warning" data-testid="low-stock-hint">
+                        {t("Low stock: {0} left", formatQty(low))}
+                      </span>
+                    ) : null}
+                    {l.price_overridden ? <span className="chip warning">{t("Price changed")}</span> : null}
+                    {l.discount_minor > 0 ? (
+                      <span className="chip brand money">
+                        −{formatMoney(l.discount_minor)}
+                        {l.line_discount_bp ? ` (${formatPercent(l.line_discount_bp)})` : ""}
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
                 <span className="qty-ctl" onClick={(e) => e.stopPropagation()}>
-                  <button aria-label={t("Decrease {0}", l.name)} onClick={() => onQty(l.line_id, -1)}>
-                    −
+                  <button type="button" aria-label={t("Decrease {0}", l.name)} onClick={() => onQty(l.line_id, -1)}>
+                    <Minus size={20} aria-hidden />
                   </button>
-                  <span onDoubleClick={() => onEditQty(l.line_id)}>
-                    {formatQty(l.qty_milli)}
-                    {l.unit !== "pcs" ? ` ${l.unit}` : ""}
-                  </span>
-                  <button aria-label={t("Increase {0}", l.name)} onClick={() => onQty(l.line_id, 1)}>
-                    +
-                  </button>
-                </span>
-                <span className="num">× {formatMoney(l.unit_price_minor)}</span>
-                {l.price_overridden ? <span className="chip warning">{t("Price changed")}</span> : null}
-                {lowStock(l) !== null ? (
-                  <span
-                    className="chip warning"
-                    data-testid="low-stock-hint"
-                    title={t("At or below the reorder point")}
+                  <button
+                    type="button"
+                    className="qty-val num"
+                    aria-label={t("Quantity for {0}", l.name)}
+                    onClick={() => onEditQty(l.line_id)}
                   >
-                    {t("Low stock: {0} left", formatQty(lowStock(l)!))}
-                  </span>
-                ) : null}
-                {l.discount_minor > 0 ? (
-                  <span className="chip brand">
-                    −{formatMoney(l.discount_minor)}
-                    {l.line_discount_bp ? ` (${formatPercent(l.line_discount_bp)})` : ""}
-                  </span>
-                ) : null}
-                <span className="grow" />
-                <span className="ellipsis" style={{ maxWidth: 140 }}>
-                  {l.barcode ?? l.sku ?? (l.is_custom ? t("Custom item") : "")}
+                    {formatQty(l.qty_milli)}
+                    {l.unit !== "pcs" ? <small> {l.unit}</small> : null}
+                  </button>
+                  <button type="button" aria-label={t("Increase {0}", l.name)} onClick={() => onQty(l.line_id, 1)}>
+                    <Plus size={20} aria-hidden />
+                  </button>
                 </span>
+                <span className="l-total money">{formatMoney(l.line_total_minor)}</span>
+                <button
+                  type="button"
+                  className="l-del"
+                  aria-label={t("Remove {0}", l.name)}
+                  onClick={(e) => (e.stopPropagation(), onRemove(l.line_id))}
+                >
+                  <Trash2 size={20} aria-hidden />
+                </button>
               </div>
               {sel ? (
                 <div className="line-actions" onClick={(e) => e.stopPropagation()}>
-                  <Button size="sm" icon={<Hash size={14} />} onClick={() => onEditQty(l.line_id)}>
+                  <Button icon={<Hash size={18} />} onClick={() => onEditQty(l.line_id)}>
                     {t("Qty")}
                   </Button>
-                  <Button size="sm" icon={<Percent size={14} />} onClick={() => onDiscount(l.line_id)}>
+                  <Button icon={<Percent size={18} />} onClick={() => onDiscount(l.line_id)}>
                     {t("Discount")}
                   </Button>
                   {canPriceOverride ? (
-                    <Button size="sm" icon={<Tag size={14} />} onClick={() => onPrice(l.line_id)}>
+                    <Button icon={<Tag size={18} />} onClick={() => onPrice(l.line_id)}>
                       {t("Price")}
                     </Button>
                   ) : null}
-                  <Button
-                    size="sm"
-                    variant="danger-outline"
-                    icon={<Trash2 size={14} />}
-                    onClick={() => onRemove(l.line_id)}
-                  >
+                  <Button variant="danger-outline" icon={<Trash2 size={18} />} onClick={() => onRemove(l.line_id)}>
                     {t("Remove")}
                   </Button>
                 </div>
@@ -132,8 +147,8 @@ export function CartPanel({
         })}
       </div>
       {cart.loyalty ? (
-        <div className="cart-head" data-testid="loyalty-row" style={{ borderTop: "1px solid var(--line)" }}>
-          <Star size={15} />
+        <div className="cart-head loyalty" data-testid="loyalty-row">
+          <Star size={18} aria-hidden />
           <span className="grow small">
             {t("{0} points", cart.loyalty.balance)}
             {cart.loyalty.points > 0
@@ -141,11 +156,7 @@ export function CartPanel({
               : ""}
             {cart.loyalty.earn_estimate > 0 ? ` · ${t("earns about {0}", cart.loyalty.earn_estimate)}` : ""}
           </span>
-          {onRedeem ? (
-            <Button size="sm" onClick={onRedeem}>
-              {cart.loyalty.points > 0 ? t("Change") : t("Redeem")}
-            </Button>
-          ) : null}
+          {onRedeem ? <Button onClick={onRedeem}>{cart.loyalty.points > 0 ? t("Change") : t("Redeem")}</Button> : null}
         </div>
       ) : null}
     </div>

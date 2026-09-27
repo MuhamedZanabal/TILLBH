@@ -195,15 +195,25 @@ export function ShiftClose({
   return (
     <Modal
       title={t("Close shift {0}", sum?.shift_number ?? "")}
-      size="lg"
+      size="sheet narrow"
       onClose={onClose}
       footer={
-        <>
-          <Button onClick={onClose}>{t("Cancel")}</Button>
-          <Button variant="primary" className="right" onClick={submit} loading={busy} disabled={minor === null}>
+        <div className="row" style={{ width: "100%" }}>
+          <Button size="lg" onClick={onClose}>
+            {t("Cancel")}
+          </Button>
+          <Button
+            variant="primary"
+            size="xl"
+            className="grow"
+            onClick={submit}
+            loading={busy}
+            disabled={minor === null}
+            data-testid="close-shift-confirm"
+          >
             {t("Close Shift")}
           </Button>
-        </>
+        </div>
       }
     >
       {!sum ? (
@@ -213,47 +223,9 @@ export function ShiftClose({
           <div className="spinner" />
         )
       ) : (
-        <div className="grid-2">
-          <div>
-            <h3 style={{ marginBottom: 8 }}>{t("Shift summary")}</h3>
-            <div className="tiny" style={{ marginBottom: 8 }}>
-              {t("Opened {0}", formatDateTime(sum.opened_at))}
-            </div>
-            <table className="table">
-              <tbody>
-                {rows.map(([k, v]) => (
-                  <tr key={k}>
-                    <td>{k}</td>
-                    <td className="num">{v}</td>
-                  </tr>
-                ))}
-                {sum.expected_visible ? (
-                  <tr>
-                    <td style={{ fontWeight: 700 }}>{t("Expected in drawer")}</td>
-                    <td className="num" style={{ fontWeight: 700 }}>
-                      {formatMoney(sum.expected_cash_minor)}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-            {sum.expected_visible ? (
-              <div className="tiny" style={{ marginTop: 8 }}>
-                {t(
-                  "Expected in drawer = opening float + cash sales − cash refunds + paid in − paid out − safe drops. Card, wallet and account payments are not in the drawer.",
-                )}
-              </div>
-            ) : null}
-            {!sum.expected_visible ? (
-              <div className="tiny" style={{ marginTop: 8 }}>
-                {t("Blind count: the expected amount is shown after you close.")}
-              </div>
-            ) : null}
-          </div>
-          <div className="col gap-16">
-            <label className="field-label" htmlFor="counted">
-              {t("Counted cash in drawer")}
-            </label>
+        <div className="col gap-16 shift-close">
+          <div className="field">
+            <label htmlFor="counted">{t("Counted cash in drawer")}</label>
             <input
               id="counted"
               className="input lg num"
@@ -264,27 +236,59 @@ export function ShiftClose({
               onChange={(e) => setCounted(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
             />
-            {variance !== null ? (
-              <Banner
-                tone={variance === 0 ? "success" : Math.abs(variance) <= 1000 ? "warning" : "danger"}
-                title={t("Variance")}
-              >
-                {formatMoney(variance)}
-              </Banner>
-            ) : null}
-            <textarea
-              className="textarea"
-              placeholder={t("Note (optional)")}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-            {!has("shift.approve_variance") ? (
-              <div className="tiny">{t("A manager must acknowledge large differences.")}</div>
-            ) : null}
-            {error ? <Banner tone="danger">{error}</Banner> : null}
-            <div className="tiny row">
-              <Printer size={14} /> {t("A shift report prints on close.")}
+          </div>
+          {sum.expected_visible ? (
+            <div className="expected-box" data-testid="expected-cash">
+              <div className="row">
+                <span className="grow">{t("Expected in drawer")}</span>
+                <strong className="money">{formatMoney(sum.expected_cash_minor)}</strong>
+              </div>
+              <div className="tiny">
+                {t(
+                  "Expected in drawer = opening float + cash sales − cash refunds + paid in − paid out − safe drops. Card, wallet and account payments are not in the drawer.",
+                )}
+              </div>
             </div>
+          ) : (
+            <div className="tiny">{t("Blind count: the expected amount is shown after you close.")}</div>
+          )}
+          {variance !== null ? (
+            <Banner
+              tone={variance === 0 ? "success" : Math.abs(variance) <= 1000 ? "warning" : "danger"}
+              title={t("Variance")}
+            >
+              <span className="money">{formatMoney(variance)}</span>
+            </Banner>
+          ) : null}
+          {error ? <Banner tone="danger">{error}</Banner> : null}
+          <textarea
+            className="textarea"
+            rows={2}
+            placeholder={t("Note (optional)")}
+            aria-label={t("Note (optional)")}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          {!has("shift.approve_variance") ? (
+            <div className="tiny">{t("A manager must acknowledge large differences.")}</div>
+          ) : null}
+          <details className="shift-summary">
+            <summary>
+              {t("Shift summary")} · {t("Opened {0}", formatDateTime(sum.opened_at))}
+            </summary>
+            <table className="table">
+              <tbody>
+                {rows.map(([k, v]) => (
+                  <tr key={k}>
+                    <td>{k}</td>
+                    <td className="num">{v}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+          <div className="tiny row">
+            <Printer size={16} aria-hidden /> {t("A shift report prints on close.")}
           </div>
         </div>
       )}
