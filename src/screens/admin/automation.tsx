@@ -24,6 +24,7 @@ import type {
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { FeatureGate, useFeature } from "../../components/FeatureGate";
+import { WaQr } from "../../components/WaQr";
 import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, Tabs, TextInput } from "../../components/ui";
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
 import { formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
@@ -229,8 +230,6 @@ export function WhatsAppPage() {
   );
 }
 
-const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-
 function WaConnection() {
   const toast = useToast();
   const { has } = useSession();
@@ -256,20 +255,7 @@ function WaConnection() {
       <AutomationStates st={st} />
       <div className="card card-pad col gap-16">
         <h3>{t("Linked phone")}</h3>
-        {wa.session === "pairing" && wa.qr?.svg ? (
-          <div className="col gap-8" style={{ alignItems: "center" }}>
-            <img
-              src={svgUrl(wa.qr.svg)}
-              alt={t("WhatsApp pairing QR code")}
-              width={280}
-              height={280}
-              data-testid="wa-qr"
-            />
-            <div className="small" style={{ textAlign: "center" }}>
-              {t("On the store phone open WhatsApp → Settings → Linked devices → Link a device, and scan this code.")}
-            </div>
-          </div>
-        ) : null}
+        {wa.session === "pairing" && wa.qr?.svg ? <WaQr svg={wa.qr.svg} /> : null}
         {wa.session === "pairing" && wa.pair_code ? (
           <div className="col gap-8" style={{ alignItems: "center" }}>
             <div className="mono" style={{ fontSize: 32, letterSpacing: 4 }} dir="ltr" data-testid="wa-pair-code">

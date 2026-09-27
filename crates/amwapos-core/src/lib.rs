@@ -5,6 +5,7 @@
 //! `pricing`) and repositories (SQL inside feature modules).
 
 pub mod ai;
+pub mod ai_helpers;
 pub mod ai_tools;
 pub mod ai_workspace;
 pub mod audit;

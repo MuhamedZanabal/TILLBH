@@ -1286,6 +1286,7 @@ export function LoyaltyCard({ customerId }: { customerId: string }) {
     [on, customerId],
   );
   const [adjusting, setAdjusting] = useState(false);
+  const [adjustOp, setAdjustOp] = useState(() => newOperationId());
   const [points, setPoints] = useState("");
   const [note, setNote] = useState("");
   const act = useAction();
@@ -1340,10 +1341,12 @@ export function LoyaltyCard({ customerId }: { customerId: string }) {
                 loading={act.busy}
                 disabled={!note.trim() || !Number(points)}
                 onClick={async () => {
-                  const r = await act.run(() => api.loyalty.adjust(customerId, Number(points), note));
+                  // One id per dialog: a double click or retry posts once.
+                  const r = await act.run(() => api.loyalty.adjust(customerId, Number(points), note, adjustOp));
                   if (r) {
                     setData(r);
                     setAdjusting(false);
+                    setAdjustOp(newOperationId());
                     setPoints("");
                     setNote("");
                   }

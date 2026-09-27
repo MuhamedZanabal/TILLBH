@@ -110,19 +110,22 @@ impl Runtime {
     }
 
     /// Listen address: the test override, else the configured store-network
-    /// address when it still belongs to this computer, else all interfaces.
+    /// address when it still belongs to this computer, else this computer's
+    /// first LAN address (127.0.0.1 when there is none). Never 0.0.0.0.
     fn hub_ip(&self) -> Ipv4Addr {
         if self.bind_ip != Ipv4Addr::UNSPECIFIED {
             return self.bind_ip;
         }
+        let local = discovery::local_addresses();
+        let first = local.iter().find_map(|a| a.parse::<Ipv4Addr>().ok()).unwrap_or(Ipv4Addr::LOCALHOST);
         let want = self.core.terminal_sync_settings().map(|s| s.bind_address).unwrap_or_default();
         match want.parse::<Ipv4Addr>() {
-            Ok(ip) if discovery::local_addresses().contains(&ip.to_string()) => ip,
-            Ok(ip) => {
-                tracing::warn!(%ip, "configured hub address is not on this computer; listening on all interfaces");
-                Ipv4Addr::UNSPECIFIED
+            Ok(ip) if !ip.is_unspecified() && local.contains(&ip.to_string()) => ip,
+            Ok(ip) if !ip.is_unspecified() => {
+                tracing::warn!(%ip, %first, "configured hub address is not on this computer; listening on the first LAN address");
+                first
             }
-            Err(_) => Ipv4Addr::UNSPECIFIED,
+            _ => first,
         }
     }
 
@@ -282,6 +285,15 @@ impl Runtime {
                             }
                         }
                     }
+                    // B3: fixed-threshold checks → inbox alerts (reads only).
+                    if minutes.is_multiple_of(5) {
+                        let c = core.clone();
+                        if let Ok(Ok(n)) = tokio::task::spawn_blocking(move || c.ai_anomaly_scan()).await {
+                            if n > 0 {
+                                tracing::info!(n, "AI inbox alerts added");
+                            }
+                        }
+                    }
                     let c = core.clone();
                     if let Ok(Ok((ok, _))) = tokio::task::spawn_blocking(move || c.receipt_pdf_retry_due()).await {
                         if ok > 0 {
@@ -376,7 +388,7 @@ impl Runtime {
                 let running = self.hub.lock().map(|g| g.as_ref().map(|t| !t.server.is_finished()).unwrap_or(false)).unwrap_or(false);
                 let ips = discovery::local_addresses();
                 let bind = self.hub_ip();
-                let shown: Vec<String> = if bind == Ipv4Addr::UNSPECIFIED { ips.clone() } else { vec![bind.to_string()] };
+                let shown: Vec<String> = vec![bind.to_string()];
                 let configured = self.core.terminal_sync_settings().map(|s| s.bind_address).unwrap_or_default();
                 Ok(json!({ "addresses": shown.into_iter().map(|a| format!("http://{a}:{port}")).collect::<Vec<_>>(), "port": port,
                            "running": running, "ips": ips, "bind_address": configured }))

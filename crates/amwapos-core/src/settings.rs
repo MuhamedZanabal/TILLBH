@@ -252,6 +252,9 @@ pub struct FeatureFlags {
     /// AI may propose changes (always preview + confirm + deterministic execution).
     #[serde(rename = "ai.mutations", alias = "ai_mutations")]
     pub ai_mutations: bool,
+    /// D1: a high-risk AI proposal needs a second, different person to confirm.
+    #[serde(rename = "ai.dual_control")]
+    pub ai_dual_control: bool,
     /// Customer accounts: sell on account, take account payments, balances.
     #[serde(rename = "customers.credit", alias = "customer_credit")]
     pub customer_credit: bool,
@@ -291,6 +294,7 @@ impl FeatureFlags {
             "ocr.ai_parse" => self.ocr_enabled && self.ocr_supplier_invoices && self.ai && self.ocr_ai_parse,
             "ai.enabled" => self.ai,
             "ai.mutations" => self.ai && self.ai_mutations,
+            "ai.dual_control" => self.ai && self.ai_mutations && self.ai_dual_control,
             "customers.credit" => self.customer_credit,
             "windows_hello" => self.windows_hello,
             "pdf_receipts" => self.pdf_receipts,

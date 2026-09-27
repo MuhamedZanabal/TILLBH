@@ -385,7 +385,7 @@ export function SyncPage() {
                       if (await act.run(() => api.sync.setBindAddress(e.target.value))) void addr.reload();
                     }}
                   >
-                    <option value="">{t("All network cards")}</option>
+                    <option value="">{t("Automatic (first store network card)")}</option>
                     {addr.data.ips.map((ip) => (
                       <option key={ip} value={ip}>
                         {ip}
@@ -2044,6 +2044,10 @@ function AppearanceSettings() {
 }
 
 const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
+  "ai.dual_control": () =>
+    t(
+      "A high-risk change proposed by the assistant (refund, restore, role, flags, bulk price…) runs only after a second, different person also confirms it.",
+    ),
   hub: () =>
     t(
       "Lets this computer serve other tills on the store network. A terminal-mode install needs this on before it can become a hub.",
@@ -2126,14 +2130,24 @@ function FeaturesSettings() {
           "Checkout, cash, refunds, stock and reports never depend on these modules. Turning one off hides it again; its data is kept.",
         )}
       </Banner>
+      <div className="small" data-testid="features-summary">
+        {t(
+          "Every module below starts off on a new installation. On now: {0} of {1}.",
+          names.filter((n) => data[n]).length,
+          names.length,
+        )}
+      </div>
       {names.map((n) => (
         <div key={n} style={FEATURE_PARENT[n] ? { marginInlineStart: 24 } : undefined}>
-          <Checkbox
-            label={FEATURE_LABELS[n]()}
-            checked={!!data[n]}
-            disabled={!!FEATURE_PARENT[n] && !data[FEATURE_PARENT[n]!]}
-            onChange={(x) => setData({ ...data, [n]: x })}
-          />
+          <div className="row">
+            <Checkbox
+              label={FEATURE_LABELS[n]()}
+              checked={!!data[n]}
+              disabled={!!FEATURE_PARENT[n] && !data[FEATURE_PARENT[n]!]}
+              onChange={(x) => setData({ ...data, [n]: x })}
+            />
+            <Chip>{t("Default: off")}</Chip>
+          </div>
           <div className="tiny" style={{ marginInlineStart: 24 }}>
             {FEATURE_HELP[n]?.()}
           </div>

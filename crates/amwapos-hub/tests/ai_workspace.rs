@@ -507,7 +507,7 @@ async fn whatsapp_triage_sorts_messages_and_a_person_can_correct_it() {
     .await;
     let (v, err) = e.core.ai_tool(&e.t, &cid, "whatsapp_triage", &json!({}));
     assert!(!err, "{v}");
-    assert!(v.to_string().contains("<<<DATA"));
+    assert!(v.to_string().contains("<<<DATA"), "{v}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

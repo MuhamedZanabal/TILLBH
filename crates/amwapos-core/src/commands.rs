@@ -157,9 +157,13 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         )),
         "pos.loyalty_redeem" => out(core.pos_loyalty_redeem(tk()?, req(&args, "points")?)),
         "loyalty.customer" => out(core.loyalty_customer(tk()?, &req::<String>(&args, "customer_id")?)),
-        "loyalty.adjust" => {
-            out(core.loyalty_adjust(tk()?, &req::<String>(&args, "customer_id")?, req(&args, "points")?, &req::<String>(&args, "note")?))
-        }
+        "loyalty.adjust" => out(core.loyalty_adjust(
+            tk()?,
+            &req::<String>(&args, "customer_id")?,
+            req(&args, "points")?,
+            &req::<String>(&args, "note")?,
+            opt::<String>(&args, "operation_id")?.as_deref(),
+        )),
         "pos.set_customer" => out(core.pos_set_customer(tk()?, opt(&args, "customer_id")?)),
         "pos.hold" => out(core.pos_hold(tk()?, opt(&args, "note")?)),
         "pos.held" => out(core.pos_held_list(tk()?)),
@@ -338,6 +342,11 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "ai.briefing_save" => out(core.ai_briefing_save(tk()?, opt(&args, "briefing_id")?, req(&args, "briefing")?)),
         "ai.briefing_delete" => out(core.ai_briefing_delete(tk()?, &req::<String>(&args, "briefing_id")?)),
         "ai.notes" => out(core.ai_notes(tk()?, opt(&args, "limit")?)),
+        "ai.alerts" => out(core.ai_alerts(tk()?, opt(&args, "include_dismissed")?.unwrap_or(false))),
+        "ai.alert_dismiss" => out(core.ai_alert_dismiss(tk()?, &req::<String>(&args, "alert_id")?)),
+        "ai.reorder_suggestions" => Ok(core.reorder_suggestions(tk()?, opt::<String>(&args, "supplier_id")?.as_deref())?),
+        "ai.margin_price" => Ok(core.margin_price(tk()?, &req::<String>(&args, "product_id")?, opt(&args, "margin_bp")?)?),
+        "ai.branch_compare" => Ok(core.branch_compare(tk()?, &req::<String>(&args, "product_id")?)?),
         "ai.note_read" => out(core.ai_note_read(tk()?, &req::<String>(&args, "note_id")?)),
         "ai.slash" => Ok(core.ai_slash(tk()?, &req::<String>(&args, "command")?, &opt::<String>(&args, "arg")?.unwrap_or_default())?),
         "whatsapp.triage" => Ok(core.wa_triage(tk()?, opt(&args, "limit")?)?),

@@ -2,10 +2,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Inbox } from "lucide-react";
 import { api } from "../../api";
-import type { AiPlaybookResult, AiProposal, AiProvider, AiSettings, AiTestResult } from "../../api/types";
+import type { AiPlaybookResult, AiProposal, AiProvider, AiSettings, AiTestResult, WaStatus } from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { ApprovalCancelled, useApproval } from "../../components/approval";
+import { WaPairingPanel } from "../../components/WaQr";
+import { ApiError } from "../../api/transport";
 import { Banner, Button, Checkbox, Chip, Field, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, useAction, useLoad } from "./common";
 import { formatMoney, formatQty } from "../../lib/money";
@@ -161,6 +163,60 @@ export function DiffView({ preview }: { preview: Record<string, unknown> }) {
   );
 }
 
+/** Mirrors `ai::WRITE_PERMISSIONS` in the backend. */
+export const WRITE_PERMISSIONS = [
+  "products.manage",
+  "prices.manage",
+  "barcodes.resolve",
+  "inventory.adjust",
+  "inventory.receive",
+  "inventory.transfer",
+  "stocktake.manage",
+  "suppliers.manage",
+  "purchasing.manage",
+  "customers.manage",
+  "customers.credit",
+  "deliveries.manage",
+  "users.manage",
+  "roles.manage",
+  "devices.manage",
+  "sync.manage",
+  "settings.manage",
+  "backup.manage",
+  "backup.restore",
+  "import.run",
+  "whatsapp.manage",
+  "whatsapp.send",
+  "payments.review",
+  "ocr.scan",
+  "loyalty.adjust",
+  "orders.manage",
+  "branches.manage",
+  "refund.create",
+  "cash.paid_in",
+  "cash.paid_out",
+  "cash.safe_drop",
+];
+
+/** WhatsApp status fields: shown through the pairing panel, not as text. */
+const WA_STATUS_KEYS = new Set([
+  "enabled",
+  "process",
+  "session",
+  "connected",
+  "ready",
+  "account",
+  "adapter",
+  "session_file",
+  "restarts",
+  "inbox_rev",
+  "last_error",
+  "next_retry_at",
+  "banned_until",
+  "last_send_at",
+  "last_send_error",
+]);
+
 const isCommand = (p: AiProposal) => p.kind.startsWith("command:");
 
 const LINK_RE = /\/admin\/(?:products|customers|suppliers|purchase-orders|stocktake)\/[A-Za-z0-9]{6,40}|\/admin\/ai\b/g;
@@ -200,7 +256,7 @@ const KIND_LABEL: Record<string, () => string> = {
 };
 
 export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }) {
-  const { has, session } = useSession();
+  const { has } = useSession();
   const toast = useToast();
   const approve = useApproval();
   const act = useAction();
@@ -210,8 +266,9 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
   const command = isCommand(p);
   const inputs = (p.params.confirm_inputs as string[] | undefined) ?? [];
   const needsPin = inputs.includes("user.pin");
-  // Accountants stay read-only; everyone else with admin access may decide (the command re-checks).
-  const canDecide = (has("ai.mutate") || has("admin.access")) && session?.role_id !== "role_accountant";
+  // Decided by permissions (never the role's name): admin access plus at least
+  // one write permission; the command itself re-checks on Confirm.
+  const canDecide = (has("ai.mutate") || has("admin.access")) && WRITE_PERMISSIONS.some((x) => has(x));
   const riskTone = p.risk === "high" ? "danger" : p.risk === "medium" ? "warning" : "success";
   const riskLabel = p.risk === "high" ? t("High risk") : p.risk === "medium" ? t("Medium risk") : t("Low risk");
   const kindLabel = command ? t("Admin change") : KIND_LABEL[p.kind]?.();
@@ -221,6 +278,13 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
         return await approve((tok) => api.ai.confirm(p.proposal_id, tok, needsPin ? { pin } : undefined));
       } catch (e) {
         if (e instanceof ApprovalCancelled) return null;
+        // D1: the first of two confirmations is recorded; a second person must confirm.
+        if (e instanceof ApiError && e.details?.kind === "second_confirmation_required") {
+          toast("info", t("Your confirmation is recorded. A second person must also confirm this change."));
+          setConfirm(false);
+          onChanged();
+          return null;
+        }
         throw e;
       }
     });
@@ -273,6 +337,9 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
           ))}
         </ul>
       ) : null}
+      {p.first_confirmed_by_name && p.status === "proposed" ? (
+        <Chip tone="info">{t("Confirmed by {0}; waiting for a second person", p.first_confirmed_by_name)}</Chip>
+      ) : null}
       {p.error ? <Banner tone="danger">{tb(p.error)}</Banner> : null}
       {act.error && !confirm ? <Banner tone="danger">{act.error}</Banner> : null}
       {canDecide ? (
@@ -293,8 +360,9 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
               </Button>
             </>
           ) : null}
-          {p.status === "executed" && !command ? (
+          {p.status === "executed" && (!command || p.preview.undo === true) ? (
             <Button
+              data-testid="ai-undo"
               loading={act.busy}
               onClick={async () => {
                 if (await act.run(() => api.ai.undo(p.proposal_id))) {
@@ -306,9 +374,10 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
               {t("Undo")}
             </Button>
           ) : null}
-          {p.status === "executed" && command ? (
+          {p.status === "executed" && command && p.preview.undo !== true ? (
             <span className="tiny">
-              {t("This change cannot be undone from here. Correct it on the matching admin page.")}
+              {t("This change cannot be undone from here. Correct it on the matching admin page.")}{" "}
+              {typeof p.preview.page === "string" ? <Link to={p.preview.page}>{t("Open the page")}</Link> : null}
             </span>
           ) : null}
           {p.status === "executed" && p.kind === "purchase_order" && p.result?.po_id ? (
@@ -362,12 +431,13 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
           onConfirm={() => (setOnce(null), onChanged())}
         >
           <div className="col gap-8" data-testid="ai-once">
+            {"session" in once && "qr" in once ? <WaPairingPanel initial={once as unknown as WaStatus} /> : null}
             <Banner tone="warning">
               {t("Copy this now. It is not stored with the proposal and is never sent to the assistant.")}
             </Banner>
             <dl className="kv">
               {Object.entries(once)
-                .filter(([, v]) => typeof v === "string" || typeof v === "number")
+                .filter(([k, v]) => (typeof v === "string" || typeof v === "number") && !WA_STATUS_KEYS.has(k))
                 .map(([k, v]) => (
                   <div key={k} style={{ display: "contents" }}>
                     <dt>
@@ -440,12 +510,47 @@ export function PlaybookResult({ r, onAsk }: { r: AiPlaybookResult; onAsk: (q: s
 }
 
 /** A7 + D2: every open proposal in one place, with today's digest. */
+const ALERT_LABEL: Record<string, () => string> = {
+  refund_spike: () => t("Refund spike"),
+  discount_spike: () => t("Discount spike"),
+  negative_stock: () => t("Negative stock"),
+  hub_lag: () => t("Tills not syncing"),
+  backup_overdue: () => t("Backup overdue"),
+};
+
 export function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
   const open = useLoad(() => api.ai.proposals("proposed"), []);
   const digest = useLoad(() => api.ai.digest(), []);
-  const reload = () => (void open.reload(), void digest.reload());
+  const alerts = useLoad(() => api.ai.alerts(), []);
+  const reload = () => (void open.reload(), void digest.reload(), void alerts.reload());
   return (
     <div className="col gap-16" data-testid="ai-inbox">
+      {alerts.data?.length ? (
+        <div className="card card-pad col gap-8" data-testid="ai-alerts">
+          <strong>{t("Alerts")}</strong>
+          <div className="tiny">
+            {t("Checked every 5 minutes while the app is open, against the limits in AI settings. Nothing is changed.")}
+          </div>
+          {alerts.data.map((a) => (
+            <div key={a.alert_id} className="row wrap" style={{ justifyContent: "space-between" }}>
+              <span className="row">
+                <Chip tone={a.severity === "danger" ? "danger" : a.severity === "warning" ? "warning" : "default"}>
+                  {ALERT_LABEL[a.kind]?.() ?? a.kind}
+                </Chip>
+                <span className="small">{tb(a.title)}</span>
+                <span className="tiny">{formatDateTime(a.created_at)}</span>
+              </span>
+              <Button
+                variant="ghost"
+                data-testid="ai-alert-dismiss"
+                onClick={() => void api.ai.alertDismiss(a.alert_id).then(() => alerts.reload())}
+              >
+                {t("Dismiss")}
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="card card-pad col gap-8">
         <strong>{t("Today's AI changes")}</strong>
         {digest.data ? (
@@ -666,6 +771,27 @@ export function AiSettingsSection() {
           )}
           onChange={(e) => setS({ ...s, daily_token_cap: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
         />
+        <Field label={t("Answer language")} hint={t("Follow the screen, or always answer in one language.")}>
+          <select
+            className="select"
+            data-testid="ai-answer-language"
+            value={s.answer_language ?? "ui"}
+            onChange={(e) => setS({ ...s, answer_language: e.target.value as AiSettings["answer_language"] })}
+          >
+            <option value="ui">{t("Same as the screen")}</option>
+            <option value="en">English</option>
+            <option value="ar">العربية</option>
+          </select>
+        </Field>
+        {real ? (
+          <TextInput
+            label={t("Fast model (optional)")}
+            dir="ltr"
+            value={s.model_id_fast ?? ""}
+            hint={t("Used for sorting WhatsApp messages and short reply drafts. Empty = the main model.")}
+            onChange={(e) => setS({ ...s, model_id_fast: e.target.value })}
+          />
+        ) : null}
         {real ? (
           <TextInput
             label={t("Timeout (ms)")}
@@ -732,16 +858,66 @@ export function AiSettingsSection() {
               {t(
                 "When someone asks a question, AMWAPOS sends the question and the results of the lookups the assistant makes (product names, prices, stock, report totals) to the provider. PINs, keys and full customer lists are never sent. Customer messages are sent only if WhatsApp is on and the assistant reads them.",
               )}
+              {` ${t("Changing to another provider clears this tick; agree again for the new one.")}`}
               {s.consent_at ? ` ${t("Agreed on {0}.", formatDateTime(s.consent_at))}` : ""}
             </div>
           </div>
         </>
       ) : null}
+      <div className="card card-pad col gap-8" data-testid="ai-helpers">
+        <strong>{t("Helpers and alerts")}</strong>
+        <div className="small muted">
+          {t(
+            "Fixed rules, not guesses. Price and reorder suggestions become proposals a person confirms. Alerts only appear in the inbox.",
+          )}
+        </div>
+        <div className="form-grid">
+          <TextInput
+            label={t("Target margin (%)")}
+            className="num"
+            value={String((s.target_margin_bp ?? 2500) / 100)}
+            hint={t("Suggested price = cost ÷ (1 − margin), plus VAT when prices include it.")}
+            onChange={(e) =>
+              setS({ ...s, target_margin_bp: Math.round((Number(e.target.value.replace(/[^\d.]/g, "")) || 0) * 100) })
+            }
+          />
+          <TextInput
+            label={t("Round prices up to (fils)")}
+            className="num"
+            value={String(s.price_round_minor ?? 5)}
+            onChange={(e) => setS({ ...s, price_round_minor: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
+          />
+          <TextInput
+            label={t("Refunds per day before an alert")}
+            className="num"
+            value={String(s.anomaly_refund_count ?? 5)}
+            onChange={(e) => setS({ ...s, anomaly_refund_count: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
+          />
+          <TextInput
+            label={t("Refund total per day before an alert (fils)")}
+            className="num"
+            value={String(s.anomaly_refund_minor ?? 20000)}
+            onChange={(e) => setS({ ...s, anomaly_refund_minor: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
+          />
+          <TextInput
+            label={t("Discount total per day before an alert (fils)")}
+            className="num"
+            value={String(s.anomaly_discount_minor ?? 20000)}
+            onChange={(e) => setS({ ...s, anomaly_discount_minor: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
+          />
+          <TextInput
+            label={t("Minutes without a till heartbeat before an alert")}
+            className="num"
+            value={String(s.anomaly_hub_lag_minutes ?? 30)}
+            onChange={(e) => setS({ ...s, anomaly_hub_lag_minutes: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
+          />
+        </div>
+      </div>
       <div className="card card-pad col gap-8" data-testid="ai-fallback">
         <strong>{t("Free fallback when the provider is unavailable")}</strong>
         <div className="small muted">
           {t(
-            "If the chosen provider times out, is rate-limited, has a server error or does not know the model, AMWAPOS asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key or a refusal.",
+            "If the chosen provider times out, is rate-limited, has a server error or does not know the model, AMWAPOS asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key (401) or a refusal. It is off until you tick the box.",
           )}
         </div>
         <Checkbox

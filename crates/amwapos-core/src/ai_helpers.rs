@@ -1,0 +1,345 @@
+//! Deterministic helpers the assistant (and the page) can use. None of them
+//! writes anything: suggestions become proposals a person confirms, and the
+//! anomaly checks only add items to the action inbox.
+//!
+//! - B3 anomaly checks (refund spike, discount spike, negative stock, hub lag,
+//!   overdue backup) with thresholds from Settings → AI.
+//! - B4 reorder suggestions: reorder point, on hand, in transit, last supplier.
+//! - B5 price from cost and a target margin (VAT-aware, rounded up).
+//! - B8 branch comparison for one product (only with `org.multi_branch`).
+
+use rusqlite::{params, OptionalExtension};
+use serde_json::{json, Value};
+
+use crate::error::{AppError, AppResult};
+use crate::ids::new_id;
+use crate::service::AppCore;
+use crate::{time, validate};
+
+/// Price for a target margin: net = cost / (1 − margin); VAT added when
+/// prices include it; rounded up to `round` minor units.
+pub fn price_for_margin(cost_minor: i64, margin_bp: i64, tax_rate_bp: i64, tax_inclusive: bool, round: i64) -> Option<i64> {
+    if cost_minor <= 0 || !(0..9_500).contains(&margin_bp) {
+        return None;
+    }
+    let up = |a: i128, b: i128| (a + b - 1) / b;
+    let net = up(cost_minor as i128 * 10_000, (10_000 - margin_bp) as i128);
+    let gross = if tax_inclusive { up(net * (10_000 + tax_rate_bp as i128), 10_000) } else { net };
+    let r = round.max(1) as i128;
+    Some(((gross + r - 1) / r * r) as i64)
+}
+
+/// Minor units as a decimal string ("1.500" for 1500 with 3 digits).
+pub fn minor_to_decimal(minor: i64, digits: u32) -> String {
+    if digits == 0 {
+        return minor.to_string();
+    }
+    let p = 10i64.pow(digits);
+    let sign = if minor < 0 { "-" } else { "" };
+    format!("{sign}{}.{:0w$}", minor.abs() / p, minor.abs() % p, w = digits as usize)
+}
+
+impl AppCore {
+    // ---- B4 -------------------------------------------------------------
+
+    /// Products at or below their reorder point in the user's branch, with
+    /// what is already on order, the last supplier and cost, and a suggested
+    /// quantity (up to twice the reorder point). Grouped by supplier.
+    pub fn reorder_suggestions(&self, token: &str, supplier_id: Option<&str>) -> AppResult<Value> {
+        let s = self.session(token)?;
+        if !s.has("purchasing.manage") {
+            s.require("inventory.view")?;
+        }
+        let rows: Vec<Value> = self.db.read(|c| {
+            let mut st = c.prepare(
+                "SELECT p.product_id, p.name, p.sku, p.reorder_point_milli, p.allow_decimal_quantity, COALESCE(sl.qty_milli,0),
+                        (SELECT COALESCE(SUM(i.qty_ordered_milli - i.qty_received_milli),0) FROM purchase_order_items i
+                           JOIN purchase_orders o ON o.po_id=i.po_id
+                          WHERE i.product_id=p.product_id AND o.branch_id=?1 AND o.status IN ('draft','ordered','partially_received')),
+                        (SELECT o.supplier_id FROM purchase_order_items i JOIN purchase_orders o ON o.po_id=i.po_id
+                          WHERE i.product_id=p.product_id ORDER BY o.created_at DESC LIMIT 1),
+                        (SELECT i.unit_cost_minor FROM purchase_order_items i JOIN purchase_orders o ON o.po_id=i.po_id
+                          WHERE i.product_id=p.product_id ORDER BY o.created_at DESC LIMIT 1),
+                        (SELECT pc.last_cost_minor FROM product_costs pc WHERE pc.product_id=p.product_id AND pc.branch_id=?1),
+                        t.rate_bp
+                 FROM products p
+                 LEFT JOIN stock_levels sl ON sl.product_id=p.product_id AND sl.branch_id=?1
+                 LEFT JOIN tax_rules t ON t.tax_rule_id=p.tax_rule_id
+                 WHERE p.active=1 AND p.track_inventory=1 AND p.reorder_point_milli>0 AND COALESCE(sl.qty_milli,0) <= p.reorder_point_milli
+                 ORDER BY p.name LIMIT 200",
+            )?;
+            let rows = st
+                .query_map([&s.branch_id], |r| {
+                    let point: i64 = r.get(3)?;
+                    let decimal = r.get::<_, i64>(4)? != 0;
+                    let on_hand: i64 = r.get(5)?;
+                    let in_transit: i64 = r.get(6)?;
+                    let mut qty = (point * 2 - on_hand - in_transit).max(0);
+                    if !decimal {
+                        qty = (qty + 999) / 1000 * 1000;
+                    }
+                    let cost: Option<i64> = r.get::<_, Option<i64>>(8)?.or(r.get::<_, Option<i64>>(9)?).filter(|c| *c > 0);
+                    Ok(json!({
+                        "product_id": r.get::<_, String>(0)?, "name": r.get::<_, String>(1)?, "sku": r.get::<_, String>(2)?,
+                        "reorder_point_milli": point, "on_hand_milli": on_hand, "in_transit_milli": in_transit,
+                        "suggested_qty_milli": qty, "supplier_id": r.get::<_, Option<String>>(7)?,
+                        "unit_cost_minor": cost, "tax_rate_bp": r.get::<_, Option<i64>>(10)?.unwrap_or(0),
+                    }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })?;
+        let rows: Vec<Value> = rows
+            .into_iter()
+            .filter(|r| r["suggested_qty_milli"].as_i64().unwrap_or(0) > 0)
+            .filter(|r| supplier_id.is_none_or(|sid| r["supplier_id"] == sid))
+            .collect();
+        let mut by_supplier: std::collections::BTreeMap<String, Vec<Value>> = Default::default();
+        for r in &rows {
+            by_supplier.entry(r["supplier_id"].as_str().unwrap_or("").to_string()).or_default().push(r.clone());
+        }
+        let groups: Vec<Value> = by_supplier
+            .into_iter()
+            .map(|(sid, lines)| json!({ "supplier_id": if sid.is_empty() { Value::Null } else { json!(sid) }, "lines": lines }))
+            .collect();
+        Ok(json!({ "rule": "suggested = 2 × reorder point − on hand − on order (rounded up to whole units)", "groups": groups }))
+    }
+
+    /// The draft purchase order a reorder proposal records (po.save args).
+    pub(crate) fn reorder_po_args(&self, token: &str, supplier_id: &str) -> AppResult<Value> {
+        let sid = validate::id(supplier_id, "Supplier")?;
+        let v = self.reorder_suggestions(token, Some(&sid))?;
+        let lines: Vec<Value> = v["groups"]
+            .as_array()
+            .and_then(|g| g.first())
+            .and_then(|g| g["lines"].as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|l| {
+                Some(json!({ "product_id": l["product_id"], "qty_milli": l["suggested_qty_milli"], "unit_cost_minor": l["unit_cost_minor"].as_i64()?,
+                             "tax_rate_bp": l["tax_rate_bp"] }))
+            })
+            .collect();
+        if lines.is_empty() {
+            return Err(AppError::validation("Nothing from this supplier is at or below its reorder point (with a known cost)."));
+        }
+        Ok(
+            json!({ "po": { "supplier_id": sid, "notes": "Reorder suggestion (AI helper): 2 × reorder point − on hand − on order.", "lines": lines } }),
+        )
+    }
+
+    // ---- B5 -------------------------------------------------------------
+
+    /// Suggested selling price from the product's cost and the target margin.
+    pub fn margin_price(&self, token: &str, product_id: &str, margin_bp: Option<i64>) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("products.view")?;
+        let st = self.ai_settings_pub()?;
+        let pid = validate::id(product_id, "Product")?;
+        let margin = margin_bp.unwrap_or(st.target_margin_bp);
+        if !(0..9_500).contains(&margin) {
+            return Err(AppError::validation("The target margin must be between 0% and 95%."));
+        }
+        let (name, cost, rate, inclusive, current): (String, Option<i64>, i64, bool, Option<i64>) = self.db.read(|c| {
+            let (name, rate, incl): (String, i64, i64) = c
+                .query_row(
+                    "SELECT p.name, t.rate_bp, t.inclusive FROM products p JOIN tax_rules t ON t.tax_rule_id=p.tax_rule_id WHERE p.product_id=?1",
+                    [&pid],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .optional()?
+                .ok_or_else(|| AppError::not_found("Product"))?;
+            let cost: Option<i64> = c
+                .query_row(
+                    "SELECT CASE WHEN avg_cost_minor>0 THEN avg_cost_minor ELSE last_cost_minor END FROM product_costs WHERE product_id=?1 AND branch_id=?2",
+                    params![pid, s.branch_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok((name, cost, rate, incl != 0, crate::catalog::current_price(c, &pid)?))
+        })?;
+        let cost =
+            cost.filter(|c| *c > 0).ok_or_else(|| AppError::validation("This product has no cost yet, so no price can be suggested."))?;
+        let price = price_for_margin(cost, margin, rate, inclusive, st.price_round_minor)
+            .ok_or_else(|| AppError::validation("No price can be suggested for this cost and margin."))?;
+        Ok(json!({ "product_id": pid, "name": name, "cost_minor": cost, "target_margin_bp": margin, "tax_rate_bp": rate,
+                   "tax_inclusive": inclusive, "current_price_minor": current, "suggested_price_minor": price,
+                   "rule": "price = cost ÷ (1 − margin), plus VAT when prices include it, rounded up" }))
+    }
+
+    // ---- B8 -------------------------------------------------------------
+
+    /// One product across branches: price, stock, cost and the last 30 days
+    /// of sales and margin. Only with multiple branches switched on.
+    pub fn branch_compare(&self, token: &str, product_id: &str) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("products.view")?;
+        if !self.features()?.is_on("org.multi_branch") {
+            return Ok(json!({ "enabled": false, "branches": [] }));
+        }
+        let pid = validate::id(product_id, "Product")?;
+        let prices = self.branch_prices_get(token, &pid).unwrap_or_default();
+        let from = time::fmt(time::now() - chrono::Duration::days(30));
+        let rows: Vec<Value> = self.db.read(|c| {
+            let mut st = c.prepare(
+                "SELECT b.branch_id, b.name, COALESCE(sl.qty_milli,0),
+                        (SELECT CASE WHEN pc.avg_cost_minor>0 THEN pc.avg_cost_minor ELSE pc.last_cost_minor END FROM product_costs pc
+                          WHERE pc.product_id=?1 AND pc.branch_id=b.branch_id),
+                        (SELECT COALESCE(SUM(i.qty_milli),0) FROM sale_items i JOIN sales x ON x.sale_id=i.sale_id
+                          WHERE i.product_id=?1 AND x.branch_id=b.branch_id AND x.created_at>=?2),
+                        (SELECT COALESCE(SUM(i.line_total_minor - i.tax_minor),0) FROM sale_items i JOIN sales x ON x.sale_id=i.sale_id
+                          WHERE i.product_id=?1 AND x.branch_id=b.branch_id AND x.created_at>=?2),
+                        (SELECT COALESCE(SUM(i.cost_snapshot_minor * i.qty_milli / 1000),0) FROM sale_items i JOIN sales x ON x.sale_id=i.sale_id
+                          WHERE i.product_id=?1 AND x.branch_id=b.branch_id AND x.created_at>=?2)
+                 FROM branches b LEFT JOIN stock_levels sl ON sl.branch_id=b.branch_id AND sl.product_id=?1 ORDER BY b.name",
+            )?;
+            let rows = st
+                .query_map(params![pid, from], |r| {
+                    let net: i64 = r.get(5)?;
+                    let cost: i64 = r.get(6)?;
+                    let margin_bp = if net > 0 { Some((net - cost) * 10_000 / net) } else { None };
+                    Ok(json!({ "branch_id": r.get::<_, String>(0)?, "branch": r.get::<_, String>(1)?, "stock_milli": r.get::<_, i64>(2)?,
+                               "cost_minor": r.get::<_, Option<i64>>(3)?, "sold_30d_milli": r.get::<_, i64>(4)?,
+                               "net_sales_30d_minor": net, "cost_30d_minor": cost, "margin_30d_bp": margin_bp }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })?;
+        let _ = s;
+        Ok(json!({ "enabled": true, "product_id": pid, "prices": prices, "branches": rows }))
+    }
+
+    // ---- B3 -------------------------------------------------------------
+
+    /// Run the anomaly checks (no session: the maintenance loop). Adds at most
+    /// one open inbox item per check per business day. Never writes records.
+    pub fn ai_anomaly_scan(&self) -> AppResult<usize> {
+        if !self.features()?.is_on("ai.enabled") {
+            return Ok(0);
+        }
+        let st = self.ai_settings_pub()?;
+        let tz: String = self.db.read(|c| Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0))?))?;
+        let today = time::business_date(time::now(), &tz)?;
+        let mut found: Vec<(&str, &str, String, Value)> = vec![];
+        let (refund_n, refund_sum, discount, negative): (i64, i64, i64, i64) = self.db.read(|c| {
+            let (n, sum): (i64, i64) =
+                c.query_row("SELECT COUNT(*), COALESCE(SUM(total_minor),0) FROM refunds WHERE business_date=?1", [&today], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })?;
+            let disc: i64 =
+                c.query_row("SELECT COALESCE(SUM(discount_minor),0) FROM sales WHERE business_date=?1", [&today], |r| r.get(0))?;
+            let neg: i64 = c.query_row("SELECT COUNT(*) FROM stock_levels WHERE qty_milli < 0", [], |r| r.get(0))?;
+            Ok((n, sum, disc, neg))
+        })?;
+        if st.anomaly_refund_count > 0 && refund_n >= st.anomaly_refund_count
+            || st.anomaly_refund_minor > 0 && refund_sum >= st.anomaly_refund_minor
+        {
+            found.push((
+                "refund_spike",
+                "warning",
+                format!("{refund_n} refunds today"),
+                json!({ "count": refund_n, "total_minor": refund_sum, "count_threshold": st.anomaly_refund_count, "amount_threshold_minor": st.anomaly_refund_minor }),
+            ));
+        }
+        if st.anomaly_discount_minor > 0 && discount >= st.anomaly_discount_minor {
+            found.push((
+                "discount_spike",
+                "warning",
+                "Discounts today are above the limit".into(),
+                json!({ "discount_minor": discount, "threshold_minor": st.anomaly_discount_minor }),
+            ));
+        }
+        if negative > 0 {
+            found.push(("negative_stock", "warning", format!("{negative} products below zero stock"), json!({ "products": negative })));
+        }
+        if st.anomaly_hub_lag_minutes > 0 {
+            let cutoff = time::fmt(time::now() - chrono::Duration::minutes(st.anomaly_hub_lag_minutes));
+            let (late, dead): (i64, i64) = self.db.read(|c| {
+                let late: i64 = c.query_row(
+                    "SELECT COUNT(*) FROM devices d JOIN device_heartbeats h ON h.device_id=d.device_id
+                     WHERE d.active=1 AND d.operating_mode='terminal' AND h.last_seen_at < ?1",
+                    [&cutoff],
+                    |r| r.get(0),
+                )?;
+                let dead: i64 = c.query_row("SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'", [], |r| r.get(0))?;
+                Ok((late, dead))
+            })?;
+            if late > 0 || dead > 0 {
+                found.push((
+                    "hub_lag",
+                    "danger",
+                    "Tills are not synchronising".into(),
+                    json!({ "tills_silent": late, "minutes": st.anomaly_hub_lag_minutes, "dead_letters": dead }),
+                ));
+            }
+        }
+        if let Ok(b) = self.backup_diagnostic() {
+            if b.state != "ok" && b.state != "info" {
+                found.push(("backup_overdue", "danger", b.summary.clone(), json!({ "state": b.state })));
+            }
+        }
+        let now = time::now_str();
+        let mut added = 0;
+        self.db.write(|tx| {
+            for (kind, sev, title, detail) in &found {
+                added += tx.execute(
+                    "INSERT OR IGNORE INTO ai_alerts(alert_id, kind, day_key, severity, title, detail_json, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                    params![new_id(), kind, today, sev, title, detail.to_string(), now],
+                )?;
+            }
+            Ok(())
+        })?;
+        Ok(added)
+    }
+
+    pub fn ai_alerts(&self, token: &str, include_dismissed: bool) -> AppResult<Vec<Value>> {
+        let s = self.session(token)?;
+        s.require("admin.access")?;
+        self.db.read(|c| {
+            let mut st = c.prepare(
+                "SELECT alert_id, kind, day_key, severity, title, detail_json, created_at, dismissed_at FROM ai_alerts
+                 WHERE (?1 OR dismissed_at IS NULL) ORDER BY created_at DESC LIMIT 100",
+            )?;
+            let rows = st
+                .query_map([include_dismissed], |r| {
+                    Ok(json!({ "alert_id": r.get::<_, String>(0)?, "kind": r.get::<_, String>(1)?, "day": r.get::<_, String>(2)?,
+                               "severity": r.get::<_, String>(3)?, "title": r.get::<_, String>(4)?,
+                               "detail": serde_json::from_str::<Value>(&r.get::<_, String>(5)?).unwrap_or(Value::Null),
+                               "created_at": r.get::<_, String>(6)?, "dismissed_at": r.get::<_, Option<String>>(7)? }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+    }
+
+    pub fn ai_alert_dismiss(&self, token: &str, alert_id: &str) -> AppResult<Vec<Value>> {
+        let s = self.session(token)?;
+        s.require("admin.access")?;
+        let id = validate::id(alert_id, "Alert")?;
+        self.db.write(|tx| {
+            tx.execute(
+                "UPDATE ai_alerts SET dismissed_by=?2, dismissed_at=?3 WHERE alert_id=?1 AND dismissed_at IS NULL",
+                params![id, s.user_id, time::now_str()],
+            )?;
+            Ok(())
+        })?;
+        self.ai_alerts(token, false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn margin_price_is_vat_aware_and_rounded_up() {
+        // cost 1.000, 25% margin → net 1.334 (rounded up), +10% VAT → 1.468 → 1.470.
+        assert_eq!(price_for_margin(1000, 2500, 1000, true, 5), Some(1470));
+        assert_eq!(price_for_margin(1000, 2500, 1000, false, 5), Some(1335));
+        assert_eq!(price_for_margin(0, 2500, 1000, true, 5), None);
+        assert_eq!(price_for_margin(1000, 9600, 0, false, 1), None);
+        assert_eq!(minor_to_decimal(1470, 3), "1.470");
+        assert_eq!(minor_to_decimal(5, 3), "0.005");
+    }
+}

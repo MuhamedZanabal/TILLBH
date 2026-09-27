@@ -27,6 +27,8 @@ export const AR: Record<string, string> = {
   "A delivery already exists for this sale.": "يوجد توصيل لهذا البيع مسبقاً.",
   "A delivery that is {0} cannot become {1}.": "لا يمكن لتوصيل في حالة {0} أن يصبح {1}.",
   "A discount cannot exceed the line amount.": "لا يمكن أن يتجاوز الخصم مبلغ السطر.",
+  "A high-risk change proposed by the assistant (refund, restore, role, flags, bulk price…) runs only after a second, different person also confirms it.":
+    "التغيير عالي المخاطر الذي يقترحه المساعد (استرجاع، استعادة، دور، وحدات، أسعار جماعية…) لا يُنفّذ إلا بعد أن يؤكده شخص ثانٍ مختلف.",
   "A line discount cannot exceed the line amount.": "لا يمكن أن يتجاوز خصم السطر مبلغ السطر.",
   "A manager must acknowledge large differences.": "يجب أن يعتمد المدير الفروقات الكبيرة.",
   "A manager must approve this refund.": "يجب أن يوافق المدير على هذا الاسترجاع.",
@@ -71,6 +73,7 @@ export const AR: Record<string, string> = {
   "AI proposed changes (preview and confirm)": "تغييرات يقترحها المساعد الذكي (معاينة وتأكيد)",
   "AI proposed changes are switched off.": "التغييرات المقترحة من الذكاء الاصطناعي متوقفة.",
   "AI summary": "ملخص الذكاء الاصطناعي",
+  "AI: two people confirm high-risk changes": "الذكاء الاصطناعي: شخصان يؤكدان التغييرات عالية المخاطر",
   AMWAPOS: "AMWAPOS",
   "AMWAPOS Setup": "إعداد AMWAPOS",
   "AMWAPOS Terminal": "نقطة بيع AMWAPOS",
@@ -198,6 +201,7 @@ export const AR: Record<string, string> = {
   "An update is used only if its signature matches the key built into AMWAPOS and the downloaded installer matches the signed checksum. Anything else is refused and deleted.":
     "لا يُستخدم التحديث إلا إذا طابق توقيعه المفتاح المضمّن في AMWAPOS وطابق برنامج التثبيت المُنزّل المجموع الاختباري الموقّع. يُرفض أي شيء آخر ويُحذف.",
   Analytics: "التحليلات",
+  "Answer language": "لغة الإجابة",
   Answering: "يستجيب",
   "Any stock": "أي مخزون",
   Appearance: "المظهر",
@@ -275,6 +279,7 @@ export const AR: Record<string, string> = {
   "Audit trail": "سجل التدقيق",
   "Audited events by type and user": "الأحداث المدقّقة حسب النوع والمستخدم",
   Automatic: "تلقائي",
+  "Automatic (first store network card)": "تلقائي (أول بطاقة شبكة للمتجر)",
   "Automatic backups run only while AMWAPOS is open on this computer. Keep the hub running, or back up now.":
     "تعمل النسخ الاحتياطية التلقائية فقط أثناء تشغيل AMWAPOS على هذا الجهاز. أبقِ الخادم يعمل، أو انسخ احتياطياً الآن.",
   "Automatic daily backups are verified after creation. Choose a folder on a different disk or a USB drive if possible.":
@@ -452,6 +457,8 @@ export const AR: Record<string, string> = {
   "Changes that could not be applied": "تغييرات تعذّر تطبيقها",
   "Changing a role signs out its users so the new permissions apply immediately.":
     "تغيير الدور يسجّل خروج مستخدميه حتى تُطبّق الصلاحيات الجديدة فوراً.",
+  "Changing to another provider clears this tick; agree again for the new one.":
+    "تغيير المزوّد يلغي هذه الموافقة؛ وافق مرة أخرى للمزوّد الجديد.",
   Channel: "القناة",
   "ChatGPT Plus, Claude Pro, Gemini Advanced, and Codex logins do not work here. Create an API key at platform.openai.com, console.anthropic.com, aistudio.google.com, or openrouter.ai. For other servers, choose Custom and enter a base URL that speaks OpenAI Chat Completions.":
     "تسجيلات الدخول عبر ChatGPT Plus وClaude Pro وGemini Advanced وCodex لا تعمل هنا. أنشئ مفتاح API من platform.openai.com أو console.anthropic.com أو aistudio.google.com أو openrouter.ai. للخوادم الأخرى، اختر «مخصص» وأدخل عنواناً أساسياً لخادم يدعم OpenAI Chat Completions.",
@@ -464,6 +471,8 @@ export const AR: Record<string, string> = {
   "Check the BenefitPay or bank statement before confirming. The screenshot alone does not prove the money arrived.":
     "تحقق من كشف BenefitPay أو البنك قبل التأكيد. لقطة الشاشة وحدها لا تثبت وصول المال.",
   "Check the spelling or scan the barcode.": "تحقق من الإملاء أو امسح الباركود.",
+  "Checked every 5 minutes while the app is open, against the limits in AI settings. Nothing is changed.":
+    "يتم الفحص كل 5 دقائق أثناء فتح البرنامج، وفق الحدود في إعدادات الذكاء الاصطناعي. لا يتم تغيير أي شيء.",
   "Checked low stock": "فحص المخزون المنخفض",
   "Checking schema": "جارٍ فحص بنية البيانات",
   "Checkout never depends on this feature": "عملية الدفع لا تعتمد أبداً على هذه الميزة",
@@ -543,6 +552,7 @@ export const AR: Record<string, string> = {
   "Confirm payment": "تأكيد الدفع",
   "Confirm {0}": "تأكيد {0}",
   Confirmed: "مؤكد",
+  "Confirmed by {0}; waiting for a second person": "أكّده {0}؛ بانتظار شخص ثانٍ",
   "Connect and show QR code": "اتصل واعرض رمز QR",
   "Connect to the hub": "الاتصال بالخادم",
   Connected: "متصل",
@@ -670,6 +680,7 @@ export const AR: Record<string, string> = {
   "Default delivery address": "عنوان التوصيل الافتراضي",
   "Default message language": "لغة الرسائل الافتراضية",
   "Default: data folder\\backups": "الافتراضي: مجلد البيانات\\backups",
+  "Default: off": "الافتراضي: متوقف",
   Delete: "حذف",
   "Delete another cashier's held sale": "حذف بيع معلّق لكاشير آخر",
   "Delete digit": "حذف رقم",
@@ -719,6 +730,8 @@ export const AR: Record<string, string> = {
     "خصم بحوالي {0}. محدود بما يتحمله البيع؛ وليس نقداً.",
   "Discount on sale": "خصم على البيع",
   "Discount on {0}": "خصم على {0}",
+  "Discount spike": "ارتفاع الخصومات",
+  "Discount total per day before an alert (fils)": "إجمالي الخصومات اليومية قبل التنبيه (فلس)",
   "Discount — {0}": "خصم — {0}",
   Discounts: "الخصومات",
   Dismiss: "إخفاء",
@@ -812,6 +825,8 @@ export const AR: Record<string, string> = {
   Events: "الأحداث",
   "Every cell is read as text, so barcodes keep their leading zeros. Import suppliers and products before opening stock.":
     "تُقرأ كل خلية كنص، فتحتفظ الباركودات بأصفارها البادئة. استورد الموردين والمنتجات قبل المخزون الافتتاحي.",
+  "Every module below starts off on a new installation. On now: {0} of {1}.":
+    "كل وحدة أدناه تبدأ متوقفة في التثبيت الجديد. المفعّل الآن: {0} من {1}.",
   "Every refund with its reason, operator and approver.": "كل عملية استرجاع مع سببها ومنفّذها ومعتمِدها.",
   "Every sale, product and setting recorded after this backup was made will be replaced. A safety backup of the current data is taken automatically first.":
     "سيتم استبدال كل عملية بيع ومنتج وإعداد سُجّلت بعد إنشاء هذه النسخة الاحتياطية. تُؤخذ نسخة احتياطية أمان للبيانات الحالية تلقائياً أولاً.",
@@ -849,6 +864,7 @@ export const AR: Record<string, string> = {
   "Fallback model": "النموذج البديل",
   "Fallback off": "البديل متوقف",
   "Fallback ready": "البديل جاهز",
+  "Fast model (optional)": "نموذج سريع (اختياري)",
   "Fast retail. Accurate operations.": "بيع سريع. عمليات دقيقة.",
   Favorites: "المفضلة",
   Features: "الميزات",
@@ -877,10 +893,13 @@ export const AR: Record<string, string> = {
   "First Seen": "أول ظهور",
   "Fix or skip the rows with errors before applying.": "أصلح الصفوف التي بها أخطاء أو تخطها قبل التطبيق.",
   "Fixed change": "باقٍ ثابت",
+  "Fixed rules, not guesses. Price and reorder suggestions become proposals a person confirms. Alerts only appear in the inbox.":
+    "قواعد ثابتة وليست تخمينًا. اقتراحات السعر وإعادة الطلب تصبح مقترحات يؤكدها شخص. التنبيهات تظهر في صندوق الوارد فقط.",
   Float: "الرصيد الافتتاحي",
   "Focus the question box": "الانتقال إلى مربع السؤال",
   Folder: "المجلد",
   "Folder for backups. Prefer a second disk or USB drive.": "مجلد النسخ الاحتياطية. يُفضّل قرص ثانٍ أو ذاكرة USB.",
+  "Follow the screen, or always answer in one language.": "اتبع لغة الشاشة، أو أجب دائمًا بلغة واحدة.",
   "Footer lines": "أسطر التذييل",
   "Found stock": "مخزون مكتشف",
   "Found {0}": "تم العثور على {0}",
@@ -916,6 +935,7 @@ export const AR: Record<string, string> = {
   "Held sale": "بيع معلّق",
   "Held sales": "المبيعات المعلّقة",
   "Held tickets: {0}": "التذاكر المعلقة: {0}",
+  "Helpers and alerts": "المساعدات والتنبيهات",
   "Hide the expected drawer amount from cashiers until they have counted.":
     "إخفاء مبلغ الدرج المتوقع عن الكاشير حتى ينتهي من العدّ.",
   "High risk": "مخاطرة عالية",
@@ -956,6 +976,8 @@ export const AR: Record<string, string> = {
   INVENTORY: "المخزون",
   Identity: "الهوية",
   "Idle lock must be between 0 and 240 minutes.": "يجب أن تكون مدة القفل عند الخمول بين 0 و240 دقيقة.",
+  "If the chosen provider times out, is rate-limited, has a server error or does not know the model, AMWAPOS asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key (401) or a refusal. It is off until you tick the box.":
+    "إذا انتهت مهلة المزوّد المختار أو تجاوز حد الطلبات أو حدث خطأ في الخادم أو لم يعرف النموذج، يسأل AMWAPOS خدمة OpenRouter بدلًا منه باستخدام النموذج أدناه (openrouter/free يختار نموذجًا مجانيًا). تُظهر الصفحة متى يحدث ذلك. لا يحدث أبدًا عند مفتاح خاطئ (401) أو رفض. وهو متوقف حتى تضع علامة في المربع.",
   "If the chosen provider times out, is rate-limited, has a server error or does not know the model, AMWAPOS asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key or a refusal.":
     "إذا انتهت مهلة المزوّد المختار، أو تجاوزت الطلبات حدّه، أو حدث خطأ في خادمه، أو لم يعرف النموذج، يسأل AMWAPOS خدمة OpenRouter بدلًا منه باستخدام النموذج أدناه (openrouter/free يختار نموذجًا مجانيًا). تُظهر الصفحة ذلك عند حدوثه. لا يحدث هذا أبدًا عند خطأ المفتاح أو الرفض.",
   "Ignore an identical barcode scanned again within this many milliseconds (0 = off).":
@@ -1178,6 +1200,7 @@ export const AR: Record<string, string> = {
   "Minimum PIN length.": "أدنى طول للرمز السري.",
   "Minimum points to redeem": "الحد الأدنى للنقاط المستبدلة",
   "Minimum to redeem": "الحد الأدنى للاستبدال",
+  "Minutes without a till heartbeat before an alert": "دقائق دون إشارة من نقطة البيع قبل التنبيه",
   Mismatch: "عدم تطابق",
   "Missing argument '{0}'.": "الوسيط '{0}' مفقود.",
   "Missing primary key.": "المفتاح الأساسي مفقود.",
@@ -1212,6 +1235,7 @@ export const AR: Record<string, string> = {
   Negative: "سالب",
   "Negative Stock": "مخزون سالب",
   "Negative quantities are excluded from valuation.": "تُستبعد الكميات السالبة من التقييم.",
+  "Negative stock": "مخزون بالسالب",
   "Nested values are not allowed in replicated rows.": "لا يُسمح بالقيم المتداخلة في الصفوف المنسوخة.",
   Net: "الصافي",
   "Net sales": "صافي المبيعات",
@@ -1477,6 +1501,7 @@ export const AR: Record<string, string> = {
   "Open the action inbox": "فتح صندوق الإجراءات",
   "Open the cash drawer without a sale": "فتح درج النقد بلا بيع",
   "Open the conversation": "افتح المحادثة",
+  "Open the page": "افتح الصفحة",
   "Open this on the phone (same Wi-Fi as the hub)": "افتح هذا على الهاتف (نفس شبكة Wi-Fi الخاصة بالخادم)",
   "Open {0}": "فتح {0}",
   "OpenAI-compatible": "متوافق مع OpenAI",
@@ -1495,6 +1520,7 @@ export const AR: Record<string, string> = {
     "مؤشرات تشغيلية مع الأدلة التي تستند إليها. تُحسب محلياً من سجلاتك.",
   Operations: "العمليات",
   "Optional modules are off until you switch them on": "الوحدات الاختيارية متوقفة حتى تفعّلها",
+  "Optional modules start off": "الوحدات الاختيارية تبدأ متوقفة",
   "Optional, one per line": "اختياري، سطر لكل عنصر",
   "Or link with a code (shop's WhatsApp number)": "أو الربط برمز (رقم واتساب المتجر)",
   Order: "الطلب",
@@ -1838,6 +1864,7 @@ export const AR: Record<string, string> = {
   "Refund quantity must be greater than zero.": "يجب أن تكون كمية الاسترجاع أكبر من صفر.",
   "Refund spike": "ارتفاع المرتجعات",
   "Refund to": "استرجاع إلى",
+  "Refund total per day before an alert (fils)": "إجمالي المرتجعات اليومية قبل التنبيه (فلس)",
   "Refund — receipt {0}": "استرجاع — الإيصال {0}",
   "Refund-spike playbook": "دليل ارتفاع المرتجعات",
   Refunded: "مسترجع",
@@ -1847,6 +1874,7 @@ export const AR: Record<string, string> = {
   "Refunds (gross)": "الاسترجاعات (الإجمالي)",
   "Refunds are limited to quantities not yet refunded. Restocked items return to inventory.":
     "الاسترجاع محدود بالكميات التي لم تُسترجع بعد. الأصناف المُعادة للمخزون تعود إليه.",
+  "Refunds per day before an alert": "عدد المرتجعات اليومية قبل التنبيه",
   "Refunds recorded": "الاسترجاعات المسجّلة",
   "Refunds with reasons and approvals": "الاسترجاعات مع الأسباب والموافقات",
   Registered: "مسجّل",
@@ -1942,6 +1970,7 @@ export const AR: Record<string, string> = {
   "Role name": "اسم الدور",
   "Role saved": "تم حفظ الدور",
   "Roles & Permissions": "الأدوار والصلاحيات",
+  "Round prices up to (fils)": "تقريب الأسعار للأعلى إلى (فلس)",
   "Round up to": "التقريب إلى",
   Row: "الصف",
   "Row {0}": "الصف {0}",
@@ -2004,6 +2033,7 @@ export const AR: Record<string, string> = {
   "Sales by hour — today": "المبيعات بالساعة — اليوم",
   "Sales, payments, shift variances, refunds and low stock for one day. Every figure comes from recorded transactions.":
     "المبيعات والمدفوعات وفروقات الورديات والمرتجعات والمخزون المنخفض ليوم واحد. كل رقم مأخوذ من المعاملات المسجلة.",
+  "Same as the screen": "نفس لغة الشاشة",
   "Same image as {0}": "نفس صورة {0}",
   "Same screenshot or bank reference seen before": "نفس لقطة الشاشة أو المرجع البنكي شوهد سابقاً",
   "Sample rows": "صفوف نموذجية",
@@ -2250,6 +2280,8 @@ export const AR: Record<string, string> = {
   "Subtotal {0} · Tax {1}": "المجموع {0} · الضريبة {1}",
   "Suggested action": "الإجراء المقترح",
   "Suggested from a WhatsApp message": "مقترح من رسالة واتساب",
+  "Suggested price = cost ÷ (1 − margin), plus VAT when prices include it.":
+    "السعر المقترح = التكلفة ÷ (1 − الهامش)، مع ضريبة القيمة المضافة عندما تشملها الأسعار.",
   Summary: "الملخص",
   Sun: "الأحد",
   Sunday: "الأحد",
@@ -2284,6 +2316,7 @@ export const AR: Record<string, string> = {
   "Take payment": "استلام دفعة",
   "Tamper-evident log of every sensitive action. Entries cannot be edited or deleted.":
     "سجل مقاوم للعبث لكل إجراء حساس. لا يمكن تعديل الإدخالات أو حذفها.",
+  "Target margin (%)": "هامش الربح المستهدف (%)",
   Tax: "الضريبة",
   "Tax %": "الضريبة %",
   "Tax percent": "نسبة الضريبة",
@@ -2447,6 +2480,7 @@ export const AR: Record<string, string> = {
   "The pairing code has 8 digits.": "يتكوّن رمز الاقتران من 8 أرقام.",
   "The parent category does not exist.": "الفئة الأم غير موجودة.",
   "The payment is more than the amount owed.": "الدفعة أكبر من المبلغ المستحق.",
+  "The phone is linked.": "تم ربط الهاتف.",
   "The photo is larger than 5 MB.": "الصورة أكبر من 5 ميغابايت.",
   "The price changed after this proposal was made. Ask again for a fresh proposal.":
     "تغيّر السعر بعد إنشاء هذا الاقتراح. اطلب اقتراحاً جديداً.",
@@ -2578,6 +2612,7 @@ export const AR: Record<string, string> = {
   "Ticket number": "رقم التذكرة",
   "Till cart attached": "سلة نقطة البيع مرفقة",
   "Tills and hub": "نقاط البيع والخادم",
+  "Tills not syncing": "نقاط البيع لا تتزامن",
   Time: "الوقت",
   Timeline: "الخط الزمني",
   "Timeout (ms)": "مهلة الانتظار (مللي ثانية)",
@@ -2721,6 +2756,8 @@ export const AR: Record<string, string> = {
     "استخدم هذا فقط عندما يفيد الخادم بأن بيانات اعتماده مفقودة أو غير مطابقة. ستتوقف كل نقطة بيع مقترنة عن المزامنة حتى يُعاد اقترانها؛ وتبقى مبيعاتها غير المتزامنة آمنة على نقطة البيع وتُرفع بعد إعادة الاقتران.",
   "Use your tools to look at: {0}. Explain what needs attention and what I should do next.":
     "استخدم أدواتك لفحص: {0}. اشرح ما يحتاج إلى انتباه وما يجب أن أفعله بعد ذلك.",
+  "Used for sorting WhatsApp messages and short reply drafts. Empty = the main model.":
+    "يُستخدم لفرز رسائل واتساب ومسودات الردود القصيرة. فارغ = النموذج الرئيسي.",
   User: "المستخدم",
   "User saved": "تم حفظ المستخدم",
   "User {0} created": "تم إنشاء المستخدم {0}",
@@ -2774,6 +2811,7 @@ export const AR: Record<string, string> = {
   Waiting: "بالانتظار",
   "Waiting for OCR": "بانتظار التعرف الضوئي",
   "Waiting for QR scan": "بانتظار مسح رمز QR",
+  "Waiting for the QR code…": "بانتظار رمز QR…",
   "Waiting for the phone to link": "بانتظار ربط الهاتف",
   "Waiting for your decision": "بانتظار قرارك",
   Wallet: "محفظة",
@@ -2806,6 +2844,8 @@ export const AR: Record<string, string> = {
   "WhatsApp temporarily blocked this number until {0}.": "حظر واتساب هذا الرقم مؤقتاً حتى {0}.",
   "WhatsApp's terms do not allow unofficial clients. WhatsApp can restrict or ban a number that uses one, especially for bulk or unsolicited messages. Use a number you can afford to lose and message only customers who expect it.":
     "لا تسمح شروط واتساب بالعملاء غير الرسميين. قد يقيّد واتساب أو يحظر رقماً يستخدم أحدها، خاصة عند إرسال رسائل جماعية أو غير مرغوبة. استخدم رقماً يمكنك الاستغناء عنه وراسل فقط العملاء الذين يتوقعون رسائلك.",
+  "WhatsApp, OCR, AI assistant, customer credit, loyalty, digital orders, multiple branches, phone view, Windows Hello, PDF receipts and update checks are all off. Switch on only what you need in Settings → Features; each one has a one-line description there.":
+    "واتساب، وقراءة الفواتير، ومساعد الذكاء الاصطناعي، وائتمان العملاء، والولاء، والطلبات الرقمية، والفروع المتعددة، وعرض الهاتف، وWindows Hello، وإيصالات PDF، وفحص التحديثات كلها متوقفة. فعّل ما تحتاجه فقط من الإعدادات ← الوحدات؛ لكل منها وصف من سطر واحد هناك.",
   "WhatsApp: delivery notices": "واتساب: إشعارات التوصيل",
   "WhatsApp: send receipts after a sale": "واتساب: إرسال الإيصالات بعد البيع",
   When: "متى",
@@ -2842,6 +2882,8 @@ export const AR: Record<string, string> = {
   "You do not have permission to perform this action.": "ليست لديك صلاحية لتنفيذ هذا الإجراء.",
   "You have unsaved changes to this product.": "لديك تغييرات غير محفوظة على هذا المنتج.",
   "Your account does not have permission to access this area.": "ليست لحسابك صلاحية الوصول إلى هذا القسم.",
+  "Your confirmation is recorded. A second person must also confirm this change.":
+    "تم تسجيل تأكيدك. يجب أن يؤكد شخص ثانٍ هذا التغيير أيضًا.",
   "Your role cannot view purchase history.": "لا يمكن لدورك عرض سجل المشتريات.",
   "Your role cannot view the audit history.": "لا يمكن لدورك عرض سجل التدقيق.",
   "Your session expired. Please log in again.": "انتهت جلستك. يرجى تسجيل الدخول مجدداً.",

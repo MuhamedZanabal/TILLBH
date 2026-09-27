@@ -159,6 +159,29 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
     ]
 }
 
+/// Permissions added to the catalogue after the first release. Built-in
+/// roles created before an upgrade get the ones their defaults include, once.
+pub const UPGRADE_PERMISSIONS: &[&str] = &[
+    "customers.credit",
+    "customers.credit_override",
+    "whatsapp.send",
+    "payments.review",
+    "ocr.scan",
+    "inventory.transfer",
+    "loyalty.adjust",
+    "orders.manage",
+    "branches.manage",
+    "branches.all",
+];
+
+fn seed_mark(conn: &Connection, role: &str, perm: &str, now: &str) -> AppResult<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO role_permission_seeds(role_id, permission_code, seeded_at) VALUES (?1,?2,?3)",
+        params![role, perm, now],
+    )?;
+    Ok(())
+}
+
 /// Insert the permission catalogue and system roles (idempotent).
 pub fn seed_roles(conn: &Connection) -> AppResult<()> {
     let now = time::now_str();
@@ -177,13 +200,29 @@ pub fn seed_roles(conn: &Connection) -> AppResult<()> {
                 "INSERT INTO roles(role_id,name,description,is_system,created_at,updated_at) VALUES (?1,?2,?3,1,?4,?4)",
                 params![id, name, desc, now],
             )?;
-            for p in perms {
+            for p in &perms {
                 conn.execute("INSERT OR IGNORE INTO role_permissions(role_id, permission_code) VALUES (?1,?2)", params![id, p])?;
+                seed_mark(conn, id, p, &now)?;
             }
         } else if id == ROLE_OWNER {
             // Owner always holds every permission, including ones added by upgrades.
             for p in perms {
                 conn.execute("INSERT OR IGNORE INTO role_permissions(role_id, permission_code) VALUES (?1,?2)", params![id, p])?;
+            }
+        } else {
+            // Other built-in roles: a permission added to the catalogue after the
+            // first release is granted once, if that role's defaults include it.
+            // A permission the owner removes later is not added back. The cashier
+            // defaults contain neither ai.use nor orders.manage.
+            for p in perms.iter().filter(|p| UPGRADE_PERMISSIONS.contains(p)) {
+                let seeded: bool = conn
+                    .query_row("SELECT 1 FROM role_permission_seeds WHERE role_id=?1 AND permission_code=?2", params![id, p], |_| Ok(true))
+                    .optional()?
+                    .unwrap_or(false);
+                if !seeded {
+                    conn.execute("INSERT OR IGNORE INTO role_permissions(role_id, permission_code) VALUES (?1,?2)", params![id, p])?;
+                    seed_mark(conn, id, p, &now)?;
+                }
             }
         }
     }

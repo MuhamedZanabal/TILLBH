@@ -466,6 +466,8 @@ export const api = {
     briefingDelete: (briefing_id: string) => call<T.AiBriefing[]>("ai.briefing_delete", { briefing_id }),
     briefingRun: (briefing_id: string) => call<{ note_id: string; status: string }>("ai.briefing_run", { briefing_id }),
     notes: (limit?: number) => call<T.AiNote[]>("ai.notes", { limit }),
+    alerts: (include_dismissed = false) => call<T.AiAlert[]>("ai.alerts", { include_dismissed }),
+    alertDismiss: (alert_id: string) => call<T.AiAlert[]>("ai.alert_dismiss", { alert_id }),
     noteRead: (note_id: string) => call<void>("ai.note_read", { note_id }),
     /** A slash command that reads (no model involved). */
     slash: (command: string, arg?: string) => call<T.AiSlashResult>("ai.slash", { command, arg }),
@@ -489,8 +491,8 @@ export const api = {
   },
   loyalty: {
     customer: (customer_id: string) => call<T.LoyaltyCustomer>("loyalty.customer", { customer_id }),
-    adjust: (customer_id: string, points: number, note: string) =>
-      call<T.LoyaltyCustomer>("loyalty.adjust", { customer_id, points, note }),
+    adjust: (customer_id: string, points: number, note: string, operation_id?: string) =>
+      call<T.LoyaltyCustomer>("loyalty.adjust", { customer_id, points, note, operation_id }),
   },
   locations: {
     list: () => call<T.StockLocation[]>("locations.list"),

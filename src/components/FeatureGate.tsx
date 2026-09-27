@@ -17,6 +17,7 @@ export function useFeature(name: FeatureName): boolean {
 /** A sub-feature counts only when its parent module is on. */
 export const FEATURE_PARENT: Partial<Record<FeatureName, FeatureName>> = {
   "ai.mutations": "ai.enabled",
+  "ai.dual_control": "ai.mutations",
   "ocr.ai_parse": "ocr.supplier_invoices",
   "whatsapp.send_receipts": "whatsapp.enabled",
   "whatsapp.delivery_notices": "whatsapp.enabled",
@@ -35,6 +36,7 @@ export const FEATURE_LABELS: Record<FeatureName, () => string> = {
   "ocr.ai_parse": () => t("OCR: AI line extraction for invoices"),
   "ai.enabled": () => t("AI assistant (read-only questions)"),
   "ai.mutations": () => t("AI proposed changes (preview and confirm)"),
+  "ai.dual_control": () => t("AI: two people confirm high-risk changes"),
   "customers.credit": () => t("Customer credit accounts"),
   windows_hello: () => t("Windows Hello step-up"),
   pdf_receipts: () => t("PDF receipts"),

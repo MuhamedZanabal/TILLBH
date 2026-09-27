@@ -238,7 +238,16 @@ impl AppCore {
     }
 
     /// Manual correction (owner / `loyalty.adjust`), with a note, audited.
-    pub fn loyalty_adjust(&self, token: &str, customer_id: &str, points: i64, note: &str) -> AppResult<serde_json::Value> {
+    /// `operation_id` (optional): a retry with the same id and payload
+    /// changes nothing; the same id with a different payload is refused.
+    pub fn loyalty_adjust(
+        &self,
+        token: &str,
+        customer_id: &str,
+        points: i64,
+        note: &str,
+        operation_id: Option<&str>,
+    ) -> AppResult<serde_json::Value> {
         let s = self.session(token)?;
         s.require("loyalty.adjust")?;
         self.require_feature("loyalty.enabled")?;
@@ -251,7 +260,16 @@ impl AppCore {
             return Err(AppError::validation("Enter a non-zero number of points."));
         }
         let actor = self.actor(&s, None);
+        let op = operation_id.map(str::trim).filter(|o| !o.is_empty());
+        let payload = json!({ "customer_id": cid, "points": points, "note": note });
         self.db.write(|tx| {
+            let hash = match op {
+                Some(o) => match crate::idempotency::check(tx, o, "loyalty.adjust", &payload)? {
+                    crate::idempotency::Check::Replay { .. } => return Ok(()),
+                    crate::idempotency::Check::New { payload_hash } => Some(payload_hash),
+                },
+                None => None,
+            };
             let exists: bool =
                 tx.query_row("SELECT 1 FROM customers WHERE customer_id=?1", [&cid], |_| Ok(true)).optional()?.unwrap_or(false);
             if !exists {
@@ -262,6 +280,9 @@ impl AppCore {
             }
             post(tx, &s, &cid, "adjust", points, None, None, Some(note))?;
             audit::record(tx, &actor, "loyalty.adjusted", "customer", Some(&cid), None, Some(&json!({ "points": points, "note": note })))?;
+            if let (Some(o), Some(h)) = (op, hash) {
+                crate::idempotency::complete(tx, o, "loyalty.adjust", Some(&s.user_id), Some(&s.device_id), &h, Some(&cid), &payload)?;
+            }
             Ok(())
         })?;
         self.loyalty_customer(token, &cid)

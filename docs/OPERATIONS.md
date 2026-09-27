@@ -112,3 +112,19 @@ Automated coverage exists for everything marked ✅. The ☐ items need a person
 - ☐ Two physical tills plus a hub over store Wi-Fi. Unplug the hub mid-sale and re-plug it.
 - ☐ Power loss during a sale (pull the plug), then restart. The database is intact and the sale is either fully present or absent.
 - ☐ Hub left running overnight: next morning the Dashboard shows a backup from the last 24 h. Hub shut down overnight: a backup appears within about 1 minute of opening AMWAPOS.
+
+## Soak checklist (owner, before going live)
+
+Read each line and tick it on the store computer. Nothing here is automatic.
+
+- ☐ **Optional modules are off by default.** Settings → Features lists every module with "Default: off". Turn on only what the store uses.
+- ☐ **AI on the till needs `ai.use`.** Cashiers do not get it from the upgrade. Grant it in Users → Roles before expecting the till Assistant to appear.
+- ☐ **OpenRouter fallback is off.** It runs only after the owner ticks it and stores an OpenRouter key. It never runs for a wrong key (401) or a refusal.
+- ☐ **Scheduled briefings and AI alerts run only while AMWAPOS is open** on the hub. There is no Windows service or Task Scheduler job.
+- ☐ **The phone companion page needs the hub running and a live link token.** Revoke links you no longer use. The page is on the store network only (no public HTTPS).
+- ☐ **The installer is unsigned** until a code-signing certificate is bought. Windows SmartScreen will warn. Check the SHA-256 from STATUS/CI before running it.
+- ☐ **WhatsApp uses an unofficial connection.** WhatsApp can ban the number. Use a spare business number, not the owner's personal one.
+- ☐ **A payment screenshot is not a settlement.** Check the BenefitPay/bank statement before marking an order paid. The review screen is a helper only.
+- ☐ **Credit, loyalty, digital orders, multi-branch and the phone companion (PWA) stay off** until the owner turns each one on and trains staff.
+- ☐ **AI dual control (`ai.dual_control`) is off.** Turn it on if high-risk AI proposals must be confirmed by a second person.
+- ☐ **Delivery riders get `orders.manage`** with the Delivery role (to move digital orders to "out for delivery"). Remove it in Users → Roles if riders should not see orders.

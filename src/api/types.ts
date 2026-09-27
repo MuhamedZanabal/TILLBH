@@ -108,6 +108,7 @@ export interface FeatureFlags {
   "ocr.ai_parse": boolean;
   "ai.enabled": boolean;
   "ai.mutations": boolean;
+  "ai.dual_control": boolean;
   "customers.credit": boolean;
   windows_hello: boolean;
   pdf_receipts: boolean;
@@ -1101,6 +1102,30 @@ export interface AiSettings {
   fallback_model: string;
   fallback_base_url: string;
   fallback_consent_at?: string | null;
+  /** A9: "ui" follows the screen language. */
+  answer_language?: "ui" | "en" | "ar";
+  /** C1: faster model for sorting messages and short drafts; empty = main model. */
+  model_id_fast?: string;
+  /** B5: target margin on cost in basis points (2500 = 25 %). */
+  target_margin_bp?: number;
+  /** B5: suggested prices round up to this many minor units. */
+  price_round_minor?: number;
+  /** B3 thresholds. */
+  anomaly_refund_count?: number;
+  anomaly_refund_minor?: number;
+  anomaly_discount_minor?: number;
+  anomaly_hub_lag_minutes?: number;
+}
+
+export interface AiAlert {
+  alert_id: string;
+  kind: "refund_spike" | "discount_spike" | "negative_stock" | "hub_lag" | "backup_overdue";
+  day: string;
+  severity: "info" | "warning" | "danger";
+  title: string;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+  dismissed_at: string | null;
 }
 
 export interface AiStatus {
@@ -1150,6 +1175,8 @@ export interface AiProposal {
   decided_by_name: string | null;
   decided_at: string | null;
   undone_at: string | null;
+  /** Two-person control: who confirmed first. */
+  first_confirmed_by_name?: string | null;
 }
 
 export interface AiConversation {

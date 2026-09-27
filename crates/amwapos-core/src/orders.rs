@@ -589,6 +589,19 @@ impl AppCore {
         self.db.write(|tx| {
             let o = load_order(tx, &id)?;
             in_scope(tx, &s, &o.branch_id)?;
+            let other: Option<String> = tx
+                .query_row(
+                    "SELECT order_id FROM digital_orders WHERE convert_operation_id=?1 AND order_id<>?2",
+                    params![operation_id, id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if other.is_some() {
+                return Err(AppError::new(
+                    crate::error::ErrorCode::IdempotencyMismatch,
+                    "This operation id was already used for a different order. Nothing was changed.",
+                ));
+            }
             let (op, cart): (Option<String>, Option<String>) =
                 tx.query_row("SELECT convert_operation_id, cart_id FROM digital_orders WHERE order_id=?1", [&id], |r| {
                     Ok((r.get(0)?, r.get(1)?))

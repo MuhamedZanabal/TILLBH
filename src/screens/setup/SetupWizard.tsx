@@ -616,6 +616,11 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
                     </dd>
                   </dl>
                 )}
+                <Banner tone="info" title={t("Optional modules start off")}>
+                  {t(
+                    "WhatsApp, OCR, AI assistant, customer credit, loyalty, digital orders, multiple branches, phone view, Windows Hello, PDF receipts and update checks are all off. Switch on only what you need in Settings → Features; each one has a one-line description there.",
+                  )}
+                </Banner>
               </>
             ) : null}
             {error ? <Banner tone="danger">{error}</Banner> : null}

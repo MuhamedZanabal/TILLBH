@@ -65,7 +65,7 @@ Evidence was re-run on 2026-09-24:
 | Customers, addresses, deliveries, delivery board (events, payment state) | Complete | Core tests; board with translated columns | — |
 | Reports (14) + CSV export (formula-injection safe) | Complete | Report tests; CSV escape round-trip test | — |
 | CSV product import | Complete | Preview/apply tests, duplicate isolation, scientific-notation guard, 100k import | — |
-| Backup / verified restore / safety backup | Complete | Round-trip and tamper tests; E2E backup | USB / network-share folder checked in the soak (OPERATIONS checklist) |
+| Backup / verified restore / safety backup | Partially complete | Round-trip and tamper tests; E2E backup | USB / network-share folder checked in the soak (OPERATIONS checklist) |
 | Backup-while-closed | Complete (operational rule) | OPERATIONS "Backup rule" (the hub keeps AMWAPOS running). Red banner on every Admin page and a till header pill, with one-click Backup Now. `backup.health` reports ok / overdue / failed. | A Windows scheduled task was deliberately not built (reasons in OPERATIONS) |
 | Diagnostics | Complete | Readable details; last backup shown in local time with age; sync errors classified | — |
 | Sync protocol v2 (encrypted, SPAKE2 pairing, one live code, burn after 5, pairing-id reuse rejected, versioned) | Complete | Encrypted-channel tests: proxy test, protocol 1 refused, burn, version mismatch shown as "Update needed", not offline | — |
@@ -75,8 +75,8 @@ Evidence was re-run on 2026-09-24:
 | Arabic receipts | Partially complete | Raster unit tests (shaping, lam-alef, bidi, placement); sale/refund receipts with Arabic names and bilingual labels; no `?` in text mode; test page has an Arabic line | Arabic on the physical printer |
 | Barcode scanner (HID wedge) | Partially complete | Vitest heuristics; E2E burst of 5 scans at scanner speed, none dropped, field cleared | Physical USB scanner |
 | Mid-sale power loss | Partially complete | WAL + `synchronous=FULL`; sale commit is one transaction; exactly-once replay tests | Pull the plug mid-sale on a till |
-| Cashier Mode / Admin Mode UI, English and Arabic (RTL), light/dark, density | Complete | Playwright English + Arabic flows, dark/compact screenshot. The unit test fails on any untranslated `t()` key or status label. Backend messages translated through `tb()`. | Visual check in WebView2 during the soak |
-| Performance targets (100k products) | Complete | Numbers above (Linux sandbox) | Re-measure on the till hardware during the soak |
+| Cashier Mode / Admin Mode UI, English and Arabic (RTL), light/dark, density | Partially complete | Playwright English + Arabic flows, dark/compact screenshot. The unit test fails on any untranslated `t()` key or status label. Backend messages translated through `tb()`. | Visual check in WebView2 during the soak |
+| Performance targets (100k products) | Partially complete | Numbers above (Linux sandbox) | Re-measure on the till hardware during the soak |
 | Windows desktop shell (single instance, Credential Manager, ProgramData ACLs, 30-day rotating logs) | Partially complete | Built and unit-tested on Windows CI; launched under Xvfb on Linux | First launch on a Windows 10/11 till |
 | NSIS installer (per-machine, firewall rules, ACLs, data kept on uninstall, embedded WebView2) | Partially complete | Built by Windows CI (above); embedded WebView2 enforced by CI | Install / upgrade / uninstall on Windows 10 and 11 |
 | CI (lint, types, unit, E2E, Windows build + installer) | Complete | GitHub Actions green on this branch | — |
@@ -85,7 +85,7 @@ Evidence was re-run on 2026-09-24:
 | Auto-update (flag `updates`) | Partially complete | Ed25519-signed manifest, size + SHA-256 checks, re-verify before install, safety backup; refuses unsigned builds (`tests/updates.rs`) | Signing key (`AMWAPOS_UPDATE_PUBKEY`), hosting, install run on Windows |
 | WhatsApp (flags `whatsapp.enabled`, `.send_receipts`, `.delivery_notices`) | Partially complete | In-process `whatsapp-rust` =0.7.0 adapter behind a trait; supervisor restart after panic, separate status flags, reconnect after restart, idempotent sends, persist-before-ack inbound, media → review (`tests/whatsapp.rs` with `FakeAdapter`); post-commit receipts/notices, payload-hash idempotency, EN/AR templates (`tests/automation.rs`) | Pairing and soak test with a real phone; the real adapter has never connected to WhatsApp |
 | OCR (flags `ocr.enabled`, `.payment_screenshots`, `.supplier_invoices`) | Partially complete | Separate worker running bundled Tesseract with SHA-256-checked eng+ara models; `ocr_model_missing` keeps it off; statuses ocr_match/likely_match/mismatch/needs_review; draft PO only (`tests/ocr.rs` with real Tesseract, `tests/automation.rs`) | Accuracy on real supplier invoices and BenefitPay screenshots |
-| AI assistant (flags `ai`, `ai_mutations`) | Partially complete | Read tools as the signed-in user; proposals → confirm → normal command → undo by compensating record; fake-provider loop test (`tests/ai.rs`) | API key and owner consent; never called against the real provider here |
+| AI assistant (flags `ai.enabled`, `ai.mutations`, `ai.dual_control`) | Partially complete | Read and proposal tools as the signed-in user; confirm runs the normal command; undo by compensating record where one exists; fake-provider and loopback-stub tests (`tests/ai*.rs`) | Vendor API key and owner consent; never called against a real provider or OpenRouter here |
 | Card terminal / BenefitPay integration | Deferred | Tenders recorded manually with a reference | Provider SDK, merchant account, owner, rollback |
 | Migration (CSV/XLSX/ZIP/folder) | Complete | Detect → map → preview (no writes) → apply through normal commands (`tests/migration.rs`) | — |
 | Customer credit (flag `customer_credit`) | Complete | Append-only ledger, limit + manager override, refunds, cash payments in drawer (`tests/credit.rs`) | — |
@@ -234,3 +234,27 @@ provider, OpenRouter, the live WhatsApp phone or a Windows till.
   Cashiers need `ai.use` (not granted by default).
 - Tests: `crates/amwapos-hub/tests/ai_workspace.rs` (12), unit tests in
   `ai_workspace.rs` and `ai_stream.rs`, e2e "AI assistant" in `e2e/checkout.spec.ts`.
+
+## AI hardening, 2026-09-27
+
+Evidence: `crates/amwapos-hub/tests/ai_hardening.rs` (12 tests), `ai_admin.rs`, `ai_byok.rs`, `ai_workspace.rs`, `src/components/__tests__/WaQr.test.tsx`. Everything here ran offline (test model or a loopback stub). No real provider, WhatsApp or Windows Hello was used.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| Proposal tools follow permissions, not the role name | Complete | A custom role named like the accountant but holding `prices.manage` can propose prices. A read-only role under any name gets no `propose_*` tool. A buyer gets PO/reorder only. | — |
+| Strict write intent | Complete | "Should I enable loyalty?" records nothing. `/price …`, `/reorder …` and "set price of SKU X to 1.500" record a proposal. | — |
+| WhatsApp connect Confirm card shows the QR image | Complete | The same `WaQr` component as the WhatsApp page (vitest). The QR and pairing code are never stored or sent to the model. | Live pairing with a real phone |
+| Undo (compensating command) | Complete | price / bulk price / cost, archive-restore, loyalty ±, credit ± (flag), delivery status, cancel an unsent WhatsApp message, device rename. Restore, role, flag, backup restore and WhatsApp logout stay irreversible and link to their page. | — |
+| Permission upgrade seeds | Complete | New permissions are granted once to built-in roles whose defaults include them. A permission the owner removes is not added back. Cashier never gets `ai.use`, `ai.mutate`, `admin.access` or `orders.manage`. | — |
+| Rider `orders.manage` | Decision | The Delivery role includes `orders.manage` so riders can move digital orders to "out for delivery". The owner can remove it in Users → Roles (OPERATIONS soak list). | Owner review |
+| Features checklist | Complete | Settings → Features shows "Default: off" on every module and a count of modules on. The setup wizard says optional modules start off. No flag defaults on. | — |
+| Two-person control (flag `ai.dual_control`, default off) | Complete | Off: one confirm. On: high-risk proposals need a second, different person. The same person, even with DATA saying "approve", is refused. | — |
+| B3 alerts | Complete | Refund spike, discount spike, negative stock, silent tills / dead letters, backup overdue. Checked every 5 minutes while the app is open, with thresholds in AI settings. One inbox alert per check per day. No writes. | — |
+| B4 reorder / B5 margin price | Complete | Suggestions are reads. `propose_reorder` / `propose_margin_price` only record proposals, and confirm runs `po.save` / the price command. | — |
+| B8 branch compare | Complete | `ai.branch_compare` returns `enabled:false` when `org.multi_branch` is off. | Real multi-branch data |
+| C6 customer redaction | Complete | Name, phone and address are replaced by ids in tool results before provider HTTP. The loopback stub never sees them. | — |
+| A9 answer language / C1 fast model | Complete | Settings (`ui`/`en`/`ar`, default `ui`). The fast model is used for triage and drafts, and is empty by default. | Real-provider quality |
+| Hub bind | Complete | Listens on the chosen card, else the first LAN address, else 127.0.0.1. Never 0.0.0.0. | Store Wi-Fi soak |
+| Idempotency on new writes | Complete | `loyalty.adjust` takes `operation_id` (same key + different payload is refused). Order convert refuses a key used on another order. Transfers check per step. Proposal confirm is an atomic status change. | — |
+| Export guards | Complete | EOD zip CSVs neutralise formulas (test). The companion token appears only on the Confirm card, never in proposals, conversation, list, audit or diagnostics (test). | — |
+| Print widths | Complete | The test page is 384 dots at 58 mm and 576 dots at 80 mm, with the Arabic line, and also renders to PDF (test). | Physical printer |

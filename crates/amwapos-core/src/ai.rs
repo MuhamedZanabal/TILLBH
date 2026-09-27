@@ -93,7 +93,36 @@ pub struct AiSettings {
     pub fallback_model: String,
     /// Optional override of OpenRouter's address (gateways, tests).
     pub fallback_base_url: String,
+    /// A9: language of the answers: "ui" (follow the screen), "en" or "ar".
+    pub answer_language: String,
+    /// C1: optional faster model (same provider) for sorting messages and
+    /// drafting short replies. Empty = use `model_id`.
+    pub model_id_fast: String,
     pub fallback_consent_at: Option<String>,
+    /// B5: target margin on cost, basis points (2500 = 25 %).
+    pub target_margin_bp: i64,
+    /// B5: suggested prices round up to this many fils (0 = no rounding).
+    pub price_round_minor: i64,
+    /// B3: refunds per day that raise an alert (count or amount).
+    pub anomaly_refund_count: i64,
+    pub anomaly_refund_minor: i64,
+    /// B3: discounts per day (amount) that raise an alert.
+    pub anomaly_discount_minor: i64,
+    /// B3: minutes without a till heartbeat before a hub-lag alert.
+    pub anomaly_hub_lag_minutes: i64,
+}
+
+fn minor_to_pct(bp: i64) -> String {
+    crate::ai_helpers::minor_to_decimal(bp, 2)
+}
+
+/// A9: the answer language: the owner's choice, or the screen's language.
+pub fn answer_lang<'a>(st: &AiSettings, ui: &'a str) -> &'a str {
+    match st.answer_language.as_str() {
+        "en" => "en",
+        "ar" => "ar",
+        _ => ui,
+    }
 }
 
 /// API key and optional extra header (name, value).
@@ -119,7 +148,15 @@ impl Default for AiSettings {
             fallback_free: false,
             fallback_model: DEFAULT_FALLBACK_MODEL.into(),
             fallback_base_url: String::new(),
+            answer_language: "ui".into(),
+            model_id_fast: String::new(),
             fallback_consent_at: None,
+            target_margin_bp: 2500,
+            price_round_minor: 5,
+            anomaly_refund_count: 5,
+            anomaly_refund_minor: 20_000,
+            anomaly_discount_minor: 20_000,
+            anomaly_hub_lag_minutes: 30,
         }
     }
 }
@@ -145,7 +182,36 @@ impl AiSettings {
         if self.fallback_model.trim().is_empty() {
             self.fallback_model = DEFAULT_FALLBACK_MODEL.into();
         }
+        if !["ui", "en", "ar"].contains(&self.answer_language.as_str()) {
+            self.answer_language = "ui".into();
+        }
+        let d = AiSettings::default();
+        if self.target_margin_bp <= 0 || self.target_margin_bp >= 9_500 {
+            self.target_margin_bp = d.target_margin_bp;
+        }
+        self.price_round_minor = self.price_round_minor.clamp(0, 1_000);
+        if self.anomaly_refund_count <= 0 {
+            self.anomaly_refund_count = d.anomaly_refund_count;
+        }
+        if self.anomaly_refund_minor <= 0 {
+            self.anomaly_refund_minor = d.anomaly_refund_minor;
+        }
+        if self.anomaly_discount_minor <= 0 {
+            self.anomaly_discount_minor = d.anomaly_discount_minor;
+        }
+        if self.anomaly_hub_lag_minutes <= 0 {
+            self.anomaly_hub_lag_minutes = d.anomaly_hub_lag_minutes;
+        }
         self
+    }
+
+    /// C1: the same settings with the fast model, when one is set.
+    pub fn fast(&self) -> AiSettings {
+        let mut s = self.clone();
+        if !self.model_id_fast.trim().is_empty() {
+            s.model_id = self.model_id_fast.trim().to_string();
+        }
+        s
     }
 
     /// The base URL requests go to (OpenAI-style bases end in /v1).
@@ -199,115 +265,199 @@ pub fn matching_playbooks(question: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// Did the user, in their own words, ask for a change? Proposals are only
+/// Slash commands that state a change on their own (typed by the person).
+pub const WRITE_SLASH: &[&str] = &["/price", "/adjust", "/refund", "/propose", "/order", "/reorder", "/receive", "/transfer", "/do"];
+
+/// Verbs that open an instruction to change something.
+const WRITE_VERBS: &[&str] = &[
+    "set",
+    "change",
+    "adjust",
+    "raise",
+    "lower",
+    "increase",
+    "decrease",
+    "update",
+    "correct",
+    "reduce",
+    "propose",
+    "draft",
+    "reorder",
+    "order",
+    "create",
+    "add",
+    "rename",
+    "remove",
+    "delete",
+    "restore",
+    "enable",
+    "disable",
+    "turn",
+    "switch",
+    "send",
+    "cancel",
+    "confirm",
+    "receive",
+    "transfer",
+    "ship",
+    "assign",
+    "merge",
+    "dismiss",
+    "reopen",
+    "reset",
+    "unlock",
+    "lock",
+    "back",
+    "backup",
+    "refund",
+    "record",
+    "mark",
+    "save",
+    "approve",
+    "reject",
+    "retry",
+    "reprint",
+    "print",
+    "link",
+    "revoke",
+    "log",
+    "logout",
+    "connect",
+    "disconnect",
+    "archive",
+    "deactivate",
+    "activate",
+    "import",
+    "convert",
+    "finalize",
+    "pay",
+    "make",
+    "put",
+    "move",
+    "start",
+    "stop",
+    "schedule",
+    "pin",
+    "apply",
+    "void",
+    "open",
+    "close",
+    "count",
+    "fix",
+];
+/// Arabic imperatives (and polite forms) that open an instruction.
+const WRITE_VERBS_AR: &[&str] = &[
+    "غير",
+    "غيّر",
+    "عدل",
+    "عدّل",
+    "اضبط",
+    "ارفع",
+    "اخفض",
+    "زد",
+    "قلل",
+    "اطلب",
+    "صحح",
+    "أضف",
+    "اضف",
+    "أنشئ",
+    "انشئ",
+    "احذف",
+    "ألغ",
+    "الغ",
+    "أرسل",
+    "ارسل",
+    "استرجع",
+    "فعّل",
+    "فعل",
+    "عطّل",
+    "عطل",
+    "استلم",
+    "انقل",
+    "أكد",
+    "اكد",
+    "اعتمد",
+    "ارفض",
+    "اطبع",
+    "سجل",
+    "سجّل",
+    "أعد",
+    "اعد",
+    "احفظ",
+    "ادمج",
+    "حوّل",
+    "حول",
+    "ثبت",
+    "ثبّت",
+    "افتح",
+    "أغلق",
+    "اغلق",
+];
+/// Openers that make a request polite without changing its meaning.
+const POLITE: &[&str] = &[
+    "please ",
+    "pls ",
+    "kindly ",
+    "can you ",
+    "could you ",
+    "would you ",
+    "will you ",
+    "i want you to ",
+    "i'd like you to ",
+    "i would like you to ",
+    "i want to ",
+    "i'd like to ",
+    "i would like to ",
+    "let's ",
+    "lets ",
+    "go ahead and ",
+    "now ",
+    "من فضلك ",
+    "رجاء ",
+    "رجاءً ",
+    "لو سمحت ",
+    "ممكن ",
+    "أريد أن ",
+    "اريد ان ",
+];
+
+/// Did the person, in their own words, instruct a change? Proposals are only
 /// recorded when they did; DATA read by a tool cannot ask on their behalf.
+///
+/// It is an instruction when the message starts (after a polite opener) with
+/// a write verb, or is a write slash command. Questions ("what was restored
+/// yesterday?", "which modules are enabled?") are never instructions, even
+/// when they contain a write word.
 pub fn user_asked_for_change(question: &str) -> bool {
-    let q = question.to_lowercase();
-    [
-        "set ",
-        "change",
-        "adjust",
-        "raise",
-        "lower",
-        "increase",
-        "decrease",
-        "update",
-        "correct",
-        "reduce",
-        "propose",
-        "order ",
-        "draft",
-        "price",
-        "reorder",
-        "غير",
-        "غيّر",
-        "عدل",
-        "عدّل",
-        "اضبط",
-        "ارفع",
-        "اخفض",
-        "زد",
-        "قلل",
-        "سعر",
-        "اطلب",
-        "صحح",
-        // Admin actions (full tool map).
-        "create",
-        "add ",
-        "rename",
-        "remove",
-        "restore",
-        "enable",
-        "disable",
-        "turn on",
-        "turn off",
-        "switch",
-        "send",
-        "cancel",
-        "confirm",
-        "receive",
-        "transfer",
-        "ship",
-        "assign",
-        "merge",
-        "dismiss",
-        "reopen",
-        "reset",
-        "unlock",
-        "back up",
-        "backup now",
-        "refund",
-        "record",
-        "mark",
-        "save",
-        "approve",
-        "reject",
-        "retry",
-        "reprint",
-        "print",
-        "link",
-        "revoke",
-        "log out",
-        "logout",
-        "connect",
-        "disconnect",
-        "archive",
-        "deactivate",
-        "activate",
-        "import",
-        "convert",
-        "finalize",
-        "pay ",
-        "أضف",
-        "أنشئ",
-        "احذف",
-        "ألغ",
-        "الغ",
-        "أرسل",
-        "ارسل",
-        "استرجع",
-        "فعّل",
-        "فعل",
-        "عطّل",
-        "عطل",
-        "استلم",
-        "انقل",
-        "أكد",
-        "اكد",
-        "اعتمد",
-        "ارفض",
-        "اطبع",
-        "سجل",
-        "سجّل",
-        "أعد",
-        "اعد",
-        "انسخ",
-        "احفظ",
-        "دمج",
-        "ادمج",
-    ]
-    .iter()
-    .any(|w| q.contains(w))
+    let q = question.trim().to_lowercase();
+    if WRITE_SLASH.iter().any(|c| q == *c || q.starts_with(&format!("{c} "))) {
+        return true;
+    }
+    let mut rest: &str = &q;
+    let mut polite = false;
+    loop {
+        let before = rest;
+        for p in POLITE {
+            if let Some(r) = rest.strip_prefix(p) {
+                rest = r.trim_start();
+                polite = true;
+            }
+        }
+        if before == rest {
+            break;
+        }
+    }
+    // A plain question ("order status for O-12?") is not an instruction.
+    if !polite && (q.ends_with('?') || q.ends_with('؟')) {
+        return false;
+    }
+    let first: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '\'' || *c == '\u{0651}').collect();
+    if first.is_empty() {
+        return false;
+    }
+    // Arabic: the first word may carry the conjunction "و" ("and").
+    let ar = first.strip_prefix('و').filter(|x| x.chars().count() > 1).unwrap_or(&first);
+    WRITE_VERBS.contains(&first.as_str()) || WRITE_VERBS_AR.contains(&first.as_str()) || WRITE_VERBS_AR.contains(&ar)
 }
 
 /// Everything the runtime needs for one provider round trip.
@@ -342,13 +492,16 @@ pub struct Proposal {
     pub decided_by_name: Option<String>,
     pub decided_at: Option<String>,
     pub undone_at: Option<String>,
+    /// D1: who confirmed first (two-person control).
+    pub first_confirmed_by_name: Option<String>,
 }
 
 fn load_proposal(c: &Connection, id: &str) -> AppResult<Proposal> {
     c.query_row(
         "SELECT p.proposal_id, p.proposal_number, p.conversation_id, p.kind, p.params_json, p.preview_json, p.risk, p.risk_reasons, p.status,
-                p.result_json, p.error, p.created_at, u.display_name, p.decided_at, p.undone_at
-         FROM ai_proposals p LEFT JOIN users u ON u.user_id=p.decided_by WHERE p.proposal_id=?1",
+                p.result_json, p.error, p.created_at, u.display_name, p.decided_at, p.undone_at, f.display_name
+         FROM ai_proposals p LEFT JOIN users u ON u.user_id=p.decided_by LEFT JOIN users f ON f.user_id=p.first_confirmed_by
+         WHERE p.proposal_id=?1",
         [id],
         |r| {
             let j = |i: usize| -> rusqlite::Result<Value> { Ok(serde_json::from_str(&r.get::<_, String>(i)?).unwrap_or(Value::Null)) };
@@ -368,6 +521,7 @@ fn load_proposal(c: &Connection, id: &str) -> AppResult<Proposal> {
                 decided_by_name: r.get(12)?,
                 decided_at: r.get(13)?,
                 undone_at: r.get(14)?,
+                first_confirmed_by_name: r.get(15)?,
             })
         },
     )
@@ -886,6 +1040,21 @@ impl AppCore {
         if v.fallback_model.len() > 200 {
             return Err(AppError::validation("The fallback model id is too long."));
         }
+        if v.answer_language.is_empty() {
+            v.answer_language = "ui".into();
+        }
+        if !["ui", "en", "ar"].contains(&v.answer_language.as_str()) {
+            return Err(AppError::validation("Answer language must be: follow the screen, English or Arabic."));
+        }
+        v.model_id_fast = v.model_id_fast.trim().to_string();
+        if v.model_id_fast.len() > 200 {
+            return Err(AppError::validation("The fast model id is too long."));
+        }
+        if !(1..9_500).contains(&v.target_margin_bp) {
+            return Err(AppError::validation("Target margin must be between 0.01 % and 95 %."));
+        }
+        let v = v.normalized();
+        let mut v = v;
         v.fallback_base_url = v.fallback_base_url.trim().trim_end_matches('/').to_string();
         if !(v.fallback_base_url.is_empty()
             || v.fallback_base_url.starts_with("https://")
@@ -957,6 +1126,45 @@ impl AppCore {
             out["consent_reset"] = json!(true);
         }
         Ok(out)
+    }
+
+    /// D1: with `ai.dual_control` on, a high-risk proposal runs only after two
+    /// different people confirm it. The first confirmation is recorded (and
+    /// audited) and reported as waiting; the same person cannot be both.
+    fn dual_control_gate(&self, s: &crate::auth::Session, id: &str) -> AppResult<()> {
+        if !self.features()?.is_on("ai.dual_control") {
+            return Ok(());
+        }
+        let (risk, status, first): (String, String, Option<String>) = self.db.read(|c| {
+            Ok(c.query_row("SELECT risk, status, first_confirmed_by FROM ai_proposals WHERE proposal_id=?1", [id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })?)
+        })?;
+        if risk != "high" || status != "proposed" {
+            return Ok(());
+        }
+        match first {
+            None => {
+                let actor = self.actor(s, None);
+                self.db.write(|tx| {
+                    tx.execute(
+                        "UPDATE ai_proposals SET first_confirmed_by=?2, first_confirmed_at=?3 WHERE proposal_id=?1 AND first_confirmed_by IS NULL",
+                        params![id, s.user_id, time::now_str()],
+                    )?;
+                    audit::record(tx, &actor, "ai.proposal.first_confirmed", "ai_proposal", Some(id), None, None)?;
+                    Ok(())
+                })?;
+                Err(AppError::conflict(
+                    "Your confirmation is recorded. Two-person control is on: a second, different person must confirm this high-risk change.",
+                )
+                .with_details(json!({ "kind": "second_confirmation_required" })))
+            }
+            Some(u) if u == s.user_id => {
+                Err(AppError::conflict("You already confirmed this change. Two-person control needs a different person to confirm it.")
+                    .with_details(json!({ "kind": "same_person" })))
+            }
+            Some(_) => Ok(()),
+        }
     }
 
     /// Tokens used today (business day) across all AI questions.
@@ -1209,12 +1417,15 @@ impl AppCore {
         } else {
             vec![]
         };
+        let system =
+            system_prompt(&business, &currency, digits, &tz, &today, answer_lang(&st, locale), mutations, &question, &barcode_context)
+                + &pins;
         Ok(AiTurn {
             conversation_id: cid.to_string(),
             settings: st,
             api_key: key,
             extra_header,
-            system: system_prompt(&business, &currency, digits, &tz, &today, locale, mutations, &question, &barcode_context) + &pins,
+            system,
             tools: session_tools(&f, s),
             messages,
         })
@@ -1289,7 +1500,11 @@ impl AppCore {
     /// Returns (result JSON, is_error).
     pub fn ai_tool(&self, token: &str, conversation_id: &str, name: &str, input: &Value) -> (Value, bool) {
         match self.ai_tool_inner(token, conversation_id, name, input) {
-            Ok(v) => (v, false),
+            Ok(mut v) => {
+                // C6: customer names, phones and addresses never reach the provider.
+                crate::ai_tools::redact_customer_pii(&mut v);
+                (v, false)
+            }
             Err(e) => (tool_error(&e), true),
         }
     }
@@ -1788,6 +2003,10 @@ impl AppCore {
         }
         self.expire_proposals()?;
         let id = validate::id(proposal_id, "Proposal")?;
+        if let Some(perm) = self.db.read(|c| load_proposal(c, &id)).ok().and_then(|p| legacy_perm(&p.kind)) {
+            s.require(perm)?;
+        }
+        self.dual_control_gate(&s, &id)?;
         let p = self.db.write(|tx| {
             let p = load_proposal(tx, &id)?;
             if let Some(perm) = legacy_perm(&p.kind) {
@@ -1900,10 +2119,28 @@ impl AppCore {
             return Err(AppError::conflict("Only an executed proposal can be undone."));
         }
         if p.kind.starts_with("command:") {
-            return Err(AppError::conflict(
-                "This change is irreversible from the AI page. Use the matching admin page to correct it (for example a new adjustment or refund).",
-            )
-            .with_details(json!({ "kind": "irreversible" })));
+            // F4: a compensating command where one exists; otherwise irreversible.
+            let reason = format!("Undo AI proposal {}", p.proposal_number);
+            let Some((cmd, args)) = undo_plan(&p, &reason) else {
+                return Err(AppError::conflict(
+                    "This change is irreversible from the AI page. Use the matching admin page to correct it (for example a new adjustment or refund).",
+                )
+                .with_details(json!({ "kind": "irreversible", "page": p.preview["page"] })));
+            };
+            let undo = crate::commands::dispatch(self, &cmd, Some(token), args.clone())?;
+            let actor = self.actor(&s, None);
+            let mut summary = json!({ "command": cmd, "args": args });
+            crate::ai_tools::strip_secrets(&mut summary);
+            let _ = undo;
+            self.db.write(|tx| {
+                tx.execute(
+                    "UPDATE ai_proposals SET status='undone', undone_by=?2, undone_at=?3 WHERE proposal_id=?1 AND status='executed'",
+                    params![id, s.user_id, time::now_str()],
+                )?;
+                audit::record(tx, &actor, "ai.proposal.undone", "ai_proposal", Some(&id), None, Some(&summary))?;
+                Ok(())
+            })?;
+            return self.db.read(|c| load_proposal(c, &id));
         }
         if let Some(perm) = legacy_perm(&p.kind) {
             s.require(perm)?;
@@ -2023,15 +2260,165 @@ fn append_message(tx: &Connection, cid: &str, role: &str, content: &Value, usage
 
 // ---- Full admin tool map (see `ai_tools`) ---------------------------------
 
-/// Proposals may be recorded (ai.mutations on, and the user may propose).
-/// The accountant role stays read-only, whatever it was granted.
+/// Proposal tools with a compensating command (F4). Everything else is
+/// irreversible from the AI page and links to its admin page instead.
+pub const UNDOABLE_TOOLS: &[&str] = &[
+    "propose_bulk_price",
+    "propose_cost_update",
+    "propose_product_active",
+    "propose_products_bulk_active",
+    "propose_loyalty_adjust",
+    "propose_credit_adjust",
+    "propose_delivery_update",
+    "propose_whatsapp_send",
+    "propose_device_rename",
+];
+
+/// The admin page where a command's result can be corrected by hand.
+pub fn page_for(cmd: &str) -> &'static str {
+    let group = cmd.split('.').next().unwrap_or("");
+    match group {
+        "products" | "barcodes" | "categories" | "tax" => "/admin/products",
+        "inventory" | "stocktake" => "/admin/inventory",
+        "transfers" | "locations" => "/admin/transfers",
+        "suppliers" => "/admin/suppliers",
+        "po" | "invoicescan" | "ocr" => "/admin/purchase-orders",
+        "customers" | "loyalty" => "/admin/customers",
+        "deliveries" => "/admin/deliveries",
+        "orders" => "/admin/orders",
+        "payreviews" => "/admin/payment-reviews",
+        "refunds" | "sales" => "/admin/sales",
+        "cash" | "shift" => "/admin/cash",
+        "users" | "roles" => "/admin/users",
+        "branches" => "/admin/branches",
+        "devices" => "/admin/devices",
+        "settings" | "business" | "reports" => "/admin/settings",
+        "backup" => "/admin/backups",
+        "sync" => "/admin/sync",
+        "updates" => "/admin/updates",
+        "whatsapp" => "/admin/whatsapp",
+        "companion" => "/admin/phone-view",
+        "ai" => "/admin/ai",
+        _ => "/admin/dashboard",
+    }
+}
+
+/// The compensating command for an executed command proposal, if any.
+fn undo_plan(p: &Proposal, reason: &str) -> Option<(String, Value)> {
+    let tool = p.params["tool"].as_str()?;
+    let a = &p.params["args"];
+    let before = &p.preview["before"];
+    let op = || json!(new_id());
+    match tool {
+        "propose_bulk_price" => {
+            let changes: Vec<Value> = p.preview["after"]["prices"]
+                .as_array()?
+                .iter()
+                .filter_map(|r| Some(json!({ "product_id": r["product_id"], "amount_minor": r["old_price_minor"].as_i64()? })))
+                .collect();
+            (!changes.is_empty())
+                .then(|| ("products.bulk_price".into(), json!({ "changes": changes, "reason": reason, "operation_id": op() })))
+        }
+        "propose_cost_update" => {
+            let old = before["product"]["cost_minor"].as_i64()?;
+            Some(("products.cost_update".into(), json!({ "product_id": a["product_id"], "cost_minor": old, "reason": reason })))
+        }
+        "propose_product_active" => {
+            Some(("products.set_active".into(), json!({ "product_id": a["product_id"], "active": !a["active"].as_bool()? })))
+        }
+        "propose_products_bulk_active" => {
+            Some(("products.bulk_set_active".into(), json!({ "product_ids": a["product_ids"], "active": !a["active"].as_bool()? })))
+        }
+        "propose_loyalty_adjust" => Some((
+            "loyalty.adjust".into(),
+            json!({ "customer_id": a["customer_id"], "points": -a["points"].as_i64()?, "note": reason, "operation_id": op() }),
+        )),
+        "propose_credit_adjust" => Some((
+            "customers.account_adjust".into(),
+            json!({ "customer_id": a["customer_id"], "amount_minor": -a["amount_minor"].as_i64()?, "note": reason, "operation_id": op() }),
+        )),
+        "propose_delivery_update" => {
+            a["status"].as_str()?;
+            let old = before["delivery"]["status"].as_str()?;
+            Some(("deliveries.update".into(), json!({ "delivery_id": a["delivery_id"], "status": old, "note": reason })))
+        }
+        "propose_whatsapp_send" => {
+            let mid = p.result.as_ref()?["message_id"].as_str()?.to_string();
+            Some(("whatsapp.outbox_action".into(), json!({ "message_id": mid, "action": "cancel" })))
+        }
+        "propose_device_rename" => {
+            let old = before["device"]["name"].as_str()?;
+            Some(("devices.rename".into(), json!({ "device_id": a["device_id"], "name": old })))
+        }
+        _ => None,
+    }
+}
+
+/// Permissions that let a person change store records from an admin page.
+/// Read permissions (reports, views, audit) are not on this list, so a role
+/// with only those (like the default Accountant, whatever it is named) stays
+/// read-only in the assistant.
+pub const WRITE_PERMISSIONS: &[&str] = &[
+    "products.manage",
+    "prices.manage",
+    "barcodes.resolve",
+    "inventory.adjust",
+    "inventory.receive",
+    "inventory.transfer",
+    "stocktake.manage",
+    "suppliers.manage",
+    "purchasing.manage",
+    "customers.manage",
+    "customers.credit",
+    "deliveries.manage",
+    "users.manage",
+    "roles.manage",
+    "devices.manage",
+    "sync.manage",
+    "settings.manage",
+    "backup.manage",
+    "backup.restore",
+    "import.run",
+    "whatsapp.manage",
+    "whatsapp.send",
+    "payments.review",
+    "ocr.scan",
+    "loyalty.adjust",
+    "orders.manage",
+    "branches.manage",
+    "refund.create",
+    "cash.paid_in",
+    "cash.paid_out",
+    "cash.safe_drop",
+];
+
+/// Does the session hold at least one write permission?
+pub fn has_write_permission(s: &crate::auth::Session) -> bool {
+    WRITE_PERMISSIONS.iter().any(|p| s.has(p))
+}
+
+/// Proposals may be recorded: ai.mutations on, admin access (or ai.mutate),
+/// and at least one write permission. Decided by permissions, never by the
+/// role's name; each tool then also requires its own permission.
 pub fn can_propose(f: &settings::FeatureFlags, s: &crate::auth::Session) -> bool {
-    f.is_on("ai.mutations") && (s.has("ai.mutate") || s.has("admin.access")) && s.role_id != crate::auth::ROLE_ACCOUNTANT
+    f.is_on("ai.mutations") && (s.has("ai.mutate") || s.has("admin.access")) && has_write_permission(s)
 }
 
 /// Text fields that come from outside the store, wrapped as DATA.
-const DATA_FIELDS: [&str; 11] =
-    ["note", "notes", "body", "caption", "text", "description", "ocr_text", "untrusted_text", "push_name", "hold_note", "address"];
+const DATA_FIELDS: [&str; 12] = [
+    "note",
+    "notes",
+    "body",
+    "caption",
+    "text",
+    "description",
+    "ocr_text",
+    "untrusted_text",
+    "push_name",
+    "hold_note",
+    "address",
+    "preview",
+];
 
 fn wrap_data_fields(v: &mut Value) {
     match v {
@@ -2106,6 +2493,40 @@ impl AppCore {
                 };
                 self.ai_wrap_read(cid, spec, v, limit as usize)
             }
+            // B4: the PO lines come from the app's reorder rule, not the model.
+            Kind::Propose if spec.name == "propose_reorder" => {
+                if !crate::ai_tools::allowed(spec, s) {
+                    return Err(AppError::forbidden("purchasing.manage"));
+                }
+                let sid = input.get("supplier_id").and_then(|v| v.as_str()).unwrap_or_default();
+                let args = self.reorder_po_args(token, sid)?;
+                let po = crate::ai_tools::find("propose_po_save").ok_or_else(|| AppError::internal("po tool missing"))?;
+                self.ai_propose_command(s, token, cid, po, &args)
+            }
+            // B5: the price comes from cost and the target margin; still a proposal.
+            Kind::Propose if spec.name == "propose_margin_price" => {
+                if !crate::ai_tools::allowed(spec, s) {
+                    return Err(AppError::forbidden("prices.manage"));
+                }
+                let pid = input.get("product_id").and_then(|v| v.as_str()).unwrap_or_default();
+                let m = self.margin_price(token, pid, input.get("margin_bp").and_then(|v| v.as_i64()))?;
+                let (_, digits) = self.db.read(|c| self.currency(c))?;
+                let price = m["suggested_price_minor"].as_i64().unwrap_or_default();
+                let why = input.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+                let reason = format!(
+                    "Target margin {}% on cost {}{}{}",
+                    minor_to_pct(m["target_margin_bp"].as_i64().unwrap_or_default()),
+                    crate::ai_helpers::minor_to_decimal(m["cost_minor"].as_i64().unwrap_or_default(), digits),
+                    if why.is_empty() { "" } else { ": " },
+                    why
+                );
+                self.ai_propose(
+                    token,
+                    cid,
+                    "propose_price_change",
+                    &json!({ "product_id": pid, "new_price": crate::ai_helpers::minor_to_decimal(price, digits), "reason": reason }),
+                )
+            }
             Kind::Propose => self.ai_propose_command(s, token, cid, spec, input),
         }
     }
@@ -2149,7 +2570,10 @@ impl AppCore {
         let spec = crate::ai_tools::find(name);
         match (spec, result) {
             (Some(spec), Ok(v)) => match self.ai_wrap_read(cid, spec, v, 50) {
-                Ok(v) => (v, false),
+                Ok(mut v) => {
+                    crate::ai_tools::redact_customer_pii(&mut v);
+                    (v, false)
+                }
                 Err(e) => (tool_error(&e), true),
             },
             (_, Err(e)) => (tool_error(&e), true),
@@ -2381,6 +2805,11 @@ impl AppCore {
                 }
             }
         }
+        if let Some(del) = sarg("delivery_id") {
+            if let Some(x) = d("deliveries.get", json!({ "delivery_id": del })) {
+                before.insert("delivery".into(), json!({ "status": x["delivery"]["status"].clone() }));
+            }
+        }
         if let Some(dev) = sarg("device_id") {
             if let Some(Value::Array(list)) = d("devices.list", json!({})) {
                 if let Some(x) = list.into_iter().find(|x| x["device_id"] == dev.as_str()) {
@@ -2446,8 +2875,9 @@ impl AppCore {
         let mut changes = args.clone();
         crate::ai_tools::strip_secrets(&mut changes);
         crate::ai_tools::cap_rows(&mut changes, 50);
+        let undo = UNDOABLE_TOOLS.contains(&spec.name);
         json!({ "command": spec.cmd, "tool": spec.name, "before": Value::Object(before), "after": if after.is_null() { changes.clone() } else { after },
-                "changes": changes, "irreversible": true })
+                "changes": changes, "irreversible": !undo, "undo": undo, "page": page_for(spec.cmd) })
     }
 
     /// Check a command proposal can run now and mark it executing. None =
@@ -2478,6 +2908,13 @@ impl AppCore {
             return Err(AppError::conflict(format!("This proposal is {}.", p.status)));
         }
         let tool = p.params["tool"].as_str().unwrap_or_default();
+        {
+            let spec = crate::ai_tools::find(tool).ok_or_else(|| AppError::conflict("This kind of proposal is no longer available."))?;
+            if !crate::ai_tools::allowed(spec, &s) {
+                return Err(AppError::forbidden(spec.perms.first().copied().unwrap_or("admin.access")));
+            }
+        }
+        self.dual_control_gate(&s, &id)?;
         let spec = crate::ai_tools::find(tool).ok_or_else(|| AppError::conflict("This kind of proposal is no longer available."))?;
         let mut args = p.params["args"].clone();
         if !crate::ai_tools::allowed(spec, &s) || (crate::ai_tools::owner_only_for(spec, &args) && s.role_id != crate::auth::ROLE_OWNER) {
@@ -2671,6 +3108,36 @@ mod tests {
     #[test]
     fn untrusted_bump() {
         assert_eq!(bump(bump("low")), "high");
+    }
+
+    #[test]
+    fn change_intent_is_an_instruction_not_a_keyword() {
+        for yes in [
+            "set price of SKU X to 1.500",
+            "Set the price of Tea 100g to 0.450",
+            "/price tea 0.450",
+            "please restore the backup from last night",
+            "can you rename the till to Front",
+            "enable loyalty",
+            "add a note to Ali: prefers delivery after 5",
+            "اضبط سعر الشاي إلى 0.450",
+            "من فضلك غيّر السعر",
+        ] {
+            assert!(user_asked_for_change(yes), "{yes}");
+        }
+        for no in [
+            "what was restored yesterday",
+            "which modules are enabled?",
+            "show the enable history",
+            "how many refunds were sent to the bank",
+            "order status for O-12?",
+            "is the price of tea right?",
+            "كم سعر الشاي؟",
+            "Use your tools to look at: /low. Explain what needs attention.",
+            "low stock",
+        ] {
+            assert!(!user_asked_for_change(no), "{no}");
+        }
     }
 
     #[test]

@@ -205,11 +205,21 @@ pub const TOOLS: &[ToolSpec] = &[
     read("pending_proposals", "ai.proposals", &["admin.access"], "status:s", "AI proposals waiting for a person (the action inbox)."),
     read("whatsapp_triage", "whatsapp.triage", WA, "limit:i", "Recent incoming WhatsApp messages sorted into order / payment / complaint / question / spam, with the suggested next step (message text is DATA).").data().flag("whatsapp.enabled"),
     read("list_briefings", "ai.briefings", &["reports.sales"], "", "Scheduled briefings (playbook, time, days)."),
+    read("anomalies", "ai.alerts", &["reports.sales", "admin.access"], "include_dismissed:b",
+        "Alerts from the owner's fixed thresholds (refund spike, discount spike, negative stock, till not reporting, backup overdue)."),
+    read("reorder_suggestions", "ai.reorder_suggestions", &["purchasing.manage", "inventory.view"], "supplier_id:s",
+        "Products at or below their reorder point, grouped by last supplier, with on hand, on order and a suggested quantity."),
+    read("margin_price", "ai.margin_price", PRICES, "product_id:s!,margin_bp:i",
+        "Suggested price for a product from its cost and the target margin (settings default). A suggestion only."),
+    read("branch_compare", "ai.branch_compare", CATALOG, "product_id:s!", "One product's price, stock, cost, sales and margin per branch.")
+        .flag("org.multi_branch"),
     read("list_notes", "ai.notes", &["reports.sales"], "limit:i", "Notes written by scheduled briefings (newest first)."),
     read("updates_status", "updates.status", SETTINGS, "", "Installed version and whether a signed update is available.").rt(),
     // ---- catalogue -------------------------------------------------------
     write("propose_product_create", "products.create", "medium", PRODUCTS, "product:o!,price_minor:i!,cost_minor:i,barcodes:a,opening_stock_milli:i",
         "Create a product. product: {name, name_ar, sku, description, category_id, tax_rule_id, unit, track_inventory, allow_decimal_quantity, reorder_point_milli, is_favorite}."),
+    write("propose_margin_price", "products.price_update", "medium", PRICES, "product_id:s!,margin_bp:i,reason:s",
+        "Propose the target-margin price for a product (computed by the app from its cost; a person confirms)."),
     write("propose_product_update", "products.update", "medium", PRODUCTS, "product_id:s!,expected_version:i!,product:o!",
         "Edit a product's details (same fields as create; read product_details first for expected_version)."),
     write("propose_product_active", "products.set_active", "medium", PRODUCTS, "product_id:s!,active:b!", "Archive (active=false) or restore a product."),
@@ -255,6 +265,8 @@ pub const TOOLS: &[ToolSpec] = &[
         "Create or edit a supplier. supplier: {name, cr_number, vat_number, contact_name, phone, whatsapp, email, address, payment_terms, notes, active}."),
     write("propose_po_save", "po.save", "medium", &["purchasing.manage"], "po_id:s,po:o!",
         "Create or edit a draft PO. po: {supplier_id, reference, expected_at, notes, lines:[{product_id, qty_milli, unit_cost_minor, tax_rate_bp}]}."),
+    write("propose_reorder", "po.save", "medium", &["purchasing.manage"], "supplier_id:s!",
+        "Draft a PO for one supplier from the reorder suggestions (the lines are computed by the app, not the model)."),
     write("propose_po_status", "po.set_status", "medium", &["purchasing.manage"], "po_id:s!,status:s!", "Mark a PO ordered or cancelled."),
     write("propose_po_receive", "po.receive", "medium", &["inventory.receive"], "po_id:s!,reference:s,lines:a!",
         "Receive against a PO. lines: [{po_item_id, qty_milli, unit_cost_minor}].").op(),
@@ -273,7 +285,7 @@ pub const TOOLS: &[ToolSpec] = &[
     write("propose_customer_address", "customers.address_save", "low", CUSTM, "address_id:s,customer_id:s!,label:s!,area:s,address:s!,notes:s,is_default:b",
         "Add or edit a customer's delivery address."),
     write("propose_customer_address_delete", "customers.address_delete", "low", CUSTM, "address_id:s!", "Delete a customer address."),
-    write("propose_loyalty_adjust", "loyalty.adjust", "medium", &["loyalty.adjust"], "customer_id:s!,points:i!,note:s!", "Add (+) or remove (−) loyalty points.")
+    write("propose_loyalty_adjust", "loyalty.adjust", "medium", &["loyalty.adjust"], "customer_id:s!,points:i!,note:s!", "Add (+) or remove (−) loyalty points.").op()
         .flag("loyalty.enabled"),
     write("propose_credit_account", "customers.account_set", "high", &["customers.credit"], "customer_id:s!,enabled:b!,credit_limit_minor:i!",
         "Open/close a customer's credit account and set its limit (fils).").flag("customers.credit"),
@@ -381,6 +393,7 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("setup.status", "setup wizard only"),
     ("setup.initialize", "setup wizard only"),
     ("auth.users", "forbidden: sign-in"),
+    ("ai.alert_dismiss", "a person dismisses alerts in the inbox"),
     ("auth.login", "forbidden: sign-in"),
     ("auth.logout", "forbidden: sign-in"),
     ("auth.lock", "forbidden: sign-in"),
@@ -519,6 +532,123 @@ pub fn tool_json(t: &ToolSpec) -> Value {
     json!({ "name": t.name, "description": desc, "input_schema": schema(t.params) })
 }
 
+// ---- C6: customer details stay in the store --------------------------------
+
+/// Fields that identify a person (not the store): replaced before any text
+/// reaches the AI provider. Ids stay, so the model can still call tools.
+const PII_KEYS: &[&str] = &[
+    "phone",
+    "whatsapp",
+    "mobile",
+    "email",
+    "address",
+    "address_line",
+    "area",
+    "landmark",
+    "push_name",
+    "customer_name",
+    "to_phone",
+    "customer_phone",
+    "contact_phone",
+    "contact_name",
+    "delivery_address",
+    "chat",
+    "account",
+];
+
+/// Replace phone-number-like runs in free text ("+973 3300 1122", "0097333001122",
+/// "97333001122") with "[phone]". Barcodes (no "+", no 00/973 prefix) are kept.
+pub fn redact_phones(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let start = i;
+        let plus = chars[i] == '+';
+        let mut j = if plus { i + 1 } else { i };
+        let mut digits = String::new();
+        while j < chars.len() && (chars[j].is_ascii_digit() || ((chars[j] == ' ' || chars[j] == '-') && !digits.is_empty())) {
+            if chars[j].is_ascii_digit() {
+                digits.push(chars[j]);
+            }
+            j += 1;
+        }
+        let prev_ok = start == 0 || !chars[start - 1].is_ascii_alphanumeric();
+        let phone = prev_ok
+            && ((plus && (8..=15).contains(&digits.len()))
+                || (digits.starts_with("00") && (10..=16).contains(&digits.len()))
+                || (digits.starts_with("973") && digits.len() == 11));
+        if phone {
+            // Keep a trailing separator that was not part of the number.
+            let mut end = j;
+            while end > start && !chars[end - 1].is_ascii_digit() {
+                end -= 1;
+            }
+            out.push_str("[phone]");
+            i = end;
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn is_person_object(m: &Map<String, Value>, parent: &str) -> bool {
+    matches!(parent, "customer" | "customers" | "contact" | "recipient")
+        || (m.contains_key("customer_id")
+            && !m.contains_key("product_id")
+            && !m.contains_key("supplier_id")
+            && (m.contains_key("phone") || m.contains_key("whatsapp") || m.contains_key("email")))
+}
+
+/// C6: replace customer names, phones and addresses with ids (or "[redacted]")
+/// in anything headed for the AI provider.
+pub fn redact_customer_pii(v: &mut Value) {
+    redact_walk(v, "");
+}
+
+fn redact_walk(v: &mut Value, parent: &str) {
+    match v {
+        Value::Object(m) => {
+            let person = is_person_object(m, parent);
+            let cid = m.get("customer_id").and_then(|x| x.as_str()).map(str::to_string);
+            let label = || match &cid {
+                Some(id) => format!("customer:{id}"),
+                None => "[redacted]".to_string(),
+            };
+            for (k, x) in m.iter_mut() {
+                let key = k.as_str();
+                if (PII_KEYS.contains(&key) || (person && key == "name")) && x.as_str().is_some_and(|s| !s.is_empty()) {
+                    *x = Value::String(if key == "name" || key == "customer_name" { label() } else { "[redacted]".into() });
+                } else {
+                    redact_walk(x, key);
+                }
+            }
+        }
+        Value::Array(a) => {
+            for x in a {
+                redact_walk(x, parent);
+            }
+        }
+        Value::String(s) => {
+            // Tool results are often JSON inside a string; phones in free text too.
+            if s.len() > 1 && (s.starts_with('{') || s.starts_with('[')) {
+                if let Ok(mut inner) = serde_json::from_str::<Value>(s) {
+                    redact_walk(&mut inner, parent);
+                    *s = inner.to_string();
+                    return;
+                }
+            }
+            let r = redact_phones(s);
+            if r != *s {
+                *s = r;
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Keys never passed through from the model (collected on the Confirm card
 /// or generated by AMWAPOS).
 pub const STRIPPED_ARGS: [&str; 4] = ["approval_token", "operation_id", "pin", "acknowledge_different_business_token"];
@@ -587,6 +717,18 @@ pub fn owner_only_for(t: &ToolSpec, args: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn customer_details_are_replaced_with_ids() {
+        let mut v = json!({ "customer": { "customer_id": "C1", "name": "Ali Hasan", "phone": "+97333001122", "address": "Road 12" },
+                            "notes": [{ "text": "call me on +973 3300 1122 or 0097333001122" }],
+                            "product": { "product_id": "P1", "name": "Tea", "barcode": "6291234567890" } });
+        redact_customer_pii(&mut v);
+        let s = v.to_string();
+        assert!(!s.contains("Ali Hasan") && !s.contains("33001122") && !s.contains("Road 12"), "{s}");
+        assert!(s.contains("customer:C1"));
+        assert!(s.contains("Tea") && s.contains("6291234567890"), "product data and barcodes stay: {s}");
+    }
 
     #[test]
     fn names_are_unique_and_schemas_parse() {
