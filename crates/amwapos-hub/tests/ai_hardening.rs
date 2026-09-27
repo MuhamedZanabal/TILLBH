@@ -605,3 +605,30 @@ async fn test_page_width_follows_the_paper() {
         assert!(pdf.starts_with(b"%PDF"), "Arabic test page also renders to PDF");
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn undo_reverts_a_delivery_status_change() {
+    let e = env().await;
+    flags(&e, json!({ "delivery.enabled": true })).await;
+    let d =
+        call(&e.rt, "deliveries.create", Some(&e.t), json!({ "address": "Road 1, Block 2", "area": "Manama", "phone": "+97333001122" }))
+            .await;
+    let did = d["delivery_id"].as_str().unwrap().to_string();
+    assert_eq!(d["status"], "pending", "{d}");
+
+    let cid = conversation(&e, &e.t, "mark the delivery as preparing");
+    let (v, err) = e.core.ai_tool(&e.t, &cid, "propose_delivery_update", &json!({ "delivery_id": did, "status": "preparing" }));
+    assert!(!err, "{v}");
+    let id = v["data"]["proposal_id"].as_str().unwrap().to_string();
+    assert_eq!(preview(&e, &id).await["undo"], true);
+    call(&e.rt, "ai.proposal_confirm", Some(&e.t), json!({ "proposal_id": id })).await;
+    let get = || call(&e.rt, "deliveries.get", Some(&e.t), json!({ "delivery_id": did }));
+    assert_eq!(get().await["delivery"]["status"], "preparing");
+
+    let undone = call(&e.rt, "ai.proposal_undo", Some(&e.t), json!({ "proposal_id": id })).await;
+    assert_eq!(undone["status"], "undone", "{undone}");
+    let after = get().await;
+    assert_eq!(after["delivery"]["status"], "pending", "{after}");
+    let ev = after["events"].as_array().unwrap();
+    assert_eq!(ev.last().unwrap()["from"], "preparing", "undo is recorded as its own event: {after}");
+}

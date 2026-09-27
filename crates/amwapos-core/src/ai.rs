@@ -2340,7 +2340,7 @@ fn undo_plan(p: &Proposal, reason: &str) -> Option<(String, Value)> {
         "propose_delivery_update" => {
             a["status"].as_str()?;
             let old = before["delivery"]["status"].as_str()?;
-            Some(("deliveries.update".into(), json!({ "delivery_id": a["delivery_id"], "status": old, "note": reason })))
+            Some(("deliveries.update".into(), json!({ "delivery_id": a["delivery_id"], "status": old, "note": reason, "revert": true })))
         }
         "propose_whatsapp_send" => {
             let mid = p.result.as_ref()?["message_id"].as_str()?.to_string();
@@ -2715,6 +2715,10 @@ impl AppCore {
         }
         if spec.op_id {
             args["operation_id"] = json!(new_id());
+        }
+        // Reverting a delivery is only ever the compensating command of an undo.
+        if let Some(o) = args.as_object_mut() {
+            o.remove("revert");
         }
         let untrusted: bool = self.db.read(|c| {
             Ok(c.query_row("SELECT untrusted_seen FROM ai_conversations WHERE conversation_id=?1", [cid], |r| r.get::<_, i64>(0))

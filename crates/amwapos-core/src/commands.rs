@@ -253,6 +253,9 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "deliveries.list" => out(core.deliveries_list(tk()?, opt(&args, "status")?, opt(&args, "include_closed")?.unwrap_or(false))),
         "deliveries.get" => out(core.delivery_get(tk()?, &req::<String>(&args, "delivery_id")?)),
         "deliveries.create" => out(core.delivery_create(tk()?, all(&args)?)),
+        "deliveries.update" if opt::<bool>(&args, "revert")?.unwrap_or(false) => {
+            out(core.delivery_revert(tk()?, &req::<String>(&args, "delivery_id")?, &req::<String>(&args, "status")?, opt(&args, "note")?))
+        }
         "deliveries.update" => out(core.delivery_update(
             tk()?,
             &req::<String>(&args, "delivery_id")?,

@@ -375,6 +375,45 @@ impl AppCore {
         self.db.read(|c| load_delivery(c, &id))
     }
 
+    /// Step a delivery back to the status it had before one forward move
+    /// (the compensating command of an AI undo). Needs deliveries.manage.
+    pub fn delivery_revert(&self, token: &str, delivery_id: &str, to: &str, note: Option<String>) -> AppResult<DeliveryRow> {
+        let s = self.session(token)?;
+        s.require("deliveries.manage")?;
+        let id = validate::id(delivery_id, "Delivery")?;
+        let note = clean_opt(&note, "Note", 500)?;
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            let d = load_delivery(tx, &id)?;
+            let last: Option<(Option<String>, String)> = tx
+                .query_row(
+                    "SELECT previous_status, new_status FROM delivery_events WHERE delivery_id=?1 ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                    [&id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            let ok = matches!(&last, Some((Some(prev), new)) if prev == to && *new == d.status);
+            if !ok {
+                return Err(AppError::conflict(format!("This delivery has moved on since; it cannot go back to {to}.")));
+            }
+            let now = time::now_str();
+            tx.execute(
+                "UPDATE delivery_orders SET status=?2, updated_at=?3,
+                    dispatched_at=CASE WHEN ?2 IN ('pending','preparing') THEN NULL ELSE dispatched_at END,
+                    delivered_at=CASE WHEN ?2='delivered' THEN delivered_at ELSE NULL END
+                 WHERE delivery_id=?1",
+                params![id, to, now],
+            )?;
+            tx.execute(
+                "INSERT INTO delivery_events(event_id, delivery_id, previous_status, new_status, note, user_id, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![new_id(), id, d.status, to, note, s.user_id, now],
+            )?;
+            audit::record(tx, &actor, "delivery.reverted", "delivery", Some(&id), Some(&json!({ "status": d.status })), Some(&json!({ "status": to })))?;
+            Ok(())
+        })?;
+        self.db.read(|c| load_delivery(c, &id))
+    }
+
     /// Advance a delivery. Allowed: pending→preparing→dispatched→delivered,
     /// any open state → cancelled.
     pub fn delivery_update(
