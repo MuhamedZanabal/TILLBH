@@ -60,8 +60,15 @@ pub struct TicketRow {
     pub created_at: String,
     pub updated_at: String,
     pub delivered_at: Option<String>,
-    /// unpaid_out (out or delivered, money not in) | notice_failed
+    /// not_delivered (the rider could not deliver) | unpaid_out (out or
+    /// delivered, money not in) | notice_failed
     pub problem: Option<String>,
+    /// Why the rider could not deliver (set by "Unable to deliver").
+    #[serde(default)]
+    pub failed_note: Option<String>,
+    /// How a closed drop ended when not delivered: "not_delivered".
+    #[serde(default)]
+    pub outcome: Option<String>,
     /// The rider still holding cash collected for this ticket (not yet
     /// counted into a drawer at a hand-over).
     #[serde(default)]
@@ -78,6 +85,21 @@ pub struct TicketFilter {
     pub pay_state: Option<String>,
     pub channel: Option<String>,
     pub customer_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NotDelivered {
+    pub delivery_id: String,
+    pub reason: String,
+    /// true: the goods go back on the shelf; false: written off (damaged).
+    pub restock: bool,
+    /// How to give back money already taken for the ticket (cash by
+    /// default). What is still to collect is cancelled, not paid out.
+    #[serde(default)]
+    pub refund_method: Option<String>,
+    pub operation_id: String,
+    #[serde(default)]
+    pub approval_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -102,7 +124,8 @@ const DROP_SELECT: &str = "SELECT d.delivery_id, d.order_id, d.sale_id, COALESCE
              ELSE COALESCE((SELECT SUM(p.amount_minor) FROM payments p WHERE p.sale_id=d.sale_id AND p.method='pay_on_delivery'),0) END,
         COALESCE((SELECT SUM(k.amount_minor) FROM sale_collections k WHERE k.delivery_id=d.delivery_id),0),
         (SELECT hu.display_name FROM sale_collections hk JOIN users hu ON hu.user_id=hk.held_by
-          WHERE hk.delivery_id=d.delivery_id AND hk.collection_id NOT IN (SELECT collection_id FROM rider_handover_items) LIMIT 1)
+          WHERE hk.delivery_id=d.delivery_id AND hk.collection_id NOT IN (SELECT collection_id FROM rider_handover_items) LIMIT 1),
+        d.failed_note, d.outcome
     FROM delivery_orders d LEFT JOIN sales s ON s.sale_id=d.sale_id LEFT JOIN customers cu ON cu.customer_id=d.customer_id
     LEFT JOIN users u ON u.user_id=d.assigned_user_id";
 
@@ -117,7 +140,10 @@ fn drop_row(r: &rusqlite::Row) -> rusqlite::Result<TicketRow> {
     let pay_state = if stored == "unpaid" && review_open { "screenshot_pending".to_string() } else { stored };
     let settled = pay_state == "paid" || pay_state == "recorded";
     let outstanding = if settled { 0 } else { (due - collected).max(0) };
-    let problem = if matches!(status.as_str(), "dispatched" | "delivered") && !settled {
+    let failed_note: Option<String> = r.get(25)?;
+    let problem = if failed_note.is_some() && matches!(status.as_str(), "pending" | "preparing" | "dispatched") {
+        Some("not_delivered".to_string())
+    } else if matches!(status.as_str(), "dispatched" | "delivered") && !settled {
         Some("unpaid_out".to_string())
     } else if failed && status != "cancelled" {
         Some("notice_failed".to_string())
@@ -150,6 +176,8 @@ fn drop_row(r: &rusqlite::Row) -> rusqlite::Result<TicketRow> {
         delivered_at: r.get(19)?,
         problem,
         cash_with: r.get(24)?,
+        failed_note,
+        outcome: r.get(26)?,
     })
 }
 
@@ -193,6 +221,8 @@ fn order_row(r: &rusqlite::Row) -> rusqlite::Result<TicketRow> {
         delivered_at: None,
         problem: None,
         cash_with: None,
+        failed_note: None,
+        outcome: None,
     })
 }
 
@@ -501,7 +531,9 @@ impl AppCore {
                     "attach_screenshot": is_drop && s.has("payments.review") && !settled,
                     "message": is_drop && wa_on && (s.has("whatsapp.send") || s.has("whatsapp.manage")),
                     "ring_up": ticket.kind == "order" && s.has("pos.sell"),
-                    "undo": is_drop && manage,
+                    "undo": is_drop && manage && ticket.outcome.is_none(),
+                    "unable": is_drop && works && open && ticket.failed_note.is_none(),
+                    "not_delivered": is_drop && manage && open,
                 },
             }))
         })
@@ -623,6 +655,148 @@ impl AppCore {
                 Some(&cid),
                 &json!({ "collection_id": cid }),
             )?;
+            Ok(())
+        })?;
+        self.db.read(|c| load_ticket(c, &id))
+    }
+
+    /// "Unable to deliver": the rider (or the till) flags an open drop they
+    /// could not deliver. The drop stays open and shows as a problem until a
+    /// manager closes it as not delivered, or it is delivered after all.
+    pub fn ticket_unable(&self, token: &str, delivery_id: &str, reason: &str) -> AppResult<TicketRow> {
+        let s = self.session(token)?;
+        let id = validate::id(delivery_id, "Ticket")?;
+        let reason = crate::setup::clean(reason, "Reason", 200, true)?;
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            let d = crate::customers::load_delivery_row(tx, &id)?;
+            if !s.has("deliveries.manage") && !crate::customers::can_work_drop(&s, &d) && d.assigned_user_id.as_deref() != Some(&s.user_id) {
+                return Err(AppError::forbidden("deliveries.view"));
+            }
+            if !matches!(d.status.as_str(), "pending" | "preparing" | "dispatched") {
+                return Err(AppError::conflict("Only an open drop can be marked as not delivered."));
+            }
+            let now = time::now_str();
+            tx.execute("UPDATE delivery_orders SET failed_note=?2, failed_at=?3, updated_at=?3 WHERE delivery_id=?1", params![id, reason, now])?;
+            tx.execute(
+                "INSERT INTO delivery_events(event_id, delivery_id, previous_status, new_status, note, user_id, created_at) VALUES (?1,?2,?3,?3,?4,?5,?6)",
+                params![new_id(), id, d.status, format!("Unable to deliver: {reason}"), s.user_id, now],
+            )?;
+            audit::record(tx, &actor, "delivery.unable", "delivery", Some(&id), None, Some(&json!({ "reason": reason })))?;
+            Ok(())
+        })?;
+        self.db.read(|c| load_ticket(c, &id))
+    }
+
+    /// Close a drop as not delivered: refund what is left of its sale (the
+    /// amount still to collect is cancelled; money already taken goes back by
+    /// `refund_method`), goods back on the shelf or written off, and the drop
+    /// cancelled with outcome `not_delivered`. Needs deliveries.manage and
+    /// refund rights (or a manager's approval). Retry-safe on `operation_id`.
+    pub fn ticket_not_delivered(&self, token: &str, req: NotDelivered) -> AppResult<TicketRow> {
+        let s = self.session(token)?;
+        s.require("deliveries.manage")?;
+        let id = validate::id(&req.delivery_id, "Ticket")?;
+        let reason = crate::setup::clean(&req.reason, "Reason", 200, true)?;
+        idempotency::validate_operation_id(&req.operation_id)?;
+        let t = self.db.read(|c| load_ticket(c, &id))?;
+        if t.outcome.as_deref() == Some("not_delivered") {
+            return Ok(t);
+        }
+        if !matches!(t.status.as_str(), "pending" | "preparing" | "dispatched") {
+            return Err(AppError::conflict("Only an open drop can be closed as not delivered."));
+        }
+        if let Some(r) = &t.cash_with {
+            return Err(AppError::conflict(format!("{r} still holds the cash for this ticket. Do the rider hand-over first.")));
+        }
+        // The refund: every line still refundable, one call to the refund
+        // engine (its own operation id derived from this one, so a retry
+        // replays it instead of refunding twice).
+        let mut refund_id: Option<String> = None;
+        if let Some(sid) = &t.sale_id {
+            let (lines, total, pod_paid): (Vec<crate::refunds::RefundLineInput>, i64, i64) = self.db.read(|c| {
+                let mut st = c.prepare(
+                    "SELECT i.sale_item_id, i.qty_milli - COALESCE((SELECT SUM(r.qty_milli) FROM refund_items r WHERE r.original_sale_item_id=i.sale_item_id),0),
+                        i.line_total_minor - COALESCE((SELECT SUM(r.amount_minor) FROM refund_items r WHERE r.original_sale_item_id=i.sale_item_id),0)
+                     FROM sale_items i WHERE i.sale_id=?1 ORDER BY i.line_no",
+                )?;
+                let rows: Vec<(String, i64, i64)> = st.query_map([sid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<_, _>>()?;
+                let lines = rows
+                    .iter()
+                    .filter(|r| r.1 > 0)
+                    .map(|r| crate::refunds::RefundLineInput { sale_item_id: r.0.clone(), qty_milli: r.1, restock: req.restock })
+                    .collect();
+                let total = rows.iter().filter(|r| r.1 > 0).map(|r| r.2).sum();
+                let pod: i64 = c.query_row(
+                    "SELECT COALESCE(SUM(amount_minor),0) FROM payments WHERE sale_id=?1 AND method='pay_on_delivery'",
+                    [sid],
+                    |r| r.get(0),
+                )?;
+                Ok((lines, total, pod))
+            })?;
+            if !lines.is_empty() {
+                // Money never taken is cancelled against the pay-on-delivery
+                // tender; the rest is paid back. The exact line prorating is
+                // done by the refund engine, so the split is checked there.
+                let uncollected = t.outstanding_minor.min(pod_paid).min(total).max(0);
+                let method = req.refund_method.clone().filter(|m| !m.trim().is_empty()).unwrap_or_else(|| "cash".into());
+                let mut tenders = vec![];
+                if uncollected > 0 {
+                    tenders.push(crate::refunds::RefundTenderInput {
+                        method: crate::sales::PAY_ON_DELIVERY.into(),
+                        amount_minor: uncollected,
+                        reference: None,
+                    });
+                }
+                if total - uncollected > 0 {
+                    tenders.push(crate::refunds::RefundTenderInput { method, amount_minor: total - uncollected, reference: None });
+                }
+                let r = self.refund_create(
+                    token,
+                    crate::refunds::RefundRequest {
+                        sale_id: sid.clone(),
+                        lines,
+                        reason: format!("Not delivered: {reason}"),
+                        tenders,
+                        operation_id: format!("{}-nd", req.operation_id),
+                        approval_token: req.approval_token.clone(),
+                    },
+                )?;
+                refund_id = Some(r.refund_id);
+            }
+        }
+        let actor = self.actor(&s, None);
+        let payload = json!({ "delivery_id": id, "reason": reason, "restock": req.restock });
+        self.db.write(|tx| {
+            let hash = match idempotency::check(tx, &req.operation_id, "ticket.not_delivered", &payload)? {
+                Check::Replay { .. } => return Ok(()),
+                Check::New { payload_hash } => payload_hash,
+            };
+            let d = crate::customers::load_delivery_row(tx, &id)?;
+            if !matches!(d.status.as_str(), "pending" | "preparing" | "dispatched") {
+                return Err(AppError::conflict("Only an open drop can be closed as not delivered."));
+            }
+            let now = time::now_str();
+            tx.execute(
+                "UPDATE delivery_orders SET status='cancelled', outcome='not_delivered', refund_id=COALESCE(?2, refund_id),
+                    failed_note=COALESCE(failed_note, ?3), updated_at=?4 WHERE delivery_id=?1",
+                params![id, refund_id, reason, now],
+            )?;
+            let note = format!("Not delivered: {reason}. {}", if req.restock { "Goods back on the shelf." } else { "Goods written off as damaged." });
+            tx.execute(
+                "INSERT INTO delivery_events(event_id, delivery_id, previous_status, new_status, note, user_id, created_at) VALUES (?1,?2,?3,'cancelled',?4,?5,?6)",
+                params![new_id(), id, d.status, note, s.user_id, now],
+            )?;
+            audit::record(
+                tx,
+                &actor,
+                "delivery.not_delivered",
+                "delivery",
+                Some(&id),
+                Some(&json!({ "status": d.status })),
+                Some(&json!({ "reason": reason, "restock": req.restock, "refund_id": refund_id })),
+            )?;
+            idempotency::complete(tx, &req.operation_id, "ticket.not_delivered", Some(&s.user_id), Some(&s.device_id), &hash, Some(&id), &json!({}))?;
             Ok(())
         })?;
         self.db.read(|c| load_ticket(c, &id))

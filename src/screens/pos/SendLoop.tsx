@@ -29,6 +29,7 @@ import { useSession } from "../../state/session";
 import { useFeature } from "../../components/FeatureGate";
 import { Banner, Button, Checkbox, Chip, Modal } from "../../components/ui";
 import { explain } from "../../lib/errors";
+import { ApprovalCancelled, useApproval } from "../../components/approval";
 import { newOperationId } from "../../lib/ids";
 import { formatAmount, formatMoney, formatQty, parseMoney } from "../../lib/money";
 import { relative } from "../../lib/time";
@@ -638,6 +639,8 @@ export function TicketSheet({
   const [sheet, setSheet] = useState<Sheet | null>(null);
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [unable, setUnable] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [deliverAsk, setDeliverAsk] = useState(false);
   const [thenDeliver, setThenDeliver] = useState(false);
   const [ringOp] = useState(newOperationId);
@@ -779,6 +782,28 @@ export function TicketSheet({
           </Banner>
         ) : null}
         {error ? <Banner tone="danger">{error}</Banner> : null}
+        {tk.failed_note ? (
+          <Banner
+            tone={tk.outcome ? "info" : "warning"}
+            title={tk.outcome ? t("Not delivered") : t("Could not deliver")}
+          >
+            <span dir="auto">{tk.failed_note}</span>
+          </Banner>
+        ) : null}
+        {sheet.can.unable || sheet.can.not_delivered ? (
+          <section className="row gap-8 wrap">
+            {sheet.can.unable ? (
+              <Button variant="default" onClick={() => setUnable(true)} data-testid="ticket-unable">
+                {t("Unable to deliver")}
+              </Button>
+            ) : null}
+            {sheet.can.not_delivered ? (
+              <Button variant="danger-outline" onClick={() => setClosing(true)} data-testid="ticket-not-delivered">
+                {t("Close as not delivered")}
+              </Button>
+            ) : null}
+          </section>
+        ) : null}
         {tk.cash_with ? (
           <Banner tone="info" title={t("Cash with {0}", tk.cash_with)}>
             {t("Collected at the door. It enters a drawer when the rider hands it over at the till.")}
@@ -904,6 +929,27 @@ export function TicketSheet({
             void run(async () => {
               if (deliver) await api.deliveries.update({ delivery_id: did, status: "delivered" });
             });
+          }}
+        />
+      ) : null}
+      {unable && did ? (
+        <UnableSheet
+          onClose={() => setUnable(false)}
+          onSave={(reason) => {
+            setUnable(false);
+            void run(() => api.tickets.unable(did, reason));
+          }}
+        />
+      ) : null}
+      {closing && did ? (
+        <NotDeliveredSheet
+          ticket={tk}
+          paidMinor={Math.max(0, tk.amount_minor - tk.outstanding_minor)}
+          methods={(config?.payments ?? []).map((p) => p.method).filter((m) => m !== "account")}
+          onClose={() => setClosing(false)}
+          onDone={() => {
+            setClosing(false);
+            void run(async () => undefined);
           }}
         />
       ) : null}
@@ -1232,6 +1278,183 @@ function RiderHandoverSheet({ onClose, onDone }: { onClose: () => void; onDone: 
             ) : null}
           </>
         ) : null}
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+      </div>
+    </Modal>
+  );
+}
+
+const UNABLE_REASONS = [
+  () => t("Customer not home"),
+  () => t("Wrong address"),
+  () => t("Customer refused"),
+  () => t("Phone not answered"),
+];
+
+/** The rider (or the till) says they could not deliver; the drop stays open. */
+function UnableSheet({ onClose, onSave }: { onClose: () => void; onSave: (reason: string) => void }) {
+  const [reason, setReason] = useState("");
+  return (
+    <Modal
+      title={t("Unable to deliver")}
+      size="md"
+      testId="unable-sheet"
+      onClose={onClose}
+      footer={
+        <Button
+          variant="primary"
+          size="lg"
+          block
+          disabled={!reason.trim()}
+          onClick={() => onSave(reason.trim())}
+          data-testid="unable-confirm"
+        >
+          {t("Flag it")}
+        </Button>
+      }
+    >
+      <div className="col gap-12">
+        <div className="area-chips">
+          {UNABLE_REASONS.map((r) => (
+            <button
+              key={r()}
+              type="button"
+              className={`filter-chip ${reason === r() ? "active" : ""}`}
+              onClick={() => setReason(r())}
+            >
+              {r()}
+            </button>
+          ))}
+        </div>
+        <div className="field">
+          <label htmlFor="un-reason">{t("Reason")}</label>
+          <input id="un-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
+        </div>
+        <div className="hint">
+          {t("The drop stays open. A manager closes it as not delivered, or it is delivered later.")}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Close a drop as not delivered: goods back or damaged, money back, sale refunded. */
+function NotDeliveredSheet({
+  ticket,
+  paidMinor,
+  methods,
+  onClose,
+  onDone,
+}: {
+  ticket: TicketRow;
+  paidMinor: number;
+  methods: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const approve = useApproval();
+  const [reason, setReason] = useState(ticket.failed_note ?? "");
+  const [restock, setRestock] = useState(true);
+  const [method, setMethod] = useState("cash");
+  const [opId] = useState(newOperationId);
+  const [busy, setBusy] = useState(false);
+  const { error, handle, setError } = useErr();
+  const save = async () => {
+    if (!ticket.delivery_id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await approve((tok) =>
+        api.tickets.notDelivered({
+          delivery_id: ticket.delivery_id!,
+          reason: reason.trim(),
+          restock,
+          refund_method: paidMinor > 0 ? method : null,
+          operation_id: opId,
+          approval_token: tok,
+        }),
+      );
+      onDone();
+    } catch (e) {
+      if (!(e instanceof ApprovalCancelled)) handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={t("Close as not delivered")}
+      size="md"
+      testId="not-delivered-sheet"
+      onClose={busy ? undefined : onClose}
+      footer={
+        <Button
+          variant="danger"
+          size="lg"
+          block
+          loading={busy}
+          disabled={!reason.trim()}
+          onClick={save}
+          data-testid="not-delivered-confirm"
+        >
+          {t("Close and refund")}
+        </Button>
+      }
+    >
+      <div className="col gap-12">
+        <div className="field">
+          <label htmlFor="nd-reason">{t("Reason")}</label>
+          <input id="nd-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} />
+        </div>
+        <div className="label">{t("The goods")}</div>
+        <div className="area-chips" role="radiogroup" aria-label={t("The goods")}>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={restock}
+            className={`filter-chip ${restock ? "active" : ""}`}
+            onClick={() => setRestock(true)}
+          >
+            {t("Back on the shelf")}
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!restock}
+            className={`filter-chip ${!restock ? "active" : ""}`}
+            onClick={() => setRestock(false)}
+            data-testid="nd-damaged"
+          >
+            {t("Damaged")}
+          </button>
+        </div>
+        {paidMinor > 0 ? (
+          <>
+            <div className="label">{t("Give back {0} by", formatMoney(paidMinor))}</div>
+            <div className="area-chips" role="radiogroup">
+              {methods.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={m === method}
+                  className={`filter-chip ${m === method ? "active" : ""}`}
+                  onClick={() => setMethod(m)}
+                >
+                  {methodLabel(m)}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
+        {ticket.outstanding_minor > 0 ? (
+          <div className="hint">
+            {t("{0} was never collected; it is cancelled, not paid out.", formatMoney(ticket.outstanding_minor))}
+          </div>
+        ) : null}
+        <div className="hint">
+          {t("The sale is refunded against its receipt and the drop is closed. This cannot be undone.")}
+        </div>
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
     </Modal>

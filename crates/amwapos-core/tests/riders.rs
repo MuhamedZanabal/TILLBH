@@ -129,3 +129,89 @@ fn end_of_day_lists_cash_still_with_riders() {
     e.core.rider_handover(&ct, handover(&rider, vec![], t1, None)).unwrap();
     assert!(e.core.eod_pack(&e.owner_token, None, None).unwrap().rider_cash_held.is_empty());
 }
+
+fn stock(e: &Env, pid: &str) -> i64 {
+    e.core
+        .db
+        .read(|c| Ok(c.query_row("SELECT COALESCE(SUM(qty_milli),0) FROM stock_levels WHERE product_id=?1", [pid], |r| r.get(0))?))
+        .unwrap()
+}
+
+fn not_delivered(did: &str, restock: bool) -> amwapos_core::tickets::NotDelivered {
+    amwapos_core::tickets::NotDelivered {
+        delivery_id: did.into(),
+        reason: "Customer not home".into(),
+        restock,
+        refund_method: None,
+        operation_id: op(),
+        approval_token: None,
+    }
+}
+
+#[test]
+fn unable_to_deliver_flags_the_drop_and_not_delivered_refunds_and_restocks() {
+    let e = env();
+    let pid = e.product("Laban 1L", "7001", 450, 300, 100_000);
+    let cu = e
+        .core
+        .customer_save(&e.owner_token, None, serde_json::from_value(json!({ "name": "Noor", "phone": "33336666" })).unwrap())
+        .unwrap()
+        .customer_id;
+    let (rider, rt) = e.user("Ali Rider", ROLE_DELIVERY, "1357");
+    let (_m, mt) = e.user("Manager", amwapos_core::auth::ROLE_MANAGER, "4812");
+    let (_c, ct) = e.user("Cashier", ROLE_CASHIER, "2468");
+    e.open_shift(&mt, 0);
+    let (did, total) = pod_drop(&e, &mt, &cu, &rider);
+    let sold = stock(&e, &pid);
+    let before = expected_cash(&e, &mt);
+
+    // The rider flags it: the drop stays out and shows the problem.
+    let t = e.core.ticket_unable(&rt, &did, "Nobody answered").unwrap();
+    assert_eq!(
+        (t.status.as_str(), t.problem.as_deref(), t.failed_note.as_deref()),
+        ("dispatched", Some("not_delivered"), Some("Nobody answered"))
+    );
+    assert_eq!(e.core.ticket_unable(&rt, &did, "").unwrap_err().code, ErrorCode::Validation);
+    // A cashier cannot close it; the manager can.
+    assert_eq!(e.core.ticket_not_delivered(&ct, not_delivered(&did, true)).unwrap_err().code, ErrorCode::Forbidden);
+    let req = not_delivered(&did, true);
+    let t = e.core.ticket_not_delivered(&mt, req.clone()).unwrap();
+    assert_eq!((t.status.as_str(), t.outcome.as_deref()), ("cancelled", Some("not_delivered")));
+    // Refunded against the pay-on-delivery tender: no cash leaves the drawer; stock is back.
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM refunds"), 1);
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM refund_tenders WHERE method='pay_on_delivery'"), 1);
+    assert_eq!(count(&e, "SELECT total_minor FROM refunds"), total);
+    assert_eq!(expected_cash(&e, &mt), before);
+    assert_eq!(stock(&e, &pid), sold + 1000);
+    // Retry-safe: no second refund; and it cannot be reopened.
+    e.core.ticket_not_delivered(&mt, req).unwrap();
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM refunds"), 1);
+    assert_eq!(e.core.delivery_revert(&e.owner_token, &did, "dispatched", None).unwrap_err().code, ErrorCode::Conflict);
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM audit_logs WHERE event_type='delivery.not_delivered'"), 1);
+}
+
+#[test]
+fn not_delivered_after_payment_pays_back_and_damaged_goods_stay_off_the_shelf() {
+    let e = env();
+    let pid = e.product("Laban 1L", "7001", 450, 300, 100_000);
+    let cu = e
+        .core
+        .customer_save(&e.owner_token, None, serde_json::from_value(json!({ "name": "Zahra", "phone": "33337777" })).unwrap())
+        .unwrap()
+        .customer_id;
+    let (rider, rt) = e.user("Ali Rider", ROLE_DELIVERY, "1357");
+    let ot = e.owner_token.clone();
+    e.open_shift(&ot, 5_000);
+    let (did, total) = pod_drop(&e, &ot, &cu, &rider);
+    e.core.ticket_record_payment(&rt, door_cash(&did)).unwrap();
+    // Cash still with the rider blocks the close until it is handed over.
+    assert_eq!(e.core.ticket_not_delivered(&e.owner_token, not_delivered(&did, false)).unwrap_err().code, ErrorCode::Conflict);
+    e.core.rider_handover(&ot, handover(&rider, vec![], total, None)).unwrap();
+    let sold = stock(&e, &pid);
+    let before = expected_cash(&e, &e.owner_token);
+    e.core.ticket_not_delivered(&e.owner_token, not_delivered(&did, false)).unwrap();
+    // The collected money goes back in cash; damaged goods are not restocked.
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM refund_tenders WHERE method='cash'"), 1);
+    assert_eq!(expected_cash(&e, &e.owner_token), before - total);
+    assert_eq!(stock(&e, &pid), sold);
+}

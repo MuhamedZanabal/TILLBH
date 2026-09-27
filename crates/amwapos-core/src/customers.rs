@@ -414,6 +414,10 @@ impl AppCore {
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
             let d = load_delivery(tx, &id)?;
+            let outcome: Option<String> = tx.query_row("SELECT outcome FROM delivery_orders WHERE delivery_id=?1", [&id], |r| r.get(0))?;
+            if outcome.as_deref() == Some("not_delivered") {
+                return Err(AppError::conflict("This drop was closed as not delivered and its sale refunded; it cannot be reopened."));
+            }
             let last: Option<(Option<String>, String)> = tx
                 .query_row(
                     "SELECT previous_status, new_status FROM delivery_events WHERE delivery_id=?1 ORDER BY created_at DESC, rowid DESC LIMIT 1",
@@ -503,7 +507,9 @@ impl AppCore {
                 tx.execute(
                     "UPDATE delivery_orders SET status=?2, updated_at=?3,
                         dispatched_at=CASE WHEN ?2='dispatched' THEN ?3 ELSE dispatched_at END,
-                        delivered_at=CASE WHEN ?2='delivered' THEN ?3 ELSE delivered_at END
+                        delivered_at=CASE WHEN ?2='delivered' THEN ?3 ELSE delivered_at END,
+                        failed_note=CASE WHEN ?2='delivered' THEN NULL ELSE failed_note END,
+                        failed_at=CASE WHEN ?2='delivered' THEN NULL ELSE failed_at END
                      WHERE delivery_id=?1",
                     params![id, st, now],
                 )?;

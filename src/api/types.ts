@@ -241,7 +241,9 @@ export interface TicketRow {
   created_at: string;
   updated_at: string;
   delivered_at: string | null;
-  problem: "unpaid_out" | "notice_failed" | null;
+  problem: "not_delivered" | "unpaid_out" | "notice_failed" | null;
+  failed_note?: string | null;
+  outcome?: "not_delivered" | null;
   /** Rider still holding cash collected for this ticket (not handed over). */
   cash_with?: string | null;
 }
@@ -326,6 +328,8 @@ export interface TicketSheet {
     message: boolean;
     ring_up: boolean;
     undo: boolean;
+    unable?: boolean;
+    not_delivered?: boolean;
   };
 }
 

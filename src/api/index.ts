@@ -260,6 +260,15 @@ export const api = {
       reference?: string | null;
       operation_id: string;
     }) => call<T.TicketRow>("tickets.record_payment", a),
+    unable: (delivery_id: string, reason: string) => call<T.TicketRow>("tickets.unable", { delivery_id, reason }),
+    notDelivered: (a: {
+      delivery_id: string;
+      reason: string;
+      restock: boolean;
+      refund_method?: string | null;
+      operation_id: string;
+      approval_token?: string | null;
+    }) => call<T.TicketRow>("tickets.not_delivered", a),
   },
   riders: {
     cash: () => call<T.RiderCash[]>("riders.cash"),

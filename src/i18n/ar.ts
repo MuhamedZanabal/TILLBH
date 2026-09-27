@@ -3228,4 +3228,30 @@ export const AR: Record<string, string> = {
   "Ticket {0} has nothing to collect.": "الطلب {0} ليس عليه مبلغ للتحصيل.",
   "Cash collected at the door: {0} (with the rider)": "نقد حُصّل عند الباب: {0} (مع المندوب)",
   "Cash collected by the rider: {0} (counted at hand-over)": "نقد حصّله المندوب: {0} (عُدّ عند التسليم)",
+  "Not delivered": "لم يُسلَّم",
+  "Could not deliver": "تعذّر التسليم",
+  "Unable to deliver": "تعذّر التوصيل",
+  "Close as not delivered": "إغلاق كغير مُسلَّم",
+  "Customer not home": "العميل غير موجود",
+  "Wrong address": "عنوان خاطئ",
+  "Customer refused": "رفض العميل",
+  "Phone not answered": "لم يرد على الهاتف",
+  "Flag it": "أبلِغ",
+  "The drop stays open. A manager closes it as not delivered, or it is delivered later.":
+    "يبقى التوصيل مفتوحاً. يغلقه المدير كغير مُسلَّم، أو يُسلَّم لاحقاً.",
+  "Close and refund": "إغلاق واسترجاع",
+  "The goods": "البضاعة",
+  "Back on the shelf": "تعود إلى الرف",
+  "Give back {0} by": "إرجاع {0} بواسطة",
+  "{0} was never collected; it is cancelled, not paid out.": "لم يُحصَّل {0} أبداً؛ يُلغى ولا يُدفع.",
+  "The sale is refunded against its receipt and the drop is closed. This cannot be undone.":
+    "تُسترجع عملية البيع مقابل إيصالها ويُغلق التوصيل. لا يمكن التراجع عن ذلك.",
+  "Only an open drop can be marked as not delivered.": "لا يمكن تحديد إلا توصيل مفتوح كغير مُسلَّم.",
+  "Only an open drop can be closed as not delivered.": "لا يمكن إغلاق إلا توصيل مفتوح كغير مُسلَّم.",
+  "{0} still holds the cash for this ticket. Do the rider hand-over first.":
+    "ما زال {0} يحمل نقد هذا الطلب. قم بتسليم المندوب أولاً.",
+  "This drop was closed as not delivered and its sale refunded; it cannot be reopened.":
+    "أُغلق هذا التوصيل كغير مُسلَّم واستُرجعت عملية بيعه؛ لا يمكن إعادة فتحه.",
+  "Unable to deliver: {0}": "تعذّر التوصيل: {0}",
+  "Not delivered: {0}": "لم يُسلَّم: {0}",
 };
