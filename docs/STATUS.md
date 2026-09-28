@@ -119,7 +119,6 @@ the new tables exist (migrations 0009, 0010) but nothing reads or writes them.
 | `orders.digital` | Phone/WhatsApp/web/other orders; human confirm; idempotent load into a till sale; optional delivery on commit |
 | `org.multi_branch` | Branch CRUD, user branch assignment, session branch switch, branch prices, branch pairing, branch-scoped mutations and reports |
 | `pwa.companion` | Hub-served read-only owner phone page; hashed, revocable bearer token (≤ 24 h), LAN peers only |
-| `catalog.auto_images` | One-time automatic product picture search (see Product images below) |
 
 Always on (no flag, no behaviour change for existing flows): ticket number on hold
 and recall by number, low-stock hint on cart lines, safe-drop running total and
@@ -280,46 +279,108 @@ One record chain: person → channel → **ticket** (a sent sale, or a digital o
 | AI | Complete | New read tools `list_open_drops` and `ticket_get`. No new mutation tool skips Confirm. | — |
 | Flag defaults | Unchanged | `orders.digital`, `whatsapp.*` and `loyalty.enabled` stay off. | — |
 
-## Product images, 2026-09-28
+## Product images, 2026-09-28 (hardened)
 
 Precedence: uploaded picture > automatically found picture > monogram placeholder.
 
-- **Schema (migration 0020).** `products.image_hash`, `image_source` (`manual`|`automatic`),
-  `auto_image_status` (`not_attempted`|`pending`|`processing`|`found`|`not_found`|`failed`|`skipped`),
-  `auto_image_attempted_at`, `auto_image_attempts`, `auto_image_next_at`, `auto_image_note` (JSON evidence).
-  `product_images(image_hash PK, mime, width, height, bytes, data_b64, created_at)` is content-addressed:
-  sha256 of the normalised JPEG. It is synced hub → terminals (`Policy::Hub`).
-- **Storage.** Each picture is decoded server-side from its magic bytes (PNG/JPEG/WebP/GIF only, ≤ 8 MB,
-  ≥ 64 px, bounded decoder limits). It is re-encoded as JPEG q85 within 512×512, with transparency flattened
-  onto white. Pictures live in the database, so screens never hotlink. When no product references a picture
-  any more, it is deleted.
-- **Automatic search** runs only when the `catalog.auto_images` flag is on (default off). It is done by a
-  hub/standalone worker (never on terminals, never on render). It runs once per product, for new products
-  without a picture. The Settings "Find pictures for products without one" button queues existing products
-  in bounded batches.
-  - Claiming a product is one conditional UPDATE. A claim abandoned for 10 minutes is taken back.
-  - Transient errors are retried at most 3 times (after 5 min, 1 h, 6 h).
-  - A result is written only if the product still has no picture, so an upload made during a search always wins.
-- **Providers.** Open Food Facts (by barcode). Bing images (keyless, unofficial endpoint, white-background
-  and large-photo filters, market/language).
-  Google Programmable Search is optional: its key is kept in the OS secret store and its cx in settings.
-  Candidates are scored on barcode or name evidence, rejected words (logo, banner, …), size, aspect ratio,
-  white border, and a GCC domain bonus.
-- **Fetcher (SSRF).**
-  - Only http/https URLs on ports 80/443, with no user info and no local or internal names.
-  - Every resolved address must be public (IPv4/IPv6, including mapped and NAT64 forms), and the checked
-    address is the one connected to.
-  - Redirects are followed by hand: at most 3, and each one is checked again.
-  - 15 s timeout, image content types only, 8 MB streaming cap.
-- **Environment (optional, none required).** `AMWAPOS_IMAGE_SEARCH=off` disables all providers.
-  `AMWAPOS_OFF_BASE`, `AMWAPOS_BING_BASE` and `AMWAPOS_GOOGLE_SEARCH_BASE` override the provider base URLs
-  (used by tests).
-- **UI.** `ProductImage` batches up to 60 hashes per request, caches them by hash, and falls back to a
-  placeholder when a picture is unknown, fails or cannot be shown.
-  It is used on the till search results, cart lines, products list, stock list and product editor
-  (upload/replace/remove, find automatically, search status). Settings → Product images holds the sources,
-  market, counts and backfill.
-- **Limits.**
-  - Single business: access is controlled by permissions (`products.manage`, `settings.manage`), not per tenant.
-  - Bing is unofficial and may change or rate-limit; its errors count as transient.
-  - Behind an HTTP proxy, the address pinning applies to the proxy rather than the image host.
+**Default and switches.**
+- Automatic discovery is on by default. A new product saved without a picture is queued once (`pending`).
+- Two switches turn it off:
+  - the Settings → Product images checkbox "Find pictures automatically for new products" (`catalog.image_search.enabled`);
+  - the administrator kill switch `AMWAPOS_IMAGE_SEARCH=off` (also `0`, `false` or `no`), which the setting cannot override.
+- When discovery is switched off, disabled by the administrator, or has no usable source, new products stay `not_attempted`. Nothing is claimed, even work that was already queued. Manual uploads always work.
+- The old `catalog.auto_images` feature flag was removed. A stored value is ignored.
+- `.cargo/config.toml` sets `AMWAPOS_IMAGE_SEARCH=off` for processes started by cargo: tests, the e2e dev server and `tauri dev`. Tests and development therefore never contact real providers. Installed builds are not started by cargo, so they keep the default (on).
+
+**Lifecycle** (`products.auto_image_status`, migration 0020):
+- The states run `not_attempted → pending → processing → found | not_found | failed`. A manual upload or removal gives `skipped`.
+- Terminal states are `found`, `not_found`, `failed` and `skipped`. A lifecycle is one logical discovery; `auto_image_attempts` counts retries within it.
+- A temporary error (source or download outage, a Bing page that cannot be read, a timeout) goes back to `pending` after 5 min, then 1 h. The third temporary error gives `failed`.
+- A claim abandoned for 10 min is recovered as a temporary error, so a lookup that keeps crashing ends `failed` rather than looping.
+- Only an explicit person action starts a new lifecycle: "Find picture automatically", or the backfill for never-searched products. Reads, renders, edits, restarts and terminal sync never do (tested).
+- Claiming is one conditional UPDATE. Completion writes only while the product is still claimed and has no picture, so an upload made during a lookup always wins (tested).
+- The idle worker checks the queue with a read and writes only when work is due.
+
+**Where it runs.**
+- On the hub or a standalone till only. It never runs on a terminal (tested) and never on a read or render path.
+- One product at a time, 3 s apart, 30 s idle poll. Product creation never waits for a source.
+
+**Sources, in priority order** (`crates/amwapos-hub/src/image_worker.rs`):
+1. **Open Food Facts.** `GET https://world.openfoodfacts.org/api/v2/product/<barcode>?fields=…`, only when the product has an 8–14 digit barcode. No region parameter. Its results carry exact-barcode evidence.
+2. **Bing images.** This is keyless, unofficial and best effort (the `bing-image-urls` approach). `GET https://www.bing.com/images/async` with:
+   - `q`: the query text;
+   - `first=0`, `count=35`, `adlt=strict`;
+   - `qft=+filterui:photo-photo+filterui:imagesize-large+filterui:color2-FGcls_WHITE`;
+   - `cc=BH`, `setmkt=en-BH` (or `ar-BH`), `setlang=en|ar`;
+   - an `Accept-Language` header.
+
+   These are market and language hints; Bing offers no "Bahrain only" filter. If the page contains result markup but nothing can be read from it, that is a temporary source error, never "no results", so a format change cannot mark products `not_found`.
+3. **Google Programmable Search** (optional). `GET https://www.googleapis.com/customsearch/v1` with:
+   - `key` and `cx`: the key is kept in the OS secret store and the cx in settings;
+   - `q`, `searchType=image`, `num=10`, `imgSize=large`, `imgType=photo`, `imgDominantColor=white`, `safe=active`;
+   - `gl=<market>` (a boost) and `hl=<language>`.
+
+   There is no `cr`, which would restrict results to one country's documents. Google counts as a source only when both the key and the cx are set.
+
+**How sources are combined.**
+- Sources are asked in order. Each has its own 25 s budget, and a crash or bad reply is that source's error only (tested).
+- Once a picture tied to the exact barcode is accepted, lower-priority sources are not asked (tested). Otherwise the best accepted picture across sources wins.
+- At most 3 downloads per source and 6 per product.
+- The search clients use the system proxy and follow redirects only to https on the same host, at most 3.
+
+**Query and ranking.**
+- The query text is "<barcode> <name>", or "<name> <category>" when there is no usable barcode.
+- Candidates are refused outright when:
+  - their title or page contains logo / banner / icon / vector / clipart / wallpaper / illustration / cartoon / recipe / poster / advert;
+  - they are smaller than 200 px, or longer than 3:1;
+  - they have neither barcode evidence nor half of the name words;
+  - they are a web hit whose frame is not mostly white (white border < 0.45).
+- Score weights, in strict priority:
+  - exact barcode: 100;
+  - name/brand word overlap: 40 × share;
+  - picture quality: up to 3 in total (2 × white border + size up to 1);
+  - GCC page domain (.bh .ae .sa .kw .qa .om): 0.3, a tie-breaker only.
+- An exact global match therefore beats a partial Gulf match (tested).
+
+**Downloads (SSRF).**
+- Only http/https URLs, on ports 80/443, with no credentials, and no localhost / .local / .internal names.
+- Every resolved address must be public. Refused ranges:
+  - loopback, private, link-local (including 169.254.169.254 metadata), unspecified, broadcast, multicast, documentation;
+  - 0/8, CGNAT 100.64/10, 192.0.0/24, 198.18/15 and 240/4;
+  - on IPv6: unique-local, link-local, IPv4-mapped private and NAT64.
+- The connection is pinned to the checked address, so DNS rebinding cannot change the target.
+- Redirects are followed by hand, at most 3, and each one is checked again.
+- 6 s connect and 15 s request timeouts; an `image/*` content type is required; an 8 MB streaming cap.
+- The body is then decoded by magic bytes (PNG/JPEG/WebP/GIF only). Decoding is limited to 10 000 × 10 000 pixels and 256 MB of memory, and the image must be at least 64 px. The content type alone is never trusted.
+
+**Proxy policy.**
+- Image downloads never use the system proxy (`HTTP(S)_PROXY`, `ALL_PROXY`). Through a forward proxy, the proxy re-resolves the name and the pinned-address guarantee would not hold. Downloads therefore connect directly, and a one-time warning is logged if a system proxy is set.
+- Where only proxied egress is allowed, an administrator can name a trusted proxy with `AMWAPOS_IMAGE_FETCH_PROXY=<url>`. The local address check still runs first, but final destination filtering then also depends on that proxy. This is a documented trust boundary, not a verified invariant.
+- Both behaviours are tested with a fake proxy.
+
+**Storage.**
+- The normalised JPEG (at most 512×512, flattened on white, q85) is stored in `product_images`, keyed by its sha256. Identical pictures are stored once.
+- A picture is deleted only when no product references it. Replace, remove and automatic results all happen in one transaction with the product row.
+- Pictures are synced hub → terminals (`Policy::Hub`). Nothing is hotlinked.
+
+**Backfill.**
+- "Find pictures for products without one" (`products.manage`) queues at most 200 per press (the API allows up to 1000). It takes only active products with no picture that were never searched. It is idempotent and never touches manual pictures.
+- The worker then paces the queue. Press again for the next batch.
+- Nothing is queued on start-up, migration, import or page load.
+
+**Terminals and the picture cache.**
+- The hub writes the picture row before the product row that references it, and terminals apply changes in log order. So a terminal never sees a product whose picture has not arrived (tested on the sync log).
+- The frontend has no sync event, so an unknown picture is simply asked for again after one minute. No realtime channel was added.
+
+**Logging (tracing).**
+- Events: queued (new product, request, backfill); lookup started; source asked or failed; candidate rejected (debug); candidate selected; picture persisted; manual picture won (superseded); outcome and terminal state; abandoned claims recovered.
+- No keys (network errors never include URLs) and no image data are logged.
+
+**Live check** (by hand, never in CI):
+- Run `cargo test -p amwapos-hub --test image_live -- --ignored --nocapture`.
+- It checks that Bing still returns parseable candidates, that Open Food Facts answers by barcode (5449000000996), and that a candidate downloads through the production fetcher.
+
+**Limits.**
+- Single business: access control is by permission (`products.manage`, `settings.manage`), not per tenant.
+- Bing is unofficial and may change or rate-limit; a break only produces bounded retries.
+- Imported products are not searched until the explicit backfill.

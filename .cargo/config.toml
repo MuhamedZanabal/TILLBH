@@ -1,0 +1,7 @@
+# Processes started by cargo (tests, `cargo run` of the dev server used by the
+# end-to-end suite, `tauri dev`) never search the internet for product
+# pictures: tests stay deterministic and offline. Installed builds are not
+# started by cargo, so this does not change the product default (on).
+# Tests that exercise discovery clear or set the variable themselves.
+[env]
+AMWAPOS_IMAGE_SEARCH = "off"

@@ -674,7 +674,10 @@ impl AppCore {
             Some(d) => Some(crate::product_images::decode_b64_image(d)?),
             None => None,
         };
-        let auto = self.features().map(|f| f.is_on("catalog.auto_images")).unwrap_or(false);
+        // Automatic discovery is queued only when it can run; otherwise the
+        // product stays `not_attempted` and the explicit backfill can pick it
+        // up later. Product creation never waits for or depends on a source.
+        let auto = self.auto_images_active();
         let actor = self.actor(&s, None);
         let pid = self.db.write(|tx| {
             let pid = insert_product(tx, &s, &req, "manual")?;
@@ -684,6 +687,7 @@ impl AppCore {
                 }
                 None if auto => {
                     tx.execute("UPDATE products SET auto_image_status='pending' WHERE product_id=?1", [&pid])?;
+                    tracing::info!(product_id = %pid, "product image discovery queued (new product)");
                 }
                 None => {}
             }

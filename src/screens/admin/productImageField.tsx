@@ -4,10 +4,15 @@
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Search, Trash2 } from "lucide-react";
 import { api } from "../../api";
-import type { AutoImageStatus, ImageOverview, ImageSearchSettings, ProductImageState } from "../../api/types";
+import type {
+  AutoImageStatus,
+  DiscoveryAvailability,
+  ImageOverview,
+  ImageSearchSettings,
+  ProductImageState,
+} from "../../api/types";
 import { Banner, Button, Checkbox, Chip, Field, Skeleton, TextInput } from "../../components/ui";
 import { ProductImage } from "../../components/ProductImage";
-import { useFeature } from "../../components/FeatureGate";
 import { useToast } from "../../components/toast";
 import { t } from "../../i18n";
 
@@ -49,6 +54,36 @@ export function autoStatusLabel(s: AutoImageStatus): string {
   }
 }
 
+/** Why automatic discovery cannot run, in one sentence (null when it can). */
+export function discoveryNote(a: DiscoveryAvailability): string | null {
+  switch (a) {
+    case "switched_off":
+      return t("Automatic pictures are switched off in Settings → Product images.");
+    case "disabled_by_administrator":
+      return t("Automatic pictures are disabled on this computer by the administrator (AMWAPOS_IMAGE_SEARCH=off).");
+    case "no_sources":
+      return t("Automatic pictures have no source to search: switch one on in Settings → Product images.");
+    default:
+      return null;
+  }
+}
+
+/** Discovery availability for screens without a product yet (null while loading). */
+function useDiscovery(): DiscoveryAvailability | null {
+  const [a, setA] = useState<DiscoveryAvailability | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.products
+      .imageOverview()
+      .then((o) => live && setA(o.availability))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  return a;
+}
+
 /** New product: holds the chosen picture until the product is saved. */
 export function NewProductImageField({
   name,
@@ -59,7 +94,7 @@ export function NewProductImageField({
   value: string | null;
   onChange: (dataUrl: string | null) => void;
 }) {
-  const auto = useFeature("catalog.auto_images");
+  const discovery = useDiscovery();
   const [error, setError] = useState<string | null>(null);
   return (
     <div className="card card-pad col gap-12" data-testid="product-image-field">
@@ -93,7 +128,7 @@ export function NewProductImageField({
       <div className="tiny muted">
         {value
           ? t("The picture is saved with the product.")
-          : auto
+          : discovery === "active"
             ? t("Without a picture, one is searched for once after saving.")
             : t("PNG, JPEG, WebP or GIF up to 8 MB. It is shown on a white background.")}
       </div>
@@ -103,7 +138,6 @@ export function NewProductImageField({
 
 /** Existing product: every action is saved at once. */
 export function ProductImageField({ productId, name, canEdit }: { productId: string; name: string; canEdit: boolean }) {
-  const auto = useFeature("catalog.auto_images");
   const toast = useToast();
   const [state, setState] = useState<ProductImageState | null>(null);
   const [busy, setBusy] = useState<null | "upload" | "remove" | "find">(null);
@@ -157,6 +191,8 @@ export function ProductImageField({ productId, name, canEdit }: { productId: str
     );
   }
   const has = !!state.image_hash;
+  const auto = state.discovery === "active";
+  const why = has ? null : discoveryNote(state.discovery);
   return (
     <div className="card card-pad col gap-12" data-testid="product-image-field">
       <div className="row">
@@ -213,6 +249,7 @@ export function ProductImageField({ productId, name, canEdit }: { productId: str
       {!has || state.image_source === "automatic" ? (
         <div className="tiny muted" data-testid="auto-image-status">
           {autoStatusLabel(state.auto_image_status)}
+          {why ? ` · ${why}` : ""}
         </div>
       ) : null}
     </div>
@@ -255,7 +292,6 @@ function PickButton({
 /** Settings → Product images: sources, market, counts and the one-off backfill. */
 export function ProductImageSettings({ canManage }: { canManage: boolean }) {
   const toast = useToast();
-  const auto = useFeature("catalog.auto_images");
   const [ov, setOv] = useState<ImageOverview | null>(null);
   const [cfg, setCfg] = useState<ImageSearchSettings | null>(null);
   const [key, setKey] = useState("");
@@ -283,6 +319,8 @@ export function ProductImageSettings({ canManage }: { canManage: boolean }) {
   };
   if (!ov || !cfg) return error ? <Banner tone="danger">{error}</Banner> : <Skeleton />;
   const c = ov.counts;
+  const auto = ov.availability === "active";
+  const googlePartial = cfg.google && !ov.google_ready;
   const waiting = (c.pending ?? 0) + (c.processing ?? 0);
   return (
     <div className="card card-pad col gap-16" data-testid="image-settings">
@@ -294,11 +332,33 @@ export function ProductImageSettings({ canManage }: { canManage: boolean }) {
           )}
         </div>
       </div>
-      {!auto ? (
-        <Banner tone="info">
-          {t("Automatic search is off. Switch on “Find product images automatically” in Settings → Features.")}
-        </Banner>
-      ) : null}
+      <div data-testid="discovery-status" data-availability={ov.availability}>
+        {auto ? (
+          <Banner tone="success" title={t("Automatic pictures are on")}>
+            {t("New products saved without a picture get one searched for once, in this order: {0}.", sourceList(ov))}
+          </Banner>
+        ) : (
+          <Banner
+            tone={ov.availability === "switched_off" ? "info" : "warning"}
+            title={t("Automatic pictures are not running")}
+          >
+            {discoveryNote(ov.availability)}
+          </Banner>
+        )}
+        {googlePartial ? (
+          <Banner tone="warning">
+            {t(
+              "Google search is switched on but needs both a search engine id and an API key; it is skipped until then.",
+            )}
+          </Banner>
+        ) : null}
+      </div>
+      <Checkbox
+        label={t("Find pictures automatically for new products")}
+        checked={cfg.enabled}
+        disabled={!canManage || ov.environment_disabled}
+        onChange={(v) => setCfg({ ...cfg, enabled: v })}
+      />
       <dl className="kv" data-testid="image-counts">
         <dt>{t("With a picture")}</dt>
         <dd className="num">{ov.with_image}</dd>
@@ -405,6 +465,7 @@ export function ProductImageSettings({ canManage }: { canManage: boolean }) {
             icon={<Search size={16} />}
             loading={busy === "backfill"}
             disabled={!!busy || !auto || ov.never_searched === 0}
+            title={t("Queues up to 200 products that were never searched; press again for the next batch.")}
             onClick={() =>
               run("backfill", async () => {
                 const r = await api.products.imageBackfill(200);
@@ -418,4 +479,12 @@ export function ProductImageSettings({ canManage }: { canManage: boolean }) {
       ) : null}
     </div>
   );
+}
+
+function sourceList(ov: ImageOverview): string {
+  const names: string[] = [];
+  if (ov.sources.open_food_facts) names.push(t("Open Food Facts (by barcode)"));
+  if (ov.sources.bing) names.push(t("Bing image search (no key needed)"));
+  if (ov.sources.google) names.push(t("Google Programmable Search (needs a key)"));
+  return names.join(" → ");
 }

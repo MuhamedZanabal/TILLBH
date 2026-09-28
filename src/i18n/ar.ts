@@ -3293,7 +3293,6 @@ export const AR: Record<string, string> = {
   "Blocks {0}–{1}: enter a range between 1 and 9999, lowest first.":
     "المجمعات {0}–{1}: أدخل نطاقاً بين 1 و9999، الأصغر أولاً.",
   "Blocks {0}–{1} ({2}) overlap blocks {3}–{4} ({5}).": "المجمعات {0}–{1} ({2}) تتداخل مع المجمعات {3}–{4} ({5}).",
-  "Find product images automatically": "البحث عن صور المنتجات تلقائياً",
   "Choose a PNG, JPEG, WebP or GIF picture.": "اختر صورة بصيغة PNG أو JPEG أو WebP أو GIF.",
   "The picture is larger than 8 MB.": "حجم الصورة أكبر من 8 ميغابايت.",
   "The picture could not be read.": "تعذّرت قراءة الصورة.",
@@ -3320,8 +3319,6 @@ export const AR: Record<string, string> = {
   "Product images": "صور المنتجات",
   "Pictures are stored on this computer and shown only from there. An automatic search runs at most once per product, for new products without a picture, and never while the till is loading a screen.":
     "تُحفظ الصور على هذا الجهاز وتُعرض منه فقط. يعمل البحث التلقائي مرة واحدة على الأكثر لكل منتج، للمنتجات الجديدة التي لا صورة لها، ولا يعمل أبداً أثناء تحميل شاشة الكاشير.",
-  "Automatic search is off. Switch on “Find product images automatically” in Settings → Features.":
-    "البحث التلقائي متوقف. فعّل «البحث عن صور المنتجات تلقائياً» من الإعدادات ← الميزات.",
   "With a picture": "لها صورة",
   "Never searched": "لم يُبحث عنها",
   "Waiting or searching": "بانتظار البحث أو قيد البحث",
@@ -3339,8 +3336,6 @@ export const AR: Record<string, string> = {
   "Remove API key": "إزالة مفتاح API",
   "{0} products queued for a picture search": "أُضيف {0} منتجاً إلى انتظار البحث عن صورة",
   "Find pictures for products without one": "البحث عن صور للمنتجات التي بلا صورة",
-  "Looks once for a white-background photo of each new product by barcode and name, and stores it on this computer. A picture you upload always wins. Sources are chosen in Settings → Product images.":
-    "يبحث مرة واحدة عن صورة بخلفية بيضاء لكل منتج جديد بالباركود والاسم ويحفظها على هذا الجهاز. الصورة التي ترفعها أنت لها الأولوية دائماً. تُختار المصادر من الإعدادات ← صور المنتجات.",
   "This product already has an image. Remove it first to search again.":
     "لهذا المنتج صورة بالفعل. أزلها أولاً للبحث من جديد.",
   "Ask for at most 60 images at a time.": "اطلب 60 صورة على الأكثر في كل مرة.",
@@ -3354,4 +3349,21 @@ export const AR: Record<string, string> = {
   "The search engine id has characters it cannot contain.": "يحتوي معرّف محرك البحث على أحرف غير مسموحة.",
   "The search language must be English or Arabic.": "يجب أن تكون لغة البحث الإنجليزية أو العربية.",
   "The image is too small (at least 64×64 pixels).": "الصورة صغيرة جداً (64×64 بكسل على الأقل).",
+  "Automatic pictures are disabled on this computer by the administrator (AMWAPOS_IMAGE_SEARCH=off).":
+    "الصور التلقائية معطّلة على هذا الجهاز من قِبل المسؤول (AMWAPOS_IMAGE_SEARCH=off).",
+  "Automatic pictures are not running": "الصور التلقائية لا تعمل",
+  "Automatic pictures are on": "الصور التلقائية مفعّلة",
+  "Automatic pictures are switched off in Settings → Product images.":
+    "الصور التلقائية متوقفة من الإعدادات ← صور المنتجات.",
+  "Automatic pictures have no source to search: switch one on in Settings → Product images.":
+    "لا يوجد مصدر للبحث عن الصور التلقائية: فعّل مصدراً من الإعدادات ← صور المنتجات.",
+  "Find pictures automatically for new products": "البحث عن صور المنتجات الجديدة تلقائياً",
+  "Google search is switched on but needs both a search engine id and an API key; it is skipped until then.":
+    "بحث Google مفعّل لكنه يحتاج معرّف محرك البحث ومفتاح API معاً؛ ويُتجاوز حتى ذلك الحين.",
+  "New products saved without a picture get one searched for once, in this order: {0}.":
+    "المنتجات الجديدة المحفوظة بلا صورة يُبحث لها عن صورة مرة واحدة، بهذا الترتيب: {0}.",
+  "Queues up to 200 products that were never searched; press again for the next batch.":
+    "يضيف حتى 200 منتج لم يُبحث عنها إلى الانتظار؛ اضغط مرة أخرى للدفعة التالية.",
+  "Automatic product pictures are switched off. An owner can turn them on in Settings → Product images.":
+    "الصور التلقائية للمنتجات متوقفة. يمكن للمالك تفعيلها من الإعدادات ← صور المنتجات.",
 };

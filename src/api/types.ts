@@ -118,7 +118,6 @@ export interface FeatureFlags {
   "orders.digital": boolean;
   "org.multi_branch": boolean;
   "pwa.companion": boolean;
-  "catalog.auto_images": boolean;
 }
 
 export type FeatureName = keyof FeatureFlags;
@@ -626,9 +625,15 @@ export interface ProductImageState {
   auto_image_status: AutoImageStatus;
   auto_image_attempted_at: string | null;
   auto_image_note: Record<string, unknown> | null;
+  /** Whether automatic discovery can run right now. */
+  discovery: DiscoveryAvailability;
 }
 
+export type DiscoveryAvailability = "active" | "switched_off" | "disabled_by_administrator" | "no_sources";
+
 export interface ImageSearchSettings {
+  /** Find pictures automatically for new products (on by default). */
+  enabled: boolean;
   open_food_facts: boolean;
   bing: boolean;
   google: boolean;
@@ -639,6 +644,12 @@ export interface ImageSearchSettings {
 
 export interface ImageOverview {
   enabled: boolean;
+  availability: DiscoveryAvailability;
+  /** AMWAPOS_IMAGE_SEARCH=off on this computer. */
+  environment_disabled: boolean;
+  /** Google is switched on and has its engine id and key. */
+  google_ready: boolean;
+  sources: { open_food_facts: boolean; bing: boolean; google: boolean };
   counts: Partial<Record<AutoImageStatus, number>>;
   with_image: number;
   never_searched: number;

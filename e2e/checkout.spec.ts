@@ -460,6 +460,16 @@ test("product pictures: upload in the editor, shown in the catalogue and at the 
   await expect(page.getByTestId("product-image-field")).toContainText("Uploaded");
   await shot(page, "40-product-picture");
 
+  // Settings → Product images: on by default, but this computer's administrator switch wins.
+  await page.evaluate(() => (location.hash = "#/admin/settings?section=images"));
+  const status = page.getByTestId("discovery-status");
+  await expect(status).toHaveAttribute("data-availability", "disabled_by_administrator");
+  await expect(status).toContainText("Automatic pictures are not running");
+  await expect(page.getByRole("checkbox", { name: "Find pictures automatically for new products" })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Find pictures automatically for new products" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Find pictures for products without one" })).toBeDisabled();
+  await shot(page, "42-image-settings");
+
   // Catalogue list: the uploaded product has a picture, the others a placeholder.
   await page.goto("/#/admin/products");
   const row = page.getByRole("row", { name: /Picture Test Juice/ });
@@ -467,13 +477,17 @@ test("product pictures: upload in the editor, shown in the catalogue and at the 
   const milk = page.getByRole("row", { name: /Almarai Fresh Milk/ });
   await expect(milk.getByTestId("product-image")).toHaveAttribute("data-state", "placeholder");
 
-  // Remove → placeholder again.
+  // Remove → placeholder again. This server runs with the administrator kill
+  // switch (AMWAPOS_IMAGE_SEARCH=off, set for every cargo-run process), so the
+  // editor says why no automatic search follows and offers none.
   await row.click();
   await page.getByRole("button", { name: "Remove picture" }).click();
   await expect(page.getByTestId("product-image-field").getByTestId("product-image")).toHaveAttribute(
     "data-state",
     "placeholder",
   );
+  await expect(page.getByTestId("auto-image-status")).toContainText("disabled on this computer by the administrator");
+  await expect(page.getByRole("button", { name: "Find picture automatically" })).toHaveCount(0);
   // Put it back for the till check.
   await page.getByTestId("product-image-input").setInputFiles({
     name: "juice.png",

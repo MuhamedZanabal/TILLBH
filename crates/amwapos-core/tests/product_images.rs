@@ -1,5 +1,10 @@
 //! Product images: manual upload / replace / remove, precedence over the
 //! automatic image, and the one-time automatic lookup state machine.
+//!
+//! The workspace's `.cargo/config.toml` sets `AMWAPOS_IMAGE_SEARCH=off` for
+//! every cargo-run process so tests never reach real providers; this binary
+//! clears it to test the product default (the kill switch has its own test
+//! binary, `product_images_kill_switch.rs`).
 mod common;
 
 use std::io::Cursor;
@@ -32,10 +37,17 @@ fn count(e: &Env, sql: &str) -> i64 {
     e.core.db.read(|c| Ok(c.query_row(sql, [], |r| r.get(0))?)).unwrap()
 }
 
-fn features(e: &Env, on: bool) {
-    let mut f = e.core.settings_get(&e.owner_token, "features").unwrap();
-    f["catalog.auto_images"] = json!(on);
-    e.core.settings_save(&e.owner_token, "features", f).unwrap();
+/// A normal installation: no administrator kill switch in the environment.
+fn normal_env() -> Env {
+    std::env::remove_var("AMWAPOS_IMAGE_SEARCH");
+    env()
+}
+
+/// The "Find pictures automatically" setting.
+fn discovery(e: &Env, on: bool) {
+    let mut cfg = e.core.image_search_config().unwrap().0;
+    cfg.enabled = on;
+    e.core.product_image_configure(&e.owner_token, cfg, None).unwrap();
 }
 
 fn create(e: &Env, name: &str, barcode: &str, image: Option<&[u8]>) -> amwapos_core::catalog::ProductDetail {
@@ -68,8 +80,7 @@ fn create(e: &Env, name: &str, barcode: &str, image: Option<&[u8]>) -> amwapos_c
 
 #[test]
 fn manual_image_on_create_replace_remove_and_garbage_collection() {
-    let e = env();
-    features(&e, true);
+    let e = normal_env();
     let red = png(400, 400, [200, 20, 20]);
     let p = create(&e, "Almarai Laban 1L", "6281007031126", Some(&red));
     assert_eq!(p.row.image_source.as_deref(), Some("manual"));
@@ -106,7 +117,7 @@ fn manual_image_on_create_replace_remove_and_garbage_collection() {
 
 #[test]
 fn invalid_uploads_are_refused_and_nothing_is_created() {
-    let e = env();
+    let e = normal_env();
     let before = count(&e, "SELECT COUNT(*) FROM products");
     for bad in [b"<svg xmlns='http://www.w3.org/2000/svg'/>".to_vec(), b"GIF89a-broken".to_vec(), vec![0xFF, 0xD8, 0xFF, 0x00]] {
         let r = e.core.product_create(
@@ -140,11 +151,12 @@ fn invalid_uploads_are_refused_and_nothing_is_created() {
 
 #[test]
 fn automatic_lookup_runs_once_and_its_result_persists() {
-    let e = env();
-    // Off: products are not queued (and legacy/import rows stay not_attempted).
+    let e = normal_env();
+    // Switched off: products are not queued (and legacy/import rows stay not_attempted).
+    discovery(&e, false);
     let off = create(&e, "Before switch", "111", None);
     assert_eq!(off.row.auto_image_status, "not_attempted");
-    features(&e, true);
+    discovery(&e, true);
     let p = create(&e, "Nido Milk Powder 900g", "7613035123456", None);
     assert_eq!(p.row.auto_image_status, "pending");
     // Claim: exactly one worker gets it; reading or editing never triggers anything.
@@ -183,8 +195,7 @@ fn automatic_lookup_runs_once_and_its_result_persists() {
 
 #[test]
 fn not_found_and_failures_are_terminal_and_transient_errors_retry_boundedly() {
-    let e = env();
-    features(&e, true);
+    let e = normal_env();
     let a = create(&e, "Unknown thing", "999000111", None);
     let j = e.core.auto_image_claim().unwrap().unwrap();
     assert_eq!(
@@ -215,8 +226,7 @@ fn not_found_and_failures_are_terminal_and_transient_errors_retry_boundedly() {
 
 #[test]
 fn a_manual_upload_during_a_lookup_wins_and_a_stale_claim_is_recovered() {
-    let e = env();
-    features(&e, true);
+    let e = normal_env();
     let p = create(&e, "Race", "999000333", None);
     let j = e.core.auto_image_claim().unwrap().unwrap();
     e.core.product_image_upload(&e.owner_token, &p.row.product_id, &b64(&png(120, 120, [1, 2, 3]))).unwrap();
@@ -230,29 +240,47 @@ fn a_manual_upload_during_a_lookup_wins_and_a_stale_claim_is_recovered() {
     let q = create(&e, "Abandoned", "999000444", None);
     let _ = e.core.auto_image_claim().unwrap().unwrap();
     assert!(e.core.auto_image_claim().unwrap().is_none());
-    e.core
-        .db
-        .write(|c| {
-            Ok(c.execute(
-                "UPDATE products SET auto_image_attempted_at='2000-01-01T00:00:00.000Z' WHERE product_id=?1",
-                [&q.row.product_id],
-            )?)
-        })
-        .unwrap();
+    let abandon = |e: &Env| {
+        e.core
+            .db
+            .write(|c| {
+                Ok(c.execute(
+                    "UPDATE products SET auto_image_attempted_at='2000-01-01T00:00:00.000Z' WHERE product_id=?1",
+                    [&q.row.product_id],
+                )?)
+            })
+            .unwrap()
+    };
+    abandon(&e);
+    // Recovered as a transient failure: back in the queue after a delay …
+    assert!(e.core.auto_image_claim().unwrap().is_none(), "waits for its retry time");
+    let due = |e: &Env| e.core.db.write(|c| Ok(c.execute("UPDATE products SET auto_image_next_at=NULL", [])?)).unwrap();
+    due(&e);
     assert_eq!(e.core.auto_image_claim().unwrap().unwrap().product_id, q.row.product_id);
+    // … and a lookup that keeps dying ends failed at the cap instead of looping.
+    abandon(&e);
+    assert!(e.core.auto_image_claim().unwrap().is_none(), "recovered, waiting again");
+    due(&e);
+    assert_eq!(e.core.auto_image_claim().unwrap().unwrap().attempt, 3);
+    abandon(&e);
+    assert!(e.core.auto_image_claim().unwrap().is_none());
+    let d = e.core.product_get(&e.owner_token, &q.row.product_id).unwrap();
+    assert_eq!(d.row.auto_image_status, "failed");
 }
 
 #[test]
 fn backfill_is_explicit_bounded_and_idempotent() {
-    let e = env();
-    // Existing products (before the switch) are not searched on their own.
+    let e = normal_env();
+    // Existing products (created while discovery was off, imported, or from
+    // before the upgrade) are not searched on their own.
+    discovery(&e, false);
     for i in 0..5 {
         create(&e, &format!("Legacy {i}"), &format!("55500{i}"), None);
     }
     create(&e, "Has picture", "555999", Some(&png(100, 100, [5, 5, 5])));
     let off = e.core.product_image_backfill(&e.owner_token, None).unwrap_err();
-    assert_eq!(off.details.unwrap()["kind"], "feature_disabled", "needs the switch");
-    features(&e, true);
+    assert_eq!(off.details.unwrap()["kind"], "auto_images_off", "needs discovery on");
+    discovery(&e, true);
     assert!(e.core.auto_image_claim().unwrap().is_none(), "switching on alone searches nothing");
     let r = e.core.product_image_backfill(&e.owner_token, Some(3)).unwrap();
     assert_eq!(r["queued"], 3);
@@ -268,7 +296,7 @@ fn backfill_is_explicit_bounded_and_idempotent() {
 
 #[test]
 fn search_settings_and_key_stay_on_the_backend() {
-    let e = env();
+    let e = normal_env();
     let cfg = json!({ "open_food_facts": true, "google": true, "google_cx": "abc123:xyz", "region": "BH", "language": "ar" });
     let o = e.core.product_image_configure(&e.owner_token, serde_json::from_value(cfg).unwrap(), Some("AIzaSy-secret-key".into())).unwrap();
     assert_eq!(o["google_key_set"], true);
@@ -285,7 +313,7 @@ fn search_settings_and_key_stay_on_the_backend() {
 
 #[test]
 fn product_rows_pos_search_and_cart_carry_the_image_reference() {
-    let e = env();
+    let e = normal_env();
     let p = create(&e, "Galaxy 36g", "5000159461122", Some(&png(150, 150, [90, 40, 10])));
     let h = p.row.image_hash.clone().unwrap();
     let (_u, ct) = e.user("Cashier", ROLE_CASHIER, "2580");
@@ -299,4 +327,116 @@ fn product_rows_pos_search_and_cart_carry_the_image_reference() {
     assert!(q.row.image_hash.is_none());
     let cart = e.core.pos_scan(&ct, "5000159461123", Some(1000)).unwrap();
     assert!(cart.cart.lines.iter().any(|l| l.name == "Plain" && l.image_hash.is_none()));
+}
+
+#[test]
+fn automatic_discovery_is_on_by_default_for_a_new_installation() {
+    let e = normal_env();
+    let o = e.core.product_image_overview(&e.owner_token).unwrap();
+    assert_eq!((o["enabled"].as_bool(), o["availability"].as_str()), (Some(true), Some("active")), "{o}");
+    assert_eq!(o["sources"], json!({ "open_food_facts": true, "bing": true, "google": false }));
+    // New product without a picture: queued for its one lookup, straight away.
+    let p = create(&e, "Rani Float Mango 240ml", "5449000000996", None);
+    assert_eq!(p.row.auto_image_status, "pending");
+    let st = e.core.product_image_state(&e.owner_token, &p.row.product_id).unwrap();
+    assert_eq!(st.discovery, "active");
+    // With a picture: the picture is authoritative, nothing is queued.
+    let q = create(&e, "Rani Float Peach 240ml", "5449000000997", Some(&png(120, 120, [240, 120, 0])));
+    assert_eq!((q.row.auto_image_status.as_str(), q.row.image_source.as_deref()), ("skipped", Some("manual")));
+    // Creating the product never waited for, or depended on, any source.
+    assert_eq!(e.core.auto_image_claim().unwrap().unwrap().product_id, p.row.product_id);
+}
+
+#[test]
+fn switched_off_discovery_queues_and_claims_nothing_but_manual_pictures_still_work() {
+    let e = normal_env();
+    let queued = create(&e, "Queued before", "6000000000017", None);
+    assert_eq!(queued.row.auto_image_status, "pending");
+    discovery(&e, false);
+    let o = e.core.product_image_overview(&e.owner_token).unwrap();
+    assert_eq!(o["availability"], "switched_off");
+    let p = create(&e, "Created while off", "6000000000024", None);
+    assert_eq!(p.row.auto_image_status, "not_attempted");
+    assert!(e.core.auto_image_claim().unwrap().is_none(), "nothing is searched while off, not even queued work");
+    let err = e.core.product_image_find(&e.owner_token, &p.row.product_id).unwrap_err();
+    assert_eq!(err.details.unwrap()["kind"], "auto_images_off");
+    // Manual pictures are independent of discovery.
+    let st = e.core.product_image_upload(&e.owner_token, &p.row.product_id, &b64(&png(100, 100, [3, 90, 3]))).unwrap();
+    assert_eq!((st.image_source.as_deref(), st.discovery), (Some("manual"), "switched_off"));
+    // Back on: the queued product continues; the one created while off waits for an explicit backfill.
+    discovery(&e, true);
+    assert_eq!(e.core.auto_image_claim().unwrap().unwrap().product_id, queued.row.product_id);
+    assert!(e.core.auto_image_claim().unwrap().is_none());
+}
+
+#[test]
+fn no_usable_source_means_no_discovery() {
+    let e = normal_env();
+    let cfg = json!({ "enabled": true, "open_food_facts": false, "bing": false, "google": true, "google_cx": "", "region": "bh", "language": "en" });
+    let o = e.core.product_image_configure(&e.owner_token, serde_json::from_value(cfg).unwrap(), None).unwrap();
+    assert_eq!((o["availability"].as_str(), o["google_ready"].as_bool()), (Some("no_sources"), Some(false)), "{o}");
+    let p = create(&e, "Nothing to ask", "6000000000031", None);
+    assert_eq!(p.row.auto_image_status, "not_attempted");
+    // Google with its id and key counts as a source.
+    let cfg = json!({ "enabled": true, "open_food_facts": false, "bing": false, "google": true, "google_cx": "abc:1", "region": "bh", "language": "en" });
+    let o = e.core.product_image_configure(&e.owner_token, serde_json::from_value(cfg).unwrap(), Some("k-123".into())).unwrap();
+    assert_eq!(o["availability"], "active");
+}
+
+#[test]
+fn terminal_lifecycles_survive_restarts_reads_and_edits() {
+    let common::Env { dir, core, owner_token, .. } = normal_env();
+    let e = common::Env { dir, core, owner_id: String::new(), owner_token };
+    let done: Vec<String> = ["found", "not_found", "failed", "skipped"]
+        .iter()
+        .enumerate()
+        .map(|(i, st)| {
+            let p = create(&e, &format!("Terminal {st}"), &format!("600000000100{i}"), None);
+            e.core
+                .db
+                .write(|c| {
+                    Ok(c.execute("UPDATE products SET auto_image_status=?2 WHERE product_id=?1", [&p.row.product_id, &st.to_string()])?)
+                })
+                .unwrap();
+            p.row.product_id
+        })
+        .collect();
+    assert!(e.core.auto_image_claim().unwrap().is_none());
+    // Reads and edits never restart a lifecycle.
+    for pid in &done {
+        let d = e.core.product_get(&e.owner_token, pid).unwrap();
+        e.core.product_image_state(&e.owner_token, pid).unwrap();
+        e.core
+            .product_update(
+                &e.owner_token,
+                serde_json::from_value(json!({ "product_id": pid, "expected_version": d.version,
+                    "name": format!("{} (renamed)", d.row.name), "tax_rule_id": e.tax_rule() }))
+                .unwrap(),
+            )
+            .unwrap();
+    }
+    e.core.products_search(&e.owner_token, Default::default()).unwrap();
+    assert!(e.core.auto_image_claim().unwrap().is_none());
+    // Restart: the states are persisted, nothing is due.
+    let dir = e.dir;
+    drop(e.core);
+    let core =
+        amwapos_core::service::AppCore::open(dir.path(), std::sync::Arc::new(amwapos_core::service::MemorySecretStore::default())).unwrap();
+    assert!(core.auto_image_claim().unwrap().is_none(), "a restart never restarts a finished lifecycle");
+}
+
+#[test]
+fn a_stored_picture_reaches_the_sync_log_before_the_product_that_uses_it() {
+    // Terminals apply hub changes in log order, so the picture row always
+    // arrives before (or with) the product row that points at it.
+    let e = normal_env();
+    let p = create(&e, "Synced", "6000000000048", None);
+    let j = e.core.auto_image_claim().unwrap().unwrap();
+    let img = normalize(&png(300, 300, [0, 0, 120])).unwrap();
+    let h = img.hash.clone();
+    e.core.auto_image_complete(&j.product_id, AutoOutcome::Found { image: img, note: json!({}) }).unwrap();
+    let seq = |sql: String| count(&e, &sql);
+    let image_seq = seq(format!("SELECT MAX(seq) FROM sync_outbox WHERE table_name='product_images' AND row_pk LIKE '%{h}%'"));
+    let product_seq = seq(format!("SELECT MAX(seq) FROM sync_outbox WHERE table_name='products' AND row_pk LIKE '%{}%'", p.row.product_id));
+    assert!(image_seq > 0 && product_seq > image_seq, "image {image_seq} before product {product_seq}");
 }

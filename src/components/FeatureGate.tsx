@@ -46,7 +46,6 @@ export const FEATURE_LABELS: Record<FeatureName, () => string> = {
   "orders.digital": () => t("Digital orders (phone, WhatsApp, web)"),
   "org.multi_branch": () => t("Multiple branches"),
   "pwa.companion": () => t("Owner phone view"),
-  "catalog.auto_images": () => t("Find product images automatically"),
 };
 
 /** Shows `children` only when the feature is on; otherwise a "not enabled" notice. */

@@ -1,4 +1,4 @@
-//! Product image worker (feature `catalog.auto_images`).
+//! Product image worker (on by default; see `AppCore::auto_image_availability`).
 //!
 //! Runs on the hub (or a standalone till), never on a terminal: terminals get
 //! the stored image with the product rows. One product at a time, a few
@@ -7,7 +7,11 @@
 //! normalize them in the core, keep the best one or none, and report the
 //! outcome. A lookup runs once per product; failures never touch selling.
 //!
-//! Sources (see `ImageSearchSettings`):
+//! Sources, asked in this priority order (see `ImageSearchSettings`). Each is
+//! isolated: its own timeout, a crash or bad reply is that source's error
+//! only, and the next source is still asked. As soon as a source yields an
+//! accepted picture tied to the exact barcode, lower-priority sources are not
+//! asked at all; otherwise the best accepted picture across sources wins.
 //! * Open Food Facts: exact barcode lookup (no key). The strongest evidence.
 //! * Bing image results page (no key), the approach of `bing-image-urls`:
 //!   barcode + name, large white product photographs, configured market.
@@ -35,7 +39,11 @@ const IDLE: Duration = Duration::from_secs(30);
 /// Whole lookup budget for one product.
 const JOB_TIMEOUT: Duration = Duration::from_secs(90);
 /// Candidates downloaded and checked per product at most.
-const MAX_DOWNLOADS: usize = 4;
+const MAX_DOWNLOADS: usize = 6;
+/// … and per source.
+const MAX_DOWNLOADS_PER_SOURCE: usize = 3;
+/// One source's search budget.
+const PROVIDER_TIMEOUT: Duration = Duration::from_secs(25);
 
 /// A search hit before download.
 #[derive(Debug, Clone)]
@@ -191,19 +199,33 @@ fn html_unescape(s: &str) -> String {
     s.replace("&quot;", "\"").replace("&#39;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 }
 
+/// An absolute http(s) URL, or None (data:, javascript:, relative, junk).
+fn web_url(u: &str) -> Option<String> {
+    let url = reqwest::Url::parse(u.trim()).ok()?;
+    (matches!(url.scheme(), "http" | "https") && url.host_str().is_some()).then(|| url.to_string())
+}
+
 /// Parse the results fragment: every `m="{...}"` attribute with a `murl`.
-pub fn parse_bing(html: &str, barcode: Option<&str>) -> Vec<Candidate> {
+///
+/// A page with result markup from which nothing can be read is an error (the
+/// unofficial format probably changed), never "no results": that keeps a
+/// parser break from marking every product `not_found`. Entries without a
+/// usable http(s) image address are skipped, duplicates are dropped, and a
+/// page without any result markup is a clean "no results".
+pub fn parse_bing(html: &str, barcode: Option<&str>) -> Result<Vec<Candidate>, SearchError> {
     let mut out: Vec<Candidate> = vec![];
+    let mut markers = 0usize;
     for part in html.split(" m=\"").skip(1) {
+        markers += 1;
         let Some(end) = part.find('"') else { continue };
         let Ok(v) = serde_json::from_str::<Value>(&html_unescape(&part[..end])) else { continue };
-        let Some(murl) = v.get("murl").and_then(|u| u.as_str()) else { continue };
+        let Some(murl) = v.get("murl").and_then(|u| u.as_str()).and_then(web_url) else { continue };
         if out.iter().any(|c| c.url == murl) {
             continue;
         }
         let title = v.get("t").and_then(|t| t.as_str()).unwrap_or("");
         let desc = v.get("desc").and_then(|t| t.as_str()).unwrap_or("");
-        let page = v.get("purl").and_then(|t| t.as_str()).map(String::from);
+        let page = v.get("purl").and_then(|t| t.as_str()).and_then(web_url);
         let text = format!("{title} {desc} {murl}");
         out.push(Candidate {
             barcode_match: barcode.is_some_and(|b| text.contains(b) || page.as_deref().is_some_and(|p| p.contains(b))),
@@ -211,14 +233,18 @@ pub fn parse_bing(html: &str, barcode: Option<&str>) -> Vec<Candidate> {
             page_url: page,
             width: None,
             height: None,
-            url: murl.to_string(),
+            url: murl,
             provider: "bing_images",
         });
         if out.len() >= 30 {
             break;
         }
     }
-    out
+    let result_markup = markers > 0 || html.contains("iusc") || html.contains("imgpt");
+    if out.is_empty() && result_markup {
+        return Err(SearchError::transient("Bing results could not be read (the page format may have changed)"));
+    }
+    Ok(out)
 }
 
 #[async_trait]
@@ -252,7 +278,7 @@ impl ImageSearchProvider for BingImages {
             return Err(SearchError::transient(format!("Bing images answered {status}")));
         }
         let body = resp.text().await.map_err(|_| SearchError::transient("Bing images sent an unreadable reply"))?;
-        Ok(parse_bing(&body, q.barcode.as_deref()))
+        parse_bing(&body, q.barcode.as_deref())
     }
 }
 
@@ -275,8 +301,10 @@ impl ImageSearchProvider for GoogleImages {
         "google_images"
     }
     async fn search(&self, q: &SearchQuery) -> Result<Vec<Candidate>, SearchError> {
+        // `gl` boosts results for the market; no `cr` (that would restrict
+        // results to documents from that country and hide an exact match
+        // published elsewhere).
         let region = q.region.to_ascii_lowercase();
-        let cr = format!("country{}", region.to_ascii_uppercase());
         let params = [
             ("key", self.key.as_str()),
             ("cx", self.cx.as_str()),
@@ -288,7 +316,6 @@ impl ImageSearchProvider for GoogleImages {
             ("imgDominantColor", "white"),
             ("safe", "active"),
             ("gl", region.as_str()),
-            ("cr", cr.as_str()),
             ("hl", q.language.as_str()),
         ];
         let resp = self
@@ -330,8 +357,19 @@ impl ImageSearchProvider for GoogleImages {
     }
 }
 
+/// Client for the search sources (fixed, configured hosts). Redirects are
+/// followed only to https on the same host, at most 3, so a source can never
+/// bounce a request somewhere else. The system proxy, if any, is used.
 fn api_client() -> reqwest::Client {
     reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::custom(|a| {
+            let same = a.previous().first().and_then(|u| u.host_str()) == a.url().host_str();
+            if a.previous().len() > 3 || !same || a.url().scheme() != "https" {
+                a.stop()
+            } else {
+                a.follow()
+            }
+        }))
         .timeout(Duration::from_secs(15))
         .connect_timeout(Duration::from_secs(6))
         .user_agent("AMWAPOS/0.1 (product image lookup)")
@@ -360,6 +398,15 @@ fn tokens(s: &str) -> Vec<String> {
     s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|t| t.chars().count() >= 3).map(String::from).collect()
 }
 
+/// Ranking weights, in strict priority: identity first (barcode, then name /
+/// brand words), then picture quality (size, white packshot background, at
+/// most 3 points together), then the GCC market (a small tie-breaker). With
+/// these weights a better name match always beats a better picture or a
+/// regional site, and an exact barcode beats everything.
+pub const W_BARCODE: f32 = 100.0;
+pub const W_NAME: f32 = 40.0;
+pub const W_GCC: f32 = 0.3;
+
 /// Text relevance of a hit before download, or None to skip it. Without the
 /// exact barcode, at least half of the product-name words must appear.
 pub fn text_score(c: &Candidate, q: &SearchQuery) -> Option<f32> {
@@ -377,11 +424,11 @@ pub fn text_score(c: &Candidate, q: &SearchQuery) -> Option<f32> {
     if !c.barcode_match && overlap < 0.5 {
         return None;
     }
-    let mut s = if c.barcode_match { 3.0 } else { 0.0 } + 2.0 * overlap;
+    let mut s = if c.barcode_match { W_BARCODE } else { 0.0 } + W_NAME * overlap;
     if let Some(page) = &c.page_url {
         if let Ok(u) = reqwest::Url::parse(page) {
             if u.host_str().is_some_and(|h| GCC_TLDS.iter().any(|t| h.ends_with(t))) {
-                s += 0.3;
+                s += W_GCC;
             }
         }
     }
@@ -424,15 +471,57 @@ fn fe(transient: bool, m: impl Into<String>) -> FetchError {
 /// unique-local or mapped-private addresses), the connection is pinned to the
 /// checked address, redirects are followed by hand (at most 3, each checked
 /// again), with timeouts, an image content type and a hard size cap.
+///
+/// Proxies: image downloads never use the system proxy (`HTTP(S)_PROXY`),
+/// because behind a proxy the proxy resolves the host name again and the
+/// address check above would no longer bind the real destination. Where the
+/// network allows only proxied traffic, an administrator can name a proxy
+/// they trust with `AMWAPOS_IMAGE_FETCH_PROXY`; destination filtering then
+/// also depends on that proxy (the local check still runs first).
 pub struct SafeFetcher {
     allow_private: bool,
     max_bytes: usize,
+    proxy: ProxyPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProxyPolicy {
+    /// Connect straight to the checked address (default).
+    Direct,
+    /// Send downloads through this explicitly trusted proxy.
+    Trusted(String),
+}
+
+impl ProxyPolicy {
+    /// `AMWAPOS_IMAGE_FETCH_PROXY=<url>` → trusted proxy; otherwise direct.
+    pub fn from_environment() -> Self {
+        match std::env::var("AMWAPOS_IMAGE_FETCH_PROXY") {
+            Ok(u) if !u.trim().is_empty() => ProxyPolicy::Trusted(u.trim().to_string()),
+            _ => ProxyPolicy::Direct,
+        }
+    }
 }
 
 impl Default for SafeFetcher {
     fn default() -> Self {
-        Self { allow_private: false, max_bytes: MAX_SOURCE_BYTES }
+        let proxy = ProxyPolicy::from_environment();
+        if proxy == ProxyPolicy::Direct && system_proxy_configured() {
+            static ONCE: std::sync::Once = std::sync::Once::new();
+            ONCE.call_once(|| {
+                tracing::warn!(
+                    "a system proxy is configured but product image downloads connect directly; \
+                     set AMWAPOS_IMAGE_FETCH_PROXY to a trusted proxy if direct connections are blocked"
+                )
+            });
+        }
+        Self { allow_private: false, max_bytes: MAX_SOURCE_BYTES, proxy }
     }
+}
+
+fn system_proxy_configured() -> bool {
+    ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"]
+        .iter()
+        .any(|k| std::env::var(k).is_ok_and(|v| !v.trim().is_empty()))
 }
 
 pub fn is_public_ip(ip: IpAddr) -> bool {
@@ -473,7 +562,16 @@ fn is_public_v4(ip: Ipv4Addr) -> bool {
 impl SafeFetcher {
     /// Tests only: allow a local fixture server.
     pub fn allowing_private_for_tests() -> Self {
-        Self { allow_private: true, max_bytes: MAX_SOURCE_BYTES }
+        Self { allow_private: true, max_bytes: MAX_SOURCE_BYTES, proxy: ProxyPolicy::Direct }
+    }
+
+    pub fn with_proxy(mut self, proxy: ProxyPolicy) -> Self {
+        self.proxy = proxy;
+        self
+    }
+
+    pub fn proxy_policy(&self) -> &ProxyPolicy {
+        &self.proxy
     }
 
     /// Check a URL and resolve it to one allowed address.
@@ -524,11 +622,19 @@ impl SafeFetcher {
                 .timeout(Duration::from_secs(15))
                 .connect_timeout(Duration::from_secs(6))
                 .user_agent("AMWAPOS/0.1 (product image lookup)");
-            if host.parse::<IpAddr>().is_err() {
-                b = b.resolve(&host, addr);
-            }
-            if self.allow_private {
-                b = b.no_proxy();
+            match &self.proxy {
+                ProxyPolicy::Direct => {
+                    // Never the system proxy; pinned to the address checked above,
+                    // so a second DNS answer (rebinding) cannot change the target.
+                    b = b.no_proxy();
+                    if host.parse::<IpAddr>().is_err() {
+                        b = b.resolve(&host, addr);
+                    }
+                }
+                ProxyPolicy::Trusted(p) => {
+                    let proxy = reqwest::Proxy::all(p).map_err(|_| fe(false, "the configured image proxy is not a valid address"))?;
+                    b = b.proxy(proxy);
+                }
             }
             let client = b.build().map_err(|_| fe(true, "could not prepare the download"))?;
             let resp = client.get(url.clone()).header(reqwest::header::ACCEPT, "image/*").send().await.map_err(|e| fe(true, net(&e)))?;
@@ -571,63 +677,104 @@ impl SafeFetcher {
 
 // ---------------------------------------------------------------- lookup
 
-/// Search every provider, download the best candidates, keep the best image.
-pub async fn lookup(providers: &[Arc<dyn ImageSearchProvider>], fetcher: &SafeFetcher, q: &SearchQuery) -> AutoOutcome {
-    let mut candidates: Vec<(f32, Candidate)> = vec![];
-    let mut errors: Vec<String> = vec![];
-    let mut transient = false;
-    for p in providers {
-        match p.search(q).await {
-            Ok(hits) => {
-                for c in hits {
-                    if let Some(s) = text_score(&c, q) {
-                        candidates.push((s, c));
-                    }
-                }
-            }
-            Err(e) => {
-                transient |= e.transient;
-                errors.push(format!("{}: {}", p.name(), e.message));
-            }
+/// One source's search, isolated: its own time budget, and a panic inside
+/// the source becomes that source's error instead of stopping the worker.
+async fn search_isolated(p: Arc<dyn ImageSearchProvider>, q: SearchQuery) -> Result<Vec<Candidate>, SearchError> {
+    let name = p.name();
+    let task = tokio::spawn(async move { p.search(&q).await });
+    let abort = task.abort_handle();
+    match tokio::time::timeout(PROVIDER_TIMEOUT, task).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(_)) => Err(SearchError::transient(format!("{name} stopped unexpectedly"))),
+        Err(_) => {
+            abort.abort();
+            Err(SearchError::transient(format!("{name} took too long")))
         }
     }
-    candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
+}
+
+/// Ask the sources in priority order, download and check the best candidates
+/// of each, keep the best accepted picture. Stops early once a picture tied
+/// to the exact barcode is accepted. Only a confident answer from every
+/// source ends in `NotFound`; a source or download failure means `Transient`
+/// (retried, bounded) so an outage never marks a product as having no picture.
+pub async fn lookup(providers: &[Arc<dyn ImageSearchProvider>], fetcher: &SafeFetcher, q: &SearchQuery) -> AutoOutcome {
+    let mut errors: Vec<String> = vec![];
+    let mut transient = false;
     let mut best: Option<(f32, Normalized, Candidate)> = None;
-    let mut rejected = 0usize;
-    for (ts, c) in candidates.into_iter().take(MAX_DOWNLOADS) {
-        let bytes = match fetcher.fetch(&c.url).await {
-            Ok(b) => b,
+    let (mut rejected, mut downloads) = (0usize, 0usize);
+    let mut asked: Vec<&'static str> = vec![];
+    for p in providers {
+        let name = p.name();
+        asked.push(name);
+        tracing::debug!(provider = name, query = %q.text, "image source asked");
+        let hits = match search_isolated(p.clone(), q.clone()).await {
+            Ok(h) => h,
             Err(e) => {
-                rejected += 1;
-                tracing::debug!(provider = c.provider, error = %e.message, "candidate image not downloaded");
+                tracing::warn!(provider = name, transient = e.transient, error = %e.message, "image source failed");
+                transient |= e.transient;
+                errors.push(format!("{name}: {}", e.message));
                 continue;
             }
         };
-        let n = match tokio::task::spawn_blocking(move || normalize(&bytes)).await {
-            Ok(Ok(n)) => n,
-            _ => {
-                rejected += 1;
-                continue;
+        let mut scored: Vec<(f32, Candidate)> = hits.into_iter().filter_map(|c| text_score(&c, q).map(|s| (s, c))).collect();
+        if scored.is_empty() {
+            tracing::debug!(provider = name, "image source: no usable candidate");
+            continue;
+        }
+        scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+        for (ts, c) in scored.into_iter().take(MAX_DOWNLOADS_PER_SOURCE) {
+            if downloads >= MAX_DOWNLOADS {
+                break;
             }
-        };
-        match image_score(&c, ts, &n) {
-            Some(s) if best.as_ref().is_none_or(|b| s > b.0) => best = Some((s, n, c)),
-            Some(_) => {}
-            None => rejected += 1,
+            downloads += 1;
+            let bytes = match fetcher.fetch(&c.url).await {
+                Ok(b) => b,
+                Err(e) => {
+                    rejected += 1;
+                    transient |= e.transient;
+                    tracing::debug!(provider = c.provider, transient = e.transient, error = %e.message, "candidate rejected: download");
+                    continue;
+                }
+            };
+            let n = match tokio::task::spawn_blocking(move || normalize(&bytes)).await {
+                Ok(Ok(n)) => n,
+                _ => {
+                    rejected += 1;
+                    tracing::debug!(provider = c.provider, "candidate rejected: not a readable image");
+                    continue;
+                }
+            };
+            match image_score(&c, ts, &n) {
+                Some(s) if best.as_ref().is_none_or(|b| s > b.0) => best = Some((s, n, c)),
+                Some(_) => {}
+                None => {
+                    rejected += 1;
+                    tracing::debug!(provider = c.provider, white = n.white_border, "candidate rejected: not a product picture");
+                }
+            }
+        }
+        if best.as_ref().is_some_and(|b| b.2.barcode_match) {
+            break; // exact identity found: lower-priority sources are not asked
         }
     }
     match best {
-        Some((score, image, c)) => AutoOutcome::Found {
-            note: json!({
-                "provider": c.provider, "source_url": c.url, "source_page": c.page_url, "barcode_match": c.barcode_match,
-                "score": (score * 100.0).round() / 100.0, "white_background": (image.white_border * 100.0).round() / 100.0,
-                "query": q.text, "found_at": amwapos_core::time::now_str(),
-            }),
-            image,
-        },
-        None if transient => AutoOutcome::Transient { note: json!({ "errors": errors, "query": q.text }) },
+        Some((score, image, c)) => {
+            tracing::info!(provider = c.provider, score, barcode_match = c.barcode_match, "image candidate selected");
+            AutoOutcome::Found {
+                note: json!({
+                    "provider": c.provider, "source_url": c.url, "source_page": c.page_url, "barcode_match": c.barcode_match,
+                    "score": (score * 100.0).round() / 100.0, "white_background": (image.white_border * 100.0).round() / 100.0,
+                    "query": q.text, "sources_asked": asked, "found_at": amwapos_core::time::now_str(),
+                }),
+                image,
+            }
+        }
+        None if transient => {
+            AutoOutcome::Transient { note: json!({ "errors": errors, "rejected": rejected, "query": q.text, "sources_asked": asked }) }
+        }
         None => AutoOutcome::NotFound {
-            note: json!({ "reason": "no confident match", "rejected": rejected, "errors": errors, "query": q.text }),
+            note: json!({ "reason": "no confident match", "rejected": rejected, "errors": errors, "query": q.text, "sources_asked": asked }),
         },
     }
 }
@@ -638,7 +785,7 @@ pub fn providers_for(cfg: &ImageSearchSettings, google_key: Option<String>) -> V
     let mut v: Vec<Arc<dyn ImageSearchProvider>> = vec![];
     let off_base = std::env::var("AMWAPOS_OFF_BASE").unwrap_or_else(|_| "https://world.openfoodfacts.org".into());
     let google_base = std::env::var("AMWAPOS_GOOGLE_SEARCH_BASE").unwrap_or_else(|_| "https://www.googleapis.com".into());
-    if std::env::var("AMWAPOS_IMAGE_SEARCH").as_deref() == Ok("off") {
+    if amwapos_core::product_images::search_disabled_by_environment() || !cfg.enabled {
         return v;
     }
     if cfg.open_food_facts {
@@ -667,9 +814,9 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + '
 }
 
 fn may_run(core: &AppCore) -> bool {
-    let on = core.features().map(|f| f.is_on("catalog.auto_images")).unwrap_or(false);
-    // Terminals receive products (and their stored images) from the hub.
-    on && core.device().is_some_and(|d| d.mode != "terminal")
+    // Terminals receive products (and their stored images) from the hub and
+    // never search themselves.
+    core.device().is_some_and(|d| d.mode != "terminal") && core.auto_images_active()
 }
 
 impl ImageWorker {
@@ -677,7 +824,7 @@ impl ImageWorker {
         Arc::new(Self { core, task: Mutex::new(None), poke: Arc::new(Notify::new()) })
     }
 
-    /// Start the worker when the feature is on. Idempotent; restarts a dead task.
+    /// Start the worker when discovery can run. Idempotent; restarts a dead task.
     pub fn ensure(self: &Arc<Self>) {
         let mut g = self.task.lock().unwrap();
         let alive = g.as_ref().map(|h| !h.is_finished()).unwrap_or(false);
@@ -696,13 +843,14 @@ pub async fn process_one(core: &Arc<AppCore>, providers: &[Arc<dyn ImageSearchPr
     let (c, cfg) = (core.clone(), core.image_search_config()?.0);
     let Some(job) = blocking(move || c.auto_image_claim()).await? else { return Ok(false) };
     let q = build_query(&job, &cfg);
+    tracing::info!(product_id = %job.product_id, attempt = job.attempt, sources = providers.len(), "product image lookup started");
     let outcome = match tokio::time::timeout(JOB_TIMEOUT, lookup(providers, fetcher, &q)).await {
         Ok(o) => o,
         Err(_) => AutoOutcome::Transient { note: json!({ "errors": ["the lookup took too long"], "query": q.text }) },
     };
     let (c, pid) = (core.clone(), job.product_id.clone());
     let state = blocking(move || c.auto_image_complete(&pid, outcome)).await?;
-    tracing::info!(product_id = %job.product_id, attempt = job.attempt, state = %state, "product image lookup");
+    tracing::info!(product_id = %job.product_id, attempt = job.attempt, state = %state, "product image lookup finished");
     Ok(true)
 }
 
@@ -816,19 +964,88 @@ mod tests {
         }
     }
 
+    /// One Bing result entry as the page encodes it (HTML-escaped JSON in `m`).
+    fn bing_entry(json: &str) -> String {
+        let esc = json.replace('&', "&amp;").replace('"', "&quot;");
+        format!(r##"<div class="imgpt"><a class="iusc" m="{esc}" href="#">x</a></div>"##)
+    }
+
     #[test]
-    fn bing_results_are_parsed_from_the_escaped_m_attribute() {
-        let html = r##"<div class="imgpt"><a class="iusc" m="{&quot;purl&quot;:&quot;https://shop.example.bh/p/6281007031126&quot;,&quot;murl&quot;:&quot;https://cdn.example.com/milk.jpg?a=1&amp;b=2&quot;,&quot;t&quot;:&quot;Almarai Fresh Milk 1L&quot;}" href="#">x</a></div>
-            <a class="iusc" m="{&quot;murl&quot;:&quot;https://cdn.example.com/milk.jpg?a=1&amp;b=2&quot;}">dup</a>
-            <a class="iusc" m="{&quot;purl&quot;:&quot;https://blog.example.com&quot;,&quot;murl&quot;:&quot;https://img.example.com/logo.png&quot;,&quot;t&quot;:&quot;Almarai logo&quot;}">y</a>
-            <a class="iusc" m="{broken json}">z</a>"##;
-        let c = parse_bing(html, Some("6281007031126"));
-        assert_eq!(c.len(), 2, "duplicates and broken entries skipped");
-        assert_eq!(c[0].url, "https://cdn.example.com/milk.jpg?a=1&b=2");
-        assert!(c[0].barcode_match, "barcode found on the page URL");
+    fn bing_fixtures_valid_duplicate_logo_missing_metadata_malformed_and_empty() {
+        let page = [
+            // Valid product result, barcode on the page address.
+            bing_entry(r#"{"purl":"https://shop.example.bh/p/6281007031126","murl":"https://cdn.example.com/milk.jpg?a=1&b=2","t":"Almarai Fresh Milk 1L"}"#),
+            // Duplicate image address.
+            bing_entry(r#"{"murl":"https://cdn.example.com/milk.jpg?a=1&b=2","t":"dup"}"#),
+            // Logo result.
+            bing_entry(r#"{"purl":"https://blog.example.com","murl":"https://img.example.com/logo.png","t":"Almarai logo"}"#),
+            // Missing metadata: only the image address.
+            bing_entry(r#"{"murl":"https://img.example.com/plain.jpg"}"#),
+            // Malformed entries: broken JSON, no murl, a data: URL, a relative path.
+            r#"<a class="iusc" m="{broken json}">z</a>"#.to_string(),
+            bing_entry(r#"{"t":"no image address"}"#),
+            bing_entry(r#"{"murl":"data:image/png;base64,AAAA"}"#),
+            bing_entry(r#"{"murl":"/relative.jpg","purl":"javascript:alert(1)"}"#),
+        ]
+        .join("\n");
+        let c = parse_bing(&page, Some("6281007031126")).unwrap();
+        let urls: Vec<&str> = c.iter().map(|c| c.url.as_str()).collect();
+        assert_eq!(
+            urls,
+            ["https://cdn.example.com/milk.jpg?a=1&b=2", "https://img.example.com/logo.png", "https://img.example.com/plain.jpg"],
+            "duplicates, broken entries and non-web addresses are skipped"
+        );
+        assert!(c[0].barcode_match, "barcode found on the page address");
         assert_eq!(c[0].page_url.as_deref(), Some("https://shop.example.bh/p/6281007031126"));
         assert!(text_score(&c[1], &q()).is_none(), "logo refused");
-        assert!(parse_bing("<html>no results</html>", None).is_empty());
+        assert!(text_score(&c[2], &q()).is_none(), "no title, no identity: refused");
+        // Zero results: a clean empty answer.
+        assert!(parse_bing("<html><body>There are no results for this search</body></html>", None).unwrap().is_empty());
+        assert!(parse_bing("", None).unwrap().is_empty());
+        // Result markup that cannot be read (format changed): an error, never "no results".
+        for broken in [
+            r#"<div class="imgpt"><a class="iusc" data-m="{}">x</a></div>"#.to_string(),
+            r#"<a class="iusc" m="{&quot;image&quot;:&quot;https://x.example/a.jpg&quot;}">x</a>"#.to_string(),
+            r#"<a m="{not json at all">x</a>"#.to_string(),
+        ] {
+            let e = parse_bing(&broken, None).unwrap_err();
+            assert!(e.transient && e.message.contains("could not be read"), "{broken}: {}", e.message);
+        }
+    }
+
+    #[test]
+    fn identity_outranks_picture_quality_and_region() {
+        let q = q();
+        // An exact barcode beats any name match.
+        let exact = cand("unrelated title", true, Some(800));
+        let name = cand("Almarai Fresh Milk 1L", false, Some(800));
+        assert!(text_score(&exact, &q).unwrap() > text_score(&name, &q).unwrap());
+        // A full name match on a global site beats a half match on a GCC site,
+        // even when the half match has the perfect white packshot.
+        let mut global_full = cand("Almarai Fresh Milk 1L", false, Some(800));
+        global_full.page_url = Some("https://shop.example.co.uk/p".into());
+        let gcc_half = cand("Almarai Fresh", false, Some(800));
+        let (tg, th) = (text_score(&global_full, &q).unwrap(), text_score(&gcc_half, &q).unwrap());
+        assert!(tg > th);
+        let img = |white: f32, side: u32| Normalized {
+            hash: String::new(),
+            jpeg: vec![],
+            width: side.min(512),
+            height: side.min(512),
+            source_width: side,
+            source_height: side,
+            white_border: white,
+        };
+        let full_plain = image_score(&global_full, tg, &img(0.5, 300)).unwrap();
+        let half_perfect = image_score(&gcc_half, th, &img(1.0, 1000)).unwrap();
+        assert!(full_plain > half_perfect, "identity first: {full_plain} vs {half_perfect}");
+        // Among equal identity, the white packshot and then the region decide.
+        let a = image_score(&name, text_score(&name, &q).unwrap(), &img(0.95, 800)).unwrap();
+        let b = image_score(&name, text_score(&name, &q).unwrap(), &img(0.5, 800)).unwrap();
+        assert!(a > b);
+        // Web hits that do not look like a packshot are refused outright.
+        assert!(image_score(&name, 1.0, &img(0.2, 800)).is_none(), "dark / lifestyle photo");
+        assert!(image_score(&name, 1.0, &img(0.9, 150)).is_none(), "too small");
     }
 
     #[test]

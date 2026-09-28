@@ -2154,10 +2154,6 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
     t(
       "A read-only page for the owner's phone on the store network: today's sales, pending deliveries and low stock. Needs the hub and a short-lived link issued from Admin → Phone view.",
     ),
-  "catalog.auto_images": () =>
-    t(
-      "Looks once for a white-background photo of each new product by barcode and name, and stores it on this computer. A picture you upload always wins. Sources are chosen in Settings → Product images.",
-    ),
 };
 
 function FeaturesSettings() {

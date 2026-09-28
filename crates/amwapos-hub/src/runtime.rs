@@ -57,7 +57,7 @@ pub struct Runtime {
     pub whatsapp: Arc<WhatsAppService>,
     /// OCR worker (bundled Tesseract), feature `ocr.enabled`.
     pub ocr: Arc<OcrWorker>,
-    /// One-time product image lookups, feature `catalog.auto_images`.
+    /// One-time product image lookups (on by default; hub / standalone only).
     pub images: Arc<crate::image_worker::ImageWorker>,
     /// Signed update checker/installer.
     pub updater: Arc<crate::updater::Updater>,
