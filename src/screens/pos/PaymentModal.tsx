@@ -1,3 +1,4 @@
+import { addrIsEmpty, addrPayload, addrProblem } from "../../components/AddressFields";
 import { WhatsAppSendButton } from "../admin/automation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -104,7 +105,8 @@ export function PaymentModal({
   const change = paid > due ? paid - due : 0;
   const validation = useMemo(() => {
     if (sending && !cart.customer) return t("Choose the customer to send to.");
-    if (sending && !send.address.trim() && !send.area.trim()) return t("Enter the address or area.");
+    if (sending && addrIsEmpty(send)) return t("Enter the address or area.");
+    if (sending && addrProblem(send)) return addrProblem(send);
     if (pod) return null;
     if (!tenderList)
       return split
@@ -138,8 +140,7 @@ export function PaymentModal({
           fulfilment: sending
             ? {
                 mode: "send",
-                address: send.address.trim() || null,
-                area: send.area.trim() || null,
+                ...addrPayload(send),
                 save_on_customer: send.save,
                 channel: cart.order?.channel ?? "walk_in",
               }

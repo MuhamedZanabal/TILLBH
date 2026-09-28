@@ -26,6 +26,9 @@ pub struct CustomerInput {
     pub area: Option<String>,
     #[serde(default)]
     pub address: Option<String>,
+    /// Flat / Building / Road / Block; when given, `address` is composed from them.
+    #[serde(default)]
+    pub address_parts: crate::address::AddressParts,
     #[serde(default = "yes")]
     pub active: bool,
 }
@@ -98,6 +101,9 @@ pub struct DeliveryCreate {
     /// Digital order this drop fulfils.
     #[serde(default)]
     pub order_id: Option<String>,
+    /// Flat / Building / Road / Block; when given, `address` is composed from them.
+    #[serde(default)]
+    pub address_parts: crate::address::AddressParts,
     /// walk_in | phone | whatsapp | web | other
     #[serde(default)]
     pub channel: Option<String>,
@@ -132,13 +138,18 @@ fn validate_customer(c: &CustomerInput) -> AppResult<CustomerInput> {
             return Err(AppError::validation("Enter a valid email address."));
         }
     }
+    let parts = c.address_parts.cleaned()?;
     Ok(CustomerInput {
+        address: match parts.line() {
+            Some(line) => Some(line),
+            None => clean_opt(&c.address, "Address", 300)?,
+        },
+        address_parts: parts,
         name: clean(&c.name, "Customer name", 120, true)?,
         phone: normalize_phone(c.phone.as_deref().unwrap_or(""))?,
         whatsapp: normalize_phone(c.whatsapp.as_deref().unwrap_or(""))?,
         email,
         area: clean_opt(&c.area, "Area", 80)?,
-        address: clean_opt(&c.address, "Address", 300)?,
         active: c.active,
     })
 }
@@ -162,6 +173,7 @@ fn load_customer(c: &Connection, id: &str) -> AppResult<CustomerRow> {
                     email: r.get(4)?,
                     area: r.get(5)?,
                     address: r.get(6)?,
+                    address_parts: Default::default(),
                     active: r.get::<_, i64>(7)? == 1,
                 },
                 created_at: r.get(8)?,
@@ -175,6 +187,7 @@ fn load_customer(c: &Connection, id: &str) -> AppResult<CustomerRow> {
     .optional()?
     .ok_or_else(|| AppError::not_found("Customer"))
     .and_then(|mut row| {
+        row.info.address_parts = crate::address::read_parts(c, "customers", "customer_id", &row.customer_id)?;
         if crate::loyalty::enabled(c)? {
             row.loyalty_points = Some(crate::loyalty::balance(c, &row.customer_id)?);
         }
@@ -296,6 +309,11 @@ impl AppCore {
         }
         let actor = self.actor(&s, None);
         let id = self.db.write(|tx| {
+            if v.area.is_none() {
+                if let Some(b) = &v.address_parts.block {
+                    v.area = crate::address::area_for_block(tx, b)?;
+                }
+            }
             if let Some(p) = &v.phone {
                 let other: Option<String> = tx
                     .query_row("SELECT name FROM customers WHERE phone=?1 AND customer_id IS NOT ?2", params![p, customer_id], |r| r.get(0))
@@ -313,6 +331,7 @@ impl AppCore {
                         "UPDATE customers SET name=?2, phone=?3, whatsapp=?4, email=?5, area=?6, address=?7, active=?8, updated_at=?9 WHERE customer_id=?1",
                         params![id, v.name, v.phone, v.whatsapp, v.email, v.area, v.address, v.active as i64, now],
                     )?;
+                    crate::address::write_parts(tx, "customers", "customer_id", &id, &v.address_parts)?;
                     audit::record(tx, &actor, "customer.updated", "customer", Some(&id), Some(&before), Some(&json!({ "name": v.name })))?;
                     Ok(id)
                 }
@@ -322,6 +341,7 @@ impl AppCore {
                         "INSERT INTO customers(customer_id, name, phone, whatsapp, email, area, address, active, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)",
                         params![id, v.name, v.phone, v.whatsapp.clone().or(v.phone.clone()), v.email, v.area, v.address, v.active as i64, now],
                     )?;
+                    crate::address::write_parts(tx, "customers", "customer_id", &id, &v.address_parts)?;
                     audit::record(tx, &actor, "customer.created", "customer", Some(&id), None, Some(&json!({ "name": v.name })))?;
                     Ok(id)
                 }
@@ -609,12 +629,13 @@ pub(crate) fn can_work_drop(s: &Session, d: &DeliveryRow) -> bool {
 }
 
 /// "Save on customer" from the Send sheet: this drop's address and area.
-pub(crate) fn save_delivery_address(tx: &Connection, customer_id: &str, address: Option<&str>, area: Option<&str>) -> AppResult<()> {
-    let address = address.map(str::trim).filter(|a| !a.is_empty()).map(|a| a.chars().take(300).collect::<String>());
-    let area = area.map(str::trim).filter(|a| !a.is_empty()).map(|a| a.chars().take(80).collect::<String>());
+pub(crate) fn save_drop_address_on_customer(tx: &Connection, customer_id: &str, delivery_id: &str) -> AppResult<()> {
     tx.execute(
-        "UPDATE customers SET address=COALESCE(?2, address), area=COALESCE(?3, area), updated_at=?4 WHERE customer_id=?1",
-        params![customer_id, address, area, time::now_str()],
+        "UPDATE customers SET address=COALESCE(d.address, customers.address), area=COALESCE(d.area, customers.area),
+            flat=d.flat, building=d.building, road=d.road, block=d.block, landmark=d.landmark, updated_at=?3
+         FROM (SELECT address, area, flat, building, road, block, landmark FROM delivery_orders WHERE delivery_id=?2) AS d
+         WHERE customers.customer_id=?1",
+        params![customer_id, delivery_id, time::now_str()],
     )?;
     Ok(())
 }
@@ -622,6 +643,14 @@ pub(crate) fn save_delivery_address(tx: &Connection, customer_id: &str, address:
 /// The one payment-state enum shown on tickets, drops and the WhatsApp header.
 pub const PAY_STATES: &[&str] = &["unpaid", "recorded", "screenshot_pending", "paid"];
 pub const CHANNELS: &[&str] = &["walk_in", "phone", "whatsapp", "web", "other"];
+
+impl AppCore {
+    /// The area a Bahrain block number is in (the shop's own drops first).
+    pub fn block_area(&self, token: &str, block: &str) -> AppResult<Option<String>> {
+        self.session(token)?;
+        self.db.read(|c| crate::address::area_for_block(c, block))
+    }
+}
 
 /// Insert a delivery inside an open transaction (delivery desk, the Send
 /// sale and digital order conversion share this).
@@ -652,8 +681,23 @@ pub(crate) fn insert_delivery(tx: &Connection, s: &Session, actor: &audit::Actor
         Some(p) => normalize_phone(p)?,
         None => customer_id.as_ref().and_then(|c| c.info.phone.clone()),
     };
-    let address = clean_opt(&req.address, "Address", 300)?.or_else(|| customer_id.as_ref().and_then(|c| c.info.address.clone()));
+    // Parts typed for this drop win; else a typed line; else the customer's saved address.
+    let typed_parts = req.address_parts.cleaned()?;
+    let typed_line = clean_opt(&req.address, "Address", 300)?;
+    let parts = if typed_parts.is_structured() {
+        typed_parts
+    } else if typed_line.is_none() {
+        customer_id.as_ref().map(|c| c.info.address_parts.clone()).unwrap_or_default()
+    } else {
+        Default::default()
+    };
+    let address = parts.line().or(typed_line).or_else(|| customer_id.as_ref().and_then(|c| c.info.address.clone()));
+    let block_area = match &parts.block {
+        Some(b) => crate::address::area_for_block(tx, b)?,
+        None => None,
+    };
     let area = clean_opt(&req.area, "Area", 80)?
+        .or(block_area)
         .or_else(|| customer_id.as_ref().and_then(|c| c.info.area.clone()))
         .or_else(|| address.as_deref().and_then(area_from_text).map(str::to_string));
     if address.is_none() && area.is_none() {
@@ -691,6 +735,7 @@ pub(crate) fn insert_delivery(tx: &Connection, s: &Session, actor: &audit::Actor
             s.user_id, now, req.order_id.clone().filter(|x| !x.is_empty()), branch, channel, pay_state
         ],
     )?;
+    crate::address::write_parts(tx, "delivery_orders", "delivery_id", &id, &parts)?;
     tx.execute(
         "INSERT INTO delivery_events(event_id, delivery_id, previous_status, new_status, note, user_id, created_at) VALUES (?1,?2,NULL,'pending',NULL,?3,?4)",
         params![new_id(), id, s.user_id, now],

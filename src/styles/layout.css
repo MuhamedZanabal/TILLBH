@@ -3013,8 +3013,19 @@ table.diff tr.changed {
 }
 .send-where {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
+}
+.addr-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.addr-cell .input {
+  min-width: 0;
+}
+.danger-text {
+  color: var(--danger);
 }
 .send-opts {
   display: flex;

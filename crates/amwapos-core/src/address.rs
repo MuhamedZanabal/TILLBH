@@ -1,0 +1,169 @@
+//! Bahrain addresses: Flat, Building (house), Road, Block, plus a landmark.
+//!
+//! The parts are kept in their own columns (so they can be edited and
+//! searched) and composed into the one-line `address` every other screen,
+//! slip and WhatsApp notice already prints. The block number tells the area:
+//! the shop's own past drops decide first (most used area for that block),
+//! then a small starting list of well-known blocks. Free-text addresses keep
+//! working when no parts are given.
+
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+
+use crate::error::{AppError, AppResult};
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct AddressParts {
+    pub flat: Option<String>,
+    pub building: Option<String>,
+    pub road: Option<String>,
+    pub block: Option<String>,
+    /// Anything else the rider needs ("near the mosque", "blue gate").
+    pub landmark: Option<String>,
+}
+
+fn part(v: &Option<String>, label: &str, max: usize) -> AppResult<Option<String>> {
+    let t = v.as_deref().map(str::trim).unwrap_or("");
+    if t.is_empty() {
+        return Ok(None);
+    }
+    if t.chars().count() > max {
+        return Err(AppError::validation(format!("{label} is too long.")));
+    }
+    Ok(Some(t.to_string()))
+}
+
+impl AddressParts {
+    /// Trimmed parts; a building is needed once any part is given.
+    pub fn cleaned(&self) -> AppResult<AddressParts> {
+        let p = AddressParts {
+            flat: part(&self.flat, "Flat", 20)?,
+            building: part(&self.building, "Building", 20)?,
+            road: part(&self.road, "Road", 20)?,
+            block: part(&self.block, "Block", 10)?,
+            landmark: part(&self.landmark, "Landmark", 150)?,
+        };
+        if let Some(b) = &p.block {
+            if !b.chars().all(|c| c.is_ascii_digit()) {
+                return Err(AppError::validation("The block is a number, for example 256."));
+            }
+        }
+        if p.is_structured() && p.building.is_none() {
+            return Err(AppError::validation("Enter the building or house number."));
+        }
+        Ok(p)
+    }
+
+    /// Any of flat, building, road or block given.
+    pub fn is_structured(&self) -> bool {
+        self.flat.is_some() || self.building.is_some() || self.road.is_some() || self.block.is_some()
+    }
+
+    /// "Flat 12, Bldg 1203, Road 4518, Block 245, near the mosque".
+    pub fn line(&self) -> Option<String> {
+        if !self.is_structured() {
+            return None;
+        }
+        let mut out = vec![];
+        if let Some(v) = &self.flat {
+            out.push(format!("Flat {v}"));
+        }
+        if let Some(v) = &self.building {
+            out.push(format!("Bldg {v}"));
+        }
+        if let Some(v) = &self.road {
+            out.push(format!("Road {v}"));
+        }
+        if let Some(v) = &self.block {
+            out.push(format!("Block {v}"));
+        }
+        if let Some(v) = &self.landmark {
+            out.push(v.clone());
+        }
+        Some(out.join(", "))
+    }
+}
+
+/// A starting list of blocks whose area is well known. The shop's own drops
+/// take precedence, so a wrong or missing entry corrects itself with use.
+const KNOWN_BLOCKS: &[(u32, u32, &str)] = &[
+    (256, 258, "Amwaj"),
+    (340, 342, "Juffair"),
+    (428, 428, "Seef"),
+    (436, 436, "Seef"),
+    (801, 841, "Isa Town"),
+    (1201, 1217, "Hamad Town"),
+];
+
+/// The area for a block: the shop's most used area for it, else the known list.
+pub fn area_for_block(c: &Connection, block: &str) -> AppResult<Option<String>> {
+    let block = block.trim();
+    if block.is_empty() {
+        return Ok(None);
+    }
+    let learned: Option<String> = c
+        .query_row(
+            "SELECT area FROM (
+                SELECT area FROM delivery_orders WHERE block=?1 AND area IS NOT NULL AND area<>''
+                UNION ALL
+                SELECT area FROM customers WHERE block=?1 AND area IS NOT NULL AND area<>''
+             ) GROUP BY area ORDER BY COUNT(*) DESC, area LIMIT 1",
+            params![block],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if learned.is_some() {
+        return Ok(learned);
+    }
+    let n: u32 = match block.parse() {
+        Ok(n) => n,
+        Err(_) => return Ok(None),
+    };
+    Ok(KNOWN_BLOCKS.iter().find(|(a, b, _)| (*a..=*b).contains(&n)).map(|(_, _, area)| area.to_string()))
+}
+
+/// Read the parts stored on a row (`prefix.` is the table alias).
+pub fn read_parts(c: &Connection, table: &str, key: &str, id: &str) -> AppResult<AddressParts> {
+    let sql = format!("SELECT flat, building, road, block, landmark FROM {table} WHERE {key}=?1");
+    Ok(c.query_row(&sql, [id], |r| {
+        Ok(AddressParts { flat: r.get(0)?, building: r.get(1)?, road: r.get(2)?, block: r.get(3)?, landmark: r.get(4)? })
+    })
+    .optional()?
+    .unwrap_or_default())
+}
+
+/// Store the parts on a row (clears them when `p` is not structured).
+pub fn write_parts(c: &Connection, table: &str, key: &str, id: &str, p: &AddressParts) -> AppResult<()> {
+    let p = if p.is_structured() { p.clone() } else { AddressParts::default() };
+    c.execute(
+        &format!("UPDATE {table} SET flat=?2, building=?3, road=?4, block=?5, landmark=?6 WHERE {key}=?1"),
+        params![id, p.flat, p.building, p.road, p.block, p.landmark],
+    )?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn composes_one_line_and_needs_a_building() {
+        let p = AddressParts {
+            flat: Some(" 12 ".into()),
+            building: Some("1203".into()),
+            road: Some("4518".into()),
+            block: Some("245".into()),
+            landmark: Some("near the mosque".into()),
+        }
+        .cleaned()
+        .unwrap();
+        assert_eq!(p.line().unwrap(), "Flat 12, Bldg 1203, Road 4518, Block 245, near the mosque");
+        let no_bldg = AddressParts { road: Some("1".into()), ..Default::default() };
+        assert!(no_bldg.cleaned().is_err());
+        let bad_block = AddressParts { building: Some("1".into()), block: Some("2x".into()), ..Default::default() };
+        assert!(bad_block.cleaned().is_err());
+        let only_landmark = AddressParts { landmark: Some("blue gate".into()), ..Default::default() }.cleaned().unwrap();
+        assert!(only_landmark.line().is_none());
+    }
+}

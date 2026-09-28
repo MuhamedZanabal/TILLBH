@@ -36,6 +36,7 @@ import { relative } from "../../lib/time";
 import { t } from "../../i18n";
 import { methodLabel } from "./labels";
 import { WhatsAppSendButton, fileToBase64 } from "../admin/automation";
+import { AddressFields, type AddrValue, addrFrom, addrPayload, emptyAddr } from "../../components/AddressFields";
 
 /** Places a drop goes to (same list as the backend lexicon). */
 export const AREAS = [
@@ -205,24 +206,26 @@ export function AreaPicker({ value, onChange }: { value: string; onChange: (v: s
   );
 }
 
-export interface SendState {
+export interface SendState extends AddrValue {
   mode: "here" | "send";
-  address: string;
-  area: string;
   save: boolean;
   pod: boolean;
 }
 
+/** Prefill from the customer: their parts, or their one-line address. */
+function fromCustomer(c: Cart["customer"]): AddrValue {
+  return c ? addrFrom(c) : emptyAddr;
+}
+
 export function initialSend(cart: Cart): SendState {
   const o = cart.order;
-  return {
-    mode: o?.delivery_wanted ? "send" : "here",
-    address: o?.address || cart.customer?.address || "",
-    area: cart.customer?.area || "",
-    save: false,
-    pod: false,
-  };
+  const base = o?.address
+    ? { ...emptyAddr, address: o.address, area: cart.customer?.area || "" }
+    : fromCustomer(cart.customer);
+  return { ...base, mode: o?.delivery_wanted ? "send" : "here", save: false, pod: false };
 }
+
+const hasAddr = (v: AddrValue) => !!(v.address || v.area || v.flat || v.building || v.road || v.block);
 
 /** Here | Send, and for Send: who, where, and whether they pay at the door. */
 export function SendPanel({
@@ -258,13 +261,9 @@ export function SendPanel({
     try {
       const c = await api.pos.setCustomer(id);
       onCartChanged(c);
-      if (c.customer) {
+      if (c.customer && !hasAddr(value)) {
         // Prefill from the customer, editable for this drop only.
-        onChange({
-          ...value,
-          address: value.address || c.customer.address || "",
-          area: value.area || c.customer.area || "",
-        });
+        onChange({ ...value, ...fromCustomer(c.customer) });
       }
       setQ("");
     } catch (e) {
@@ -289,14 +288,7 @@ export function SendPanel({
           role="radio"
           aria-checked={value.mode === "send"}
           className={`seg-btn ${value.mode === "send" ? "active" : ""}`}
-          onClick={() =>
-            onChange({
-              ...value,
-              mode: "send",
-              address: value.address || customer?.address || "",
-              area: value.area || customer?.area || "",
-            })
-          }
+          onClick={() => onChange({ ...value, ...(hasAddr(value) ? {} : fromCustomer(customer)), mode: "send" })}
           data-testid="fulfil-send"
         >
           <Truck size={20} aria-hidden /> {t("Send")}
@@ -352,17 +344,7 @@ export function SendPanel({
             </div>
           )}
           <div className="send-where">
-            <div className="field">
-              <label htmlFor="send-address">{t("Address")}</label>
-              <input
-                id="send-address"
-                className="input"
-                value={value.address}
-                onChange={(e) => onChange({ ...value, address: e.target.value })}
-                placeholder={t("House / road / block")}
-                data-testid="send-address"
-              />
-            </div>
+            <AddressFields value={value} onChange={(a) => onChange({ ...value, ...a })} idPrefix="send" />
             <AreaPicker value={value.area} onChange={(area) => onChange({ ...value, area })} />
           </div>
           <div className="send-opts">
@@ -394,10 +376,10 @@ export function SendPanel({
         <NewCustomerSheet
           initial={q}
           onClose={() => setCreating(false)}
-          onCreated={(c, addr, area) => {
+          onCreated={(c, addr) => {
             setCreating(false);
             onCartChanged(c);
-            onChange({ ...value, mode: "send", address: addr || value.address, area: area || value.area });
+            onChange({ ...value, ...(hasAddr(addr) ? addr : {}), mode: "send" });
           }}
         />
       ) : null}
@@ -413,13 +395,12 @@ export function NewCustomerSheet({
 }: {
   initial: string;
   onClose: () => void;
-  onCreated: (c: Cart, address: string, area: string) => void;
+  onCreated: (c: Cart, address: AddrValue) => void;
 }) {
   const looksPhone = /^\+?\d[\d\s]*$/.test(initial.trim());
   const [name, setName] = useState(looksPhone ? "" : initial);
   const [phone, setPhone] = useState(looksPhone ? initial : "");
-  const [address, setAddress] = useState("");
-  const [area, setArea] = useState("");
+  const [addr, setAddr] = useState<AddrValue>(emptyAddr);
   const [busy, setBusy] = useState(false);
   const { error, handle, setError } = useErr();
   const save = async () => {
@@ -429,11 +410,10 @@ export function NewCustomerSheet({
       const c = await api.customers.save(null, {
         name,
         phone: phone || null,
-        address: address || null,
-        area: area || null,
+        ...addrPayload(addr),
         active: true,
       });
-      onCreated(await api.pos.setCustomer(c.customer_id), address, area || c.area || "");
+      onCreated(await api.pos.setCustomer(c.customer_id), { ...addr, area: addr.area || c.area || "" });
     } catch (e) {
       handle(e);
     } finally {
@@ -474,11 +454,8 @@ export function NewCustomerSheet({
             onChange={(e) => setPhone(e.target.value)}
           />
         </div>
-        <div className="field">
-          <label htmlFor="nc-address">{t("Address")}</label>
-          <input id="nc-address" className="input" value={address} onChange={(e) => setAddress(e.target.value)} />
-        </div>
-        <AreaPicker value={area} onChange={setArea} />
+        <AddressFields value={addr} onChange={setAddr} idPrefix="nc" />
+        <AreaPicker value={addr.area} onChange={(area) => setAddr({ ...addr, area })} />
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
     </Modal>

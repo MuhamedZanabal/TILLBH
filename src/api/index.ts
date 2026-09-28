@@ -223,6 +223,7 @@ export const api = {
         purchases: Record<string, unknown>[];
         deliveries: T.DeliveryRow[];
       }>("customers.get", { customer_id }),
+    blockArea: (block: string) => call<string | null>("customers.block_area", { block }),
     save: (customer_id: string | null, customer: T.CustomerInput) =>
       call<T.CustomerRow>("customers.save", { customer_id, customer }),
     addNote: (customer_id: string, note: string) => call<void>("customers.add_note", { customer_id, note }),

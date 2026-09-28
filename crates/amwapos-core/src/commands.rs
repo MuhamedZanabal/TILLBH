@@ -386,6 +386,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "tickets.record_payment" => out(core.ticket_record_payment(tk()?, all(&args)?)),
         "tickets.unable" => out(core.ticket_unable(tk()?, &req::<String>(&args, "delivery_id")?, &req::<String>(&args, "reason")?)),
         "tickets.not_delivered" => out(core.ticket_not_delivered(tk()?, all(&args)?)),
+        "customers.block_area" => out(core.block_area(tk()?, &req::<String>(&args, "block")?)),
         "riders.cash" => out(core.rider_cash_list(tk()?)),
         "riders.handover" => out(core.rider_handover(tk()?, all(&args)?)),
         "whatsapp.phone_contacts_import" => out(core.wa_contacts_import(tk()?, all(&args)?)),

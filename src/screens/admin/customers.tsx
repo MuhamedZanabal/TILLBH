@@ -1,3 +1,4 @@
+import { AddressFields, type AddrValue, addrFrom, addrPayload, addrProblem } from "../../components/AddressFields";
 import { WhatsAppContactsButton } from "./waContacts";
 import { TicketRowButton, TicketSheet, channelLabel, payLabel as payStateLabel } from "../pos/SendLoop";
 import { WhatsAppSendButton } from "./automation";
@@ -43,6 +44,7 @@ function CustomerForm({
   const [f, setF] = useState<CustomerInput>(
     initial ?? { name: "", phone: "", whatsapp: "", email: "", area: "", address: "", active: true },
   );
+  const [addr, setAddr] = useState<AddrValue>(() => addrFrom(initial));
   const act = useAction();
   const set = (k: keyof CustomerInput, v: string | boolean) => setF({ ...f, [k]: v });
   return (
@@ -64,13 +66,10 @@ function CustomerForm({
         />
         <TextInput label={t("WhatsApp")} value={f.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} />
         <TextInput label={t("Email")} value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
-        <TextInput label={t("Area")} value={f.area ?? ""} onChange={(e) => set("area", e.target.value)} />
-        <TextInput
-          label={t("Address")}
-          value={f.address ?? ""}
-          onChange={(e) => set("address", e.target.value)}
-          fieldClass="span-2"
-        />
+        <div className="span-2">
+          <AddressFields value={addr} onChange={setAddr} idPrefix="cf" />
+        </div>
+        <TextInput label={t("Area")} value={addr.area} onChange={(e) => setAddr({ ...addr, area: e.target.value })} />
         <Checkbox label={t("Active")} checked={f.active} onChange={(v) => set("active", v)} />
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
@@ -79,7 +78,7 @@ function CustomerForm({
         <Button
           variant="primary"
           className="right"
-          disabled={!f.name.trim()}
+          disabled={!f.name.trim() || !!addrProblem(addr)}
           loading={act.busy}
           onClick={async () => {
             const r = await act.run(() =>
@@ -88,8 +87,7 @@ function CustomerForm({
                 phone: f.phone || null,
                 whatsapp: f.whatsapp || null,
                 email: f.email || null,
-                area: f.area || null,
-                address: f.address || null,
+                ...addrPayload(addr),
               }),
             );
             if (r) onSaved(r);

@@ -52,6 +52,9 @@ pub struct CustomerRef {
     /// Saved drop address and area (prefill the Send sheet).
     pub address: Option<String>,
     pub area: Option<String>,
+    /// Saved Flat / Building / Road / Block (empty for a free-text address).
+    #[serde(default)]
+    pub address_parts: crate::address::AddressParts,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -335,9 +338,26 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
     let (priced, totals) = (lp.lines, lp.totals);
     let customer = match customer_id {
         Some(cid) => c
-            .query_row("SELECT customer_id, name, phone, address, area FROM customers WHERE customer_id=?1", [&cid], |r| {
-                Ok(CustomerRef { customer_id: r.get(0)?, name: r.get(1)?, phone: r.get(2)?, address: r.get(3)?, area: r.get(4)? })
-            })
+            .query_row(
+                "SELECT customer_id, name, phone, address, area, flat, building, road, block, landmark FROM customers WHERE customer_id=?1",
+                [&cid],
+                |r| {
+                    Ok(CustomerRef {
+                        customer_id: r.get(0)?,
+                        name: r.get(1)?,
+                        phone: r.get(2)?,
+                        address: r.get(3)?,
+                        area: r.get(4)?,
+                        address_parts: crate::address::AddressParts {
+                            flat: r.get(5)?,
+                            building: r.get(6)?,
+                            road: r.get(7)?,
+                            block: r.get(8)?,
+                            landmark: r.get(9)?,
+                        },
+                    })
+                },
+            )
             .optional()?,
         None => None,
     };

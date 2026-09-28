@@ -170,12 +170,22 @@ export interface CartLine {
   reorder_point_milli?: number | null;
 }
 
+/** Bahrain address parts; `address` is composed from them when given. */
+export interface AddressParts {
+  flat?: string | null;
+  building?: string | null;
+  road?: string | null;
+  block?: string | null;
+  landmark?: string | null;
+}
+
 export interface CustomerRef {
   customer_id: string;
   name: string;
   phone: string | null;
   address?: string | null;
   area?: string | null;
+  address_parts?: AddressParts | null;
 }
 
 export interface Cart {
@@ -208,6 +218,7 @@ export interface Fulfilment {
   mode: "here" | "send";
   address?: string | null;
   area?: string | null;
+  address_parts?: AddressParts | null;
   phone?: string | null;
   save_on_customer?: boolean;
   notes?: string | null;
@@ -812,6 +823,7 @@ export interface CustomerInput {
   email?: string | null;
   area?: string | null;
   address?: string | null;
+  address_parts?: AddressParts | null;
   active: boolean;
 }
 

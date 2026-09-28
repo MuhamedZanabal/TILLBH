@@ -4,6 +4,7 @@
 //! modules (auth, validation, transactions) → pure domain (`money`,
 //! `pricing`) and repositories (SQL inside feature modules).
 
+pub mod address;
 pub mod ai;
 pub mod ai_helpers;
 pub mod ai_tools;

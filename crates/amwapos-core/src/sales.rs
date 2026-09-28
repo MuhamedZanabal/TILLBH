@@ -46,6 +46,9 @@ pub struct Fulfilment {
     pub address: Option<String>,
     #[serde(default)]
     pub area: Option<String>,
+    /// Flat / Building / Road / Block for this drop.
+    #[serde(default)]
+    pub address_parts: crate::address::AddressParts,
     #[serde(default)]
     pub phone: Option<String>,
     /// Also save this address/area on the customer.
@@ -595,10 +598,11 @@ impl AppCore {
                         order_id: None,
                         channel: Some(f.channel.clone().unwrap_or_else(|| "walk_in".into())),
                         pay_state: Some(if pod > 0 { "unpaid".into() } else { "paid".into() }),
+                        address_parts: f.address_parts.clone(),
                     };
                     let did = crate::customers::insert_delivery(tx, &s, &self.actor(&s, None), &req_d)?;
                     if f.save_on_customer {
-                        crate::customers::save_delivery_address(tx, &cid, f.address.as_deref(), f.area.as_deref())?;
+                        crate::customers::save_drop_address_on_customer(tx, &cid, &did)?;
                     }
                     Some(did)
                 }

@@ -306,6 +306,7 @@ pub(crate) fn on_sale_committed(
                 order_id: Some(order_id.clone()),
                 channel: Some(channel.clone()),
                 pay_state: None,
+                address_parts: Default::default(),
             };
             delivery_id = Some(crate::customers::insert_delivery(tx, s, actor, &req)?);
         }
