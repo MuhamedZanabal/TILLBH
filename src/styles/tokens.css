@@ -1,41 +1,49 @@
-/* AMWAPOS design tokens. One accent (deep teal), one PAY green, one danger,
-   one success, one warning; radius 10–12; 150–200 ms motion. The cashier
-   display is designed for 1024×768 CSS px, touch-first (see docs/UI.md). */
+/* AMWAPOS design tokens — "Amwaj" (v2).
+   Calm paper surfaces, one deep sea-teal accent, a night-ink chrome and one
+   emerald PAY. Soft layered depth, 12/16/20 radii, 150–200 ms motion. The
+   cashier display is designed for 1024×768 CSS px, touch-first (docs/UI.md). */
 :root {
-  --bg: #f2f5f6;
+  --bg: #eef2f1;
+  --bg-grad: radial-gradient(1200px 600px at 100% -10%, #e2efee 0%, transparent 60%), #eef2f1;
   --surface: #ffffff;
-  --surface-2: #f6f8f9;
-  --surface-hover: #ebf0f2;
-  --surface-press: #dde5e8;
-  --text: #13212a;
-  --text-2: #4f5e69;
-  --text-3: #65727d;
-  --border: #d6dee3;
-  --border-strong: #b7c4cc;
-  --brand: #0b6e79;
-  --brand-hover: #095c65;
-  --brand-press: #074a52;
-  --brand-soft: #e1f1f2;
+  --surface-2: #f6f8f8;
+  --surface-hover: #edf2f1;
+  --surface-press: #e1e9e8;
+  --text: #0b1a1e;
+  --text-2: #4a5a5f;
+  --text-3: #66767b;
+  --border: #e0e6e5;
+  --border-strong: #c3cdcb;
+  --brand: #08747e;
+  --brand-hover: #06656e;
+  --brand-press: #05565e;
+  --brand-soft: #e0f1f0;
+  --brand-tint: #f0f8f8;
   --on-brand: #ffffff;
-  --brand-dark: #0d2830;
-  --brand-dark-2: #15363f;
-  --success: #15803d;
-  --success-soft: #e5f5ea;
-  --warning: #a8530a;
-  --warning-soft: #fcf1df;
-  --danger: #c42b2b;
-  --danger-soft: #fbeaea;
-  --info: #0b6e79;
-  --info-soft: #e1f1f2;
-  --focus: 0 0 0 3px color-mix(in srgb, var(--brand) 45%, transparent);
-  --shadow-sm: 0 1px 2px rgba(13, 40, 48, 0.06);
-  --shadow-md: 0 4px 14px rgba(13, 40, 48, 0.1);
-  --shadow-lg: 0 18px 44px rgba(13, 40, 48, 0.22);
-  --backdrop: rgba(9, 26, 32, 0.46);
-  --radius-sm: 8px;
-  --radius: 10px;
-  --radius-card: 12px;
-  --radius-modal: 12px;
+  --brand-dark: #0a1b20;
+  --brand-dark-2: #132c33;
+  --chrome-line: #22414a;
+  --chrome-text: #e4eef0;
+  --chrome-text-2: #9db4bb;
+  --sand: #e8a23a;
+  --on-sand: #2b1700;
+  --success: #12804a;
+  --success-soft: #e2f3e9;
+  --warning: #a95a08;
+  --warning-soft: #fcf0de;
+  --danger: #c3302f;
+  --danger-soft: #fbeae9;
+  --info: #08747e;
+  --info-soft: #e0f1f0;
+  --focus: 0 0 0 3px color-mix(in srgb, var(--brand) 40%, transparent);
+  --shadow-sm: 0 1px 2px rgba(11, 26, 30, 0.05), 0 1px 1px rgba(11, 26, 30, 0.03);
+  --shadow-md: 0 8px 20px -6px rgba(11, 26, 30, 0.12), 0 2px 4px rgba(11, 26, 30, 0.04);
+  --shadow-lg: 0 28px 56px -16px rgba(11, 26, 30, 0.32), 0 4px 12px rgba(11, 26, 30, 0.06);
+  --backdrop: rgba(6, 18, 22, 0.5);
+  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-card: 16px;
+  --radius-modal: 20px;
   --font:
     "Inter Variable", "Inter", "Noto Sans Arabic Variable", "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -43,6 +51,7 @@
   --control-h: 48px;
   --dur: 170ms;
   --dur-press: 60ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 
   /* Point of sale */
   --pos-bg: var(--bg);
@@ -50,9 +59,10 @@
   --pos-raised: #ffffff;
   --pos-border: var(--border);
   --pos-accent: var(--brand);
-  --pos-pay: #0f7a3e;
-  --pos-pay-hover: #0c6733;
-  --pos-pay-press: #09532a;
+  --pos-pay: #0c8448;
+  --pos-pay-hover: #0a743f;
+  --pos-pay-press: #086336;
+  --pos-pay-grad: linear-gradient(180deg, #13a15a 0%, #0c8448 100%);
   --on-pay: #ffffff;
   --pos-danger: var(--danger);
   --pos-warn: var(--warning);
@@ -61,41 +71,49 @@
   --pos-top-h: 56px;
   --pos-dock-h: 88px;
   --pos-left-w: 320px;
+  --pos-checkout-w: 340px;
   --money-figures: tabular-nums lining-nums;
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --bg: #0a1419;
-  --surface: #0f1d23;
-  --surface-2: #13242b;
-  --surface-hover: #182d35;
-  --surface-press: #1f3842;
-  --text: #e5eef1;
-  --text-2: #a3b3bb;
-  --text-3: #869aa4;
-  --border: #22373f;
-  --border-strong: #31505b;
-  --brand: #3cc2cc;
-  --brand-hover: #62d0d8;
-  --brand-press: #8adde3;
-  --brand-soft: #123840;
-  --on-brand: #05252a;
-  --brand-dark: #07161b;
-  --brand-dark-2: #0f262d;
+  --bg: #071114;
+  --bg-grad: radial-gradient(1200px 600px at 100% -10%, #0c2a2e 0%, transparent 60%), #071114;
+  --surface: #0d1a1e;
+  --surface-2: #112227;
+  --surface-hover: #16292f;
+  --surface-press: #1d353c;
+  --text: #e5eef0;
+  --text-2: #a1b2b7;
+  --text-3: #86989d;
+  --border: #1d3137;
+  --border-strong: #2c4950;
+  --brand: #3cc4cb;
+  --brand-hover: #62d1d7;
+  --brand-press: #8adfe3;
+  --brand-soft: #113a40;
+  --brand-tint: #0f2a2f;
+  --on-brand: #04262a;
+  --brand-dark: #050e11;
+  --brand-dark-2: #0e2328;
+  --chrome-line: #1d363d;
   --success: #34c46a;
-  --success-soft: #0e2d1b;
+  --success-soft: #0d2c1a;
   --warning: #f0a132;
   --warning-soft: #33250c;
   --danger: #f37b7b;
   --danger-soft: #3a1717;
-  --info: #3cc2cc;
-  --info-soft: #123840;
-  --backdrop: rgba(0, 0, 0, 0.6);
-  --pos-raised: #13242b;
+  --info: #3cc4cb;
+  --info-soft: #113a40;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 20px -6px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 28px 56px -16px rgba(0, 0, 0, 0.7);
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --pos-raised: #112227;
   --pos-pay: #2fbf68;
   --pos-pay-hover: #4cd07f;
   --pos-pay-press: #6ddc97;
+  --pos-pay-grad: linear-gradient(180deg, #3fcc77 0%, #2fbf68 100%);
   --on-pay: #04210f;
   color-scheme: dark;
 }

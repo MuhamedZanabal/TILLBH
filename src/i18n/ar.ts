@@ -3273,4 +3273,8 @@ export const AR: Record<string, string> = {
   "Send order received": "إرسال تأكيد استلام الطلب",
   "Send the order-received, on-the-way and delivered notices by themselves (when a Send order is taken, marked Out or Delivered)":
     "إرسال إشعارات استلام الطلب وفي الطريق والتسليم تلقائياً (عند استلام طلب توصيل، أو تحديده خرج أو سُلِّم)",
+  "Add customer": "إضافة عميل",
+  "For loyalty, credit or Send": "للولاء أو الآجل أو التوصيل",
+  "Last sale": "آخر عملية بيع",
+  "Change given": "الباقي المُعطى",
 };

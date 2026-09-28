@@ -459,10 +459,10 @@ test("1024×768: Arabic RTL, dark compact, backup + update-needed", async ({ pag
   await page.getByRole("menuitem", { name: "العربية" }).click();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(page.getByTestId("pos")).toBeVisible();
-  // Cart column sits on the left in RTL (search on the right).
-  const search = (await page.getByTestId("scan-input").boundingBox())!;
+  // Mirrored in RTL: the checkout column (TOTAL, PAY) sits on the left of the cart.
+  const checkoutBox = (await page.locator(".pos-checkout").boundingBox())!;
   const cartBox = (await page.locator(".cart-lines").boundingBox())!;
-  expect(search.x).toBeGreaterThan(cartBox.x);
+  expect(checkoutBox.x).toBeLessThan(cartBox.x);
   await shot(page, "08a-ar-pos");
   await payIsTappable(page);
   await page.getByTestId("till-ai").click();

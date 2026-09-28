@@ -11,10 +11,12 @@ no new colours in components.
 
 | Token | Value / use |
 | --- | --- |
-| `--brand` (`--pos-accent`) | Deep teal `#0b6e79` (dark: `#3cc2cc`). The one accent. |
-| `--pos-pay` | PAY only: green `#0f7a3e` (dark: `#2fbf68`). |
+| Look ("Amwaj" v2) | Calm paper surfaces (`--bg` with a soft teal glow), a night-ink chrome (`--brand-dark`), soft layered shadows (`--shadow-sm/md/lg`). |
+| `--brand` (`--pos-accent`) | Deep sea teal `#08747e` (dark: `#3cc4cb`). The one accent. |
+| `--pos-pay` / `--pos-pay-grad` | PAY only: emerald `#0c8448` (dark: `#2fbf68`). |
+| `--sand` | Badges and counts on the dark chrome only. |
 | `--danger`, `--warning`, `--success` | One each. |
-| `--radius` / `--radius-card` | 10 / 12 px. |
+| `--radius` / `--radius-card` / `--radius-modal` | 12 / 16 / 20 px. |
 | `--pos-touch-min` / `--pos-touch-lg` | 48 / 60 px. |
 | `--pos-top-h` / `--pos-dock-h` | 56 / 88 px. |
 | `--money-figures` | `tabular-nums lining-nums` for every amount (`.money`, `.num`). |
@@ -43,11 +45,20 @@ The till lists no catalogue: products are added by scanning or by typing in the
 scan field (results drop down under it).
 
 ```
-| 56  brand · shift · backup/sync/printer pills · Held · clock · AI · More |
-| 56  scan / search field ............ | Customer | Hold | Discount | Refund |
-|     cart lines (56 min), full width                                       |
-| 88  dock: subtotal · discount · VAT · items · TOTAL (36) · PAY 224×64    |
+| 56  brand · shift · backup/sync/printer pills · Held · clock · Send · AI · More |
+| scan / search field (56) ...................... | checkout column (340):      |
+| cart lines (64 min): product tile · name ·      |  customer card (F3)         |
+|   qty stepper · line total · remove             |  Hold · Sale discount · Refund |
+|                                                 |  last sale (when empty)     |
+|                                                 |  subtotal · discount · VAT · items |
+|                                                 |  TOTAL (34)                 |
+|                                                 |  PAY full width × 72        |
 ```
+
+At 125 % / 150 % display size (or a window under 900 px) the checkout column
+folds into the 88 px dock (sums · TOTAL · PAY 224×64) and Customer, Hold,
+Sale discount and Refund move back beside the scan field. The Send rail and
+the till assistant open over the cart, never over the checkout column.
 
 ## Display size
 
@@ -58,8 +69,8 @@ drops the business name and clock, the dock keeps TOTAL and PAY only below
 760 px, and the AI page folds its side columns into sheets. The layout spec
 checks the till and the payment sheet at both sizes.
 
-PAY sits in the top 72 px of the dock, so a 16 px taskbar overlap never hides
-it. The till assistant opens over the search column, between the top bar and
+PAY ends at least 16 px above the bottom edge (column and dock), so a 16 px
+taskbar overlap never hides it. The till assistant opens over the search column, between the top bar and
 the dock, and never covers PAY.
 
 ## Proof

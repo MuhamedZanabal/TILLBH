@@ -20,6 +20,7 @@ import {
   Settings2,
   ShoppingBag,
   Truck,
+  UserPlus,
   UserRound,
   Users,
   Vault,
@@ -43,6 +44,7 @@ import { AiChat, AiReady } from "../admin/aiChat";
 import { HashRouter } from "react-router-dom";
 import type { AiContext } from "../../api/types";
 import { CartPanel } from "./CartPanel";
+import { initials } from "../login/Login";
 import { PaymentModal, SaleSuccess } from "./PaymentModal";
 import { SendRail, TicketSheet } from "./SendLoop";
 import {
@@ -680,177 +682,261 @@ export function PosScreen({
           <span className="top-label">{t("More")}</span>
         </button>
       </header>
-      <main className="pos-main">
-        <div className="pos-toolbar">
-          <div className="scan-box">
-            <ScanBarcode size={22} className="scan-icon" aria-hidden />
-            <input
-              ref={scanRef}
-              className="input"
-              placeholder={t("Scan or search")}
-              aria-label={t("Scan barcode or search product")}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={onScanKey}
-              autoComplete="off"
-              spellCheck={false}
-              data-testid="scan-input"
-            />
-            {query ? (
-              <Button
-                variant="ghost"
-                className="clear"
-                aria-label={t("Clear search")}
-                icon={<X size={20} />}
-                onClick={() => (setQuery(""), focusScan())}
+      <div className="pos-body">
+        <main className="pos-main">
+          <div className="pos-toolbar">
+            <div className="scan-box">
+              <ScanBarcode size={22} className="scan-icon" aria-hidden />
+              <input
+                ref={scanRef}
+                className="input"
+                placeholder={t("Scan or search")}
+                aria-label={t("Scan barcode or search product")}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onScanKey}
+                autoComplete="off"
+                spellCheck={false}
+                data-testid="scan-input"
               />
-            ) : null}
-            {results ? (
-              <div className="results scan-results" role="listbox" aria-label={t("Search results")}>
-                {results.length === 0 ? (
-                  <div className="empty">
-                    <h3>{t("No products found")}</h3>
-                    <p>{t("Check the spelling or scan the barcode.")}</p>
-                  </div>
-                ) : (
-                  results.map((r, i) => (
-                    <div
-                      key={r.product_id}
-                      role="option"
-                      aria-selected={i === sel}
-                      className={`result-row ${i === sel ? "sel" : ""}`}
-                      onMouseDown={(e) => (e.preventDefault(), void addProduct(r))}
-                    >
-                      <div className="grow">
-                        <div className="r-name ellipsis">{r.name}</div>
-                        <div className="tiny ellipsis">
-                          {r.primary_barcode ?? r.sku}
-                          {r.track_inventory ? ` · ${t("Stock {0}", formatQty(r.stock_milli))}` : ""}
+              {query ? (
+                <Button
+                  variant="ghost"
+                  className="clear"
+                  aria-label={t("Clear search")}
+                  icon={<X size={20} />}
+                  onClick={() => (setQuery(""), focusScan())}
+                />
+              ) : null}
+              {results ? (
+                <div className="results scan-results" role="listbox" aria-label={t("Search results")}>
+                  {results.length === 0 ? (
+                    <div className="empty">
+                      <h3>{t("No products found")}</h3>
+                      <p>{t("Check the spelling or scan the barcode.")}</p>
+                    </div>
+                  ) : (
+                    results.map((r, i) => (
+                      <div
+                        key={r.product_id}
+                        role="option"
+                        aria-selected={i === sel}
+                        className={`result-row ${i === sel ? "sel" : ""}`}
+                        onMouseDown={(e) => (e.preventDefault(), void addProduct(r))}
+                      >
+                        <div className="grow">
+                          <div className="r-name ellipsis">{r.name}</div>
+                          <div className="tiny ellipsis">
+                            {r.primary_barcode ?? r.sku}
+                            {r.track_inventory ? ` · ${t("Stock {0}", formatQty(r.stock_milli))}` : ""}
+                          </div>
+                        </div>
+                        <div className="r-price money">
+                          {r.price_minor === null ? t("No price") : formatMoney(r.price_minor)}
                         </div>
                       </div>
-                      <div className="r-price money">
-                        {r.price_minor === null ? t("No price") : formatMoney(r.price_minor)}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            ) : null}
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <div className="quick-actions narrow-only">
+              <button type="button" className="q-btn" onClick={() => setModal({ kind: "customer" })}>
+                <Users size={20} aria-hidden />
+                <span>{t("Customer")}</span>
+                <kbd>F3</kbd>
+              </button>
+              <button
+                type="button"
+                className="q-btn"
+                onClick={() => setModal({ kind: "hold" })}
+                disabled={!hasLines || !has("pos.hold")}
+              >
+                <PauseCircle size={20} aria-hidden />
+                <span>{t("Hold")}</span>
+                <kbd>F4</kbd>
+              </button>
+              <button
+                type="button"
+                className="q-btn"
+                onClick={() => setModal({ kind: "discount", lineId: null })}
+                disabled={!hasLines}
+              >
+                <Percent size={20} aria-hidden />
+                <span>{t("Sale discount")}</span>
+              </button>
+              <button type="button" className="q-btn" onClick={() => setModal({ kind: "refund" })}>
+                <RotateCcw size={20} aria-hidden />
+                <span>{t("Refund")}</span>
+              </button>
+            </div>
           </div>
-          <div className="quick-actions">
-            <button type="button" className="q-btn" onClick={() => setModal({ kind: "customer" })}>
-              <Users size={20} aria-hidden />
-              <span>{t("Customer")}</span>
-              <kbd>F3</kbd>
-            </button>
+          {notice ? (
+            <div className={`pos-notice ${notice.tone}`} role={notice.tone === "info" ? "status" : "alert"}>
+              <span className="grow">{notice.text}</span>
+              <button type="button" className="notice-x" aria-label={t("Dismiss")} onClick={() => setNotice(null)}>
+                <X size={18} aria-hidden />
+              </button>
+            </div>
+          ) : null}
+          {printFailed && modal.kind === "none" ? (
+            <div className="pos-notice warning" role="alert">
+              <span className="grow">
+                {t("Sale {0} completed — receipt could not be printed", lastSale!.receipt_number)}
+              </span>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  const r = await api.print.retry(lastSale!.print!.job_id!);
+                  setLastSale({ ...lastSale!, print: r });
+                  if (r.status === "printed") toast("success", t("Receipt printed"));
+                }}
+              >
+                {t("Retry Print")}
+              </Button>
+            </div>
+          ) : null}
+          <section className="pos-right">
+            <CartPanel
+              cart={cart}
+              selectedLine={selectedLine}
+              flashLine={flashLine}
+              onSelect={setSelectedLine}
+              onQty={changeQty}
+              onRemove={removeLine}
+              onEditQty={(id) => setModal({ kind: "qty", lineId: id })}
+              onDiscount={(id) => setModal({ kind: "discount", lineId: id })}
+              onPrice={(id) => setModal({ kind: "price", lineId: id })}
+              canPriceOverride
+              onRedeem={cart.loyalty ? () => setModal({ kind: "redeem" }) : undefined}
+              onCustomer={() => setModal({ kind: "customer" })}
+            />
+          </section>
+        </main>
+        <aside className="pos-checkout" aria-label={t("Totals")}>
+          <button
+            type="button"
+            className={`co-customer ${cart.customer ? "has" : ""}`}
+            onClick={() => setModal({ kind: "customer" })}
+            data-testid="checkout-customer"
+          >
+            <span className="co-avatar" aria-hidden>
+              {cart.customer ? initials(cart.customer.name) : <UserPlus size={20} />}
+            </span>
+            <span className="co-who">
+              <span className="co-name ellipsis" dir="auto">
+                {cart.customer ? cart.customer.name : t("Add customer")}
+              </span>
+              <span className="co-sub ellipsis" dir="auto">
+                {cart.customer
+                  ? [cart.customer.phone, cart.customer.area].filter(Boolean).join(" · ") || t("Customer")
+                  : t("For loyalty, credit or Send")}
+              </span>
+            </span>
+            <kbd>F3</kbd>
+          </button>
+          <div className="co-actions">
             <button
               type="button"
-              className="q-btn"
+              className="co-tile"
               onClick={() => setModal({ kind: "hold" })}
               disabled={!hasLines || !has("pos.hold")}
             >
-              <PauseCircle size={20} aria-hidden />
+              <PauseCircle size={22} aria-hidden />
               <span>{t("Hold")}</span>
-              <kbd>F4</kbd>
             </button>
             <button
               type="button"
-              className="q-btn"
+              className="co-tile"
               onClick={() => setModal({ kind: "discount", lineId: null })}
               disabled={!hasLines}
             >
-              <Percent size={20} aria-hidden />
+              <Percent size={22} aria-hidden />
               <span>{t("Sale discount")}</span>
             </button>
-            <button type="button" className="q-btn" onClick={() => setModal({ kind: "refund" })}>
-              <RotateCcw size={20} aria-hidden />
+            <button type="button" className="co-tile" onClick={() => setModal({ kind: "refund" })}>
+              <RotateCcw size={22} aria-hidden />
               <span>{t("Refund")}</span>
             </button>
           </div>
-        </div>
-        {notice ? (
-          <div className={`pos-notice ${notice.tone}`} role={notice.tone === "info" ? "status" : "alert"}>
-            <span className="grow">{notice.text}</span>
-            <button type="button" className="notice-x" aria-label={t("Dismiss")} onClick={() => setNotice(null)}>
-              <X size={18} aria-hidden />
-            </button>
-          </div>
-        ) : null}
-        {printFailed && modal.kind === "none" ? (
-          <div className="pos-notice warning" role="alert">
-            <span className="grow">
-              {t("Sale {0} completed — receipt could not be printed", lastSale!.receipt_number)}
-            </span>
-            <Button
-              size="sm"
-              onClick={async () => {
-                const r = await api.print.retry(lastSale!.print!.job_id!);
-                setLastSale({ ...lastSale!, print: r });
-                if (r.status === "printed") toast("success", t("Receipt printed"));
-              }}
-            >
-              {t("Retry Print")}
-            </Button>
-          </div>
-        ) : null}
-        <section className="pos-right">
-          <CartPanel
-            cart={cart}
-            selectedLine={selectedLine}
-            flashLine={flashLine}
-            onSelect={setSelectedLine}
-            onQty={changeQty}
-            onRemove={removeLine}
-            onEditQty={(id) => setModal({ kind: "qty", lineId: id })}
-            onDiscount={(id) => setModal({ kind: "discount", lineId: id })}
-            onPrice={(id) => setModal({ kind: "price", lineId: id })}
-            canPriceOverride
-            onRedeem={cart.loyalty ? () => setModal({ kind: "redeem" }) : undefined}
-            onCustomer={() => setModal({ kind: "customer" })}
-          />
-        </section>
-      </main>
-      <footer className="pos-dock" aria-label={t("Totals")}>
-        <dl className="dock-sums">
-          <div>
-            <dt>{t("Subtotal")}</dt>
-            <dd className="money">{formatMoney(cart.totals.subtotal_minor)}</dd>
-          </div>
-          <div className="opt">
-            <dt>{t("Discount")}</dt>
-            <dd className="money">
-              {cart.totals.discount_minor ? formatMoney(-cart.totals.discount_minor) : formatMoney(0)}
-            </dd>
-          </div>
-          <div>
-            <dt>
-              {t("VAT")} {cart.lines.some((l) => l.tax_inclusive) ? t("(included)") : ""}
-            </dt>
-            <dd className="money">{formatMoney(cart.totals.tax_minor)}</dd>
-          </div>
-          <div className="opt">
-            <dt>{t("Items")}</dt>
-            <dd className="num">{formatQty(cart.totals.item_count_milli)}</dd>
-          </div>
-        </dl>
-        <div className="dock-total">
-          <span className="label">{t("TOTAL")}</span>
-          <span className="amount money" data-testid="cart-total">
-            {formatMoney(cart.totals.total_minor)}
+          <span className="co-spacer">
+            {lastSale && !hasLines ? (
+              <div className="co-last" data-testid="last-sale">
+                <div className="eyebrow">{t("Last sale")}</div>
+                <div className="co-last-row">
+                  <span className="num strong">{lastSale.receipt_number}</span>
+                  <span className="money strong">{formatMoney(lastSale.total_minor)}</span>
+                </div>
+                {lastSale.change_minor > 0 ? (
+                  <div className="co-last-row tiny">
+                    <span>{t("Change given")}</span>
+                    <span className="money">{formatMoney(lastSale.change_minor)}</span>
+                  </div>
+                ) : null}
+                {has("pos.reprint") ? (
+                  <Button
+                    size="sm"
+                    icon={<Printer size={16} />}
+                    onClick={async () => {
+                      try {
+                        const r = await api.sales.reprint(lastSale.sale_id);
+                        toast(
+                          r.status === "printed" ? "success" : "warning",
+                          r.status === "printed" ? t("Receipt reprinted") : t("Receipt not printed"),
+                        );
+                      } catch (e) {
+                        const ex = explain(e);
+                        toast("error", ex.message);
+                      }
+                    }}
+                  >
+                    {t("Reprint")}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </span>
-        </div>
-        <Button
-          variant="pay"
-          className="pay-btn"
-          onClick={() => openPay(tenders[0]?.method ?? "cash")}
-          disabled={!hasLines}
-          data-testid="pay"
-          aria-label={t("PAY {0}", formatMoney(cart.totals.total_minor))}
-        >
-          <span className="pay-word">{t("PAY")}</span>
-          <kbd>F9</kbd>
-        </Button>
-      </footer>
+          <dl className="dock-sums">
+            <div>
+              <dt>{t("Subtotal")}</dt>
+              <dd className="money">{formatMoney(cart.totals.subtotal_minor)}</dd>
+            </div>
+            <div className="opt">
+              <dt>{t("Discount")}</dt>
+              <dd className="money">
+                {cart.totals.discount_minor ? formatMoney(-cart.totals.discount_minor) : formatMoney(0)}
+              </dd>
+            </div>
+            <div>
+              <dt>
+                {t("VAT")} {cart.lines.some((l) => l.tax_inclusive) ? t("(included)") : ""}
+              </dt>
+              <dd className="money">{formatMoney(cart.totals.tax_minor)}</dd>
+            </div>
+            <div className="opt">
+              <dt>{t("Items")}</dt>
+              <dd className="num">{formatQty(cart.totals.item_count_milli)}</dd>
+            </div>
+          </dl>
+          <div className="dock-total">
+            <span className="label">{t("TOTAL")}</span>
+            <span className="amount money" data-testid="cart-total">
+              {formatMoney(cart.totals.total_minor)}
+            </span>
+          </div>
+          <Button
+            variant="pay"
+            className="pay-btn"
+            onClick={() => openPay(tenders[0]?.method ?? "cash")}
+            disabled={!hasLines}
+            data-testid="pay"
+            aria-label={t("PAY {0}", formatMoney(cart.totals.total_minor))}
+          >
+            <span className="pay-word">{t("PAY")}</span>
+            <kbd>F9</kbd>
+          </Button>
+        </aside>
+      </div>
       {moreOpen ? (
         <Modal title={t("More")} size="sheet narrow" onClose={() => (setMoreOpen(false), focusScan())}>
           <div className="more-grid" role="menu" aria-label={t("More")}>
