@@ -345,6 +345,7 @@ fn analyse(c: &Connection, s: &Session, req: &ImportRequest, digits: u32) -> App
                 cost_minor: if s.has("products.view_cost") { cost } else { None },
                 barcodes: barcodes.clone(),
                 opening_stock_milli: if action == "create" && track { stock } else { None },
+                image_b64: None,
             })
         } else {
             None

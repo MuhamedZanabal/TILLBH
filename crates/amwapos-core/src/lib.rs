@@ -36,6 +36,7 @@ pub mod pdf;
 pub mod pos;
 pub mod pricing;
 pub mod printing;
+pub mod product_images;
 pub mod purchasing;
 pub mod raster;
 pub mod receipt;

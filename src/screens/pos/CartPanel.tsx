@@ -3,6 +3,7 @@ import { Minus, Percent, Plus, ScanBarcode, Tag, Trash2, Hash, Star, UserRound }
 import type { Cart } from "../../api/types";
 import { formatMoney, formatQty, formatPercent } from "../../lib/money";
 import { Button } from "../../components/ui";
+import { ProductImage } from "../../components/ProductImage";
 import { t } from "../../i18n";
 
 export function CartPanel({
@@ -79,9 +80,7 @@ export function CartPanel({
               onClick={() => onSelect(l.line_id)}
             >
               <div className="l-main">
-                <span className="l-avatar" style={{ ["--h" as string]: hue(l.name) }} aria-hidden>
-                  {monogram(l.name)}
-                </span>
+                <ProductImage hash={l.image_hash} name={l.name} size="sm" />
                 <div className="l-info">
                   <span className="l-name ellipsis">{l.name}</span>
                   <span className="l-meta">
@@ -167,19 +166,6 @@ export function CartPanel({
       ) : null}
     </div>
   );
-}
-
-/** A calm, stable colour per product name (hue 0–359). */
-function hue(name: string): number {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
-  return h;
-}
-
-/** Two letters for the product tile (first letters of the first two words). */
-function monogram(name: string): string {
-  const w = name.trim().split(/\s+/).filter(Boolean);
-  return ((w[0]?.[0] ?? "") + (w[1]?.[0] ?? w[0]?.[1] ?? "")).toUpperCase();
 }
 
 /** Remaining stock after this line when it is at or below the reorder point. */

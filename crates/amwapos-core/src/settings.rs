@@ -282,6 +282,10 @@ pub struct FeatureFlags {
     /// Read-only owner companion page served by the hub on the LAN.
     #[serde(rename = "pwa.companion")]
     pub pwa_companion: bool,
+    /// Look up a product image once, on the hub, for products created
+    /// without one (barcode + name; the result is stored, never hotlinked).
+    #[serde(rename = "catalog.auto_images")]
+    pub catalog_auto_images: bool,
 }
 
 impl FeatureFlags {
@@ -307,6 +311,7 @@ impl FeatureFlags {
             "orders.digital" => self.orders_digital,
             "org.multi_branch" => self.multi_branch,
             "pwa.companion" => self.pwa_companion,
+            "catalog.auto_images" => self.catalog_auto_images,
             _ => false,
         }
     }

@@ -21,6 +21,8 @@ use crate::validate;
 pub struct CartLineView {
     pub line_id: String,
     pub line_no: i64,
+    /// Stored product image (content hash), if the product has one.
+    pub image_hash: Option<String>,
     pub product_id: Option<String>,
     pub name: String,
     pub sku: Option<String>,
@@ -121,6 +123,7 @@ pub struct PosSearchRow {
     pub track_inventory: bool,
     pub unit: String,
     pub stock_status: String,
+    pub image_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -259,6 +262,7 @@ pub(crate) struct LineRecord {
     pub allow_decimal: bool,
     pub track_inventory: bool,
     pub category_id: Option<String>,
+    pub image_hash: Option<String>,
 }
 
 pub(crate) fn load_lines(c: &Connection, cart_id: &str) -> AppResult<Vec<LineRecord>> {
@@ -266,7 +270,7 @@ pub(crate) fn load_lines(c: &Connection, cart_id: &str) -> AppResult<Vec<LineRec
         "SELECT l.line_id, l.line_no, l.product_id, l.name, l.sku, l.barcode, l.unit, l.qty_milli, l.catalog_unit_price_minor,
                 l.unit_price_minor, l.price_override_by, l.line_discount_minor, l.line_discount_bp, l.discount_approved_by,
                 l.tax_rule_id, l.tax_rate_bp, l.tax_inclusive, l.is_custom,
-                COALESCE(p.allow_decimal_quantity, 0), COALESCE(p.track_inventory, 0), p.category_id
+                COALESCE(p.allow_decimal_quantity, 0), COALESCE(p.track_inventory, 0), p.category_id, p.image_hash
          FROM cart_lines l LEFT JOIN products p ON p.product_id = l.product_id
          WHERE l.cart_id=?1 ORDER BY l.line_no",
     )?;
@@ -294,6 +298,7 @@ pub(crate) fn load_lines(c: &Connection, cart_id: &str) -> AppResult<Vec<LineRec
                 allow_decimal: r.get::<_, i64>(18)? == 1,
                 track_inventory: r.get::<_, i64>(19)? == 1,
                 category_id: r.get(20)?,
+                image_hash: r.get(21)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -376,6 +381,7 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
         views.push(CartLineView {
             line_id: l.line_id.clone(),
             line_no: l.line_no,
+            image_hash: l.image_hash.clone(),
             product_id: l.product_id.clone(),
             name: l.name.clone(),
             sku: l.sku.clone(),
@@ -606,7 +612,7 @@ impl AppCore {
                     (SELECT barcode FROM product_barcodes b WHERE b.product_id=p.product_id ORDER BY b.is_primary DESC LIMIT 1),
                     {PRICE_SQL},
                     COALESCE((SELECT qty_milli FROM stock_levels s WHERE s.product_id=p.product_id AND s.branch_id=?1),0),
-                    p.track_inventory, p.unit, p.reorder_point_milli
+                    p.track_inventory, p.unit, p.reorder_point_milli, p.image_hash
                  FROM products p LEFT JOIN categories c ON c.category_id=p.category_id
                  WHERE p.active=1"
             );
@@ -625,6 +631,7 @@ impl AppCore {
                     track_inventory: track,
                     unit: r.get(9)?,
                     stock_status: catalog::stock_status(track, qty, r.get(10)?).to_string(),
+                    image_hash: r.get(11)?,
                 })
             };
             if text.is_empty() {

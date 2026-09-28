@@ -35,3 +35,4 @@ tempfile.workspace = true
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 tokio = { version = "1", features = ["io-util"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
+image = { version = "0.25", default-features = false, features = ["png"] }

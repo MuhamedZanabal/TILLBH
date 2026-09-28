@@ -43,6 +43,8 @@ import { AdjustDialog } from "./inventory";
 import { t } from "../../i18n";
 import { BranchPricesCard } from "./pillars";
 import { codeLabel } from "../../i18n/codes";
+import { NewProductImageField, ProductImageField } from "./productImageField";
+import { ProductImage } from "../../components/ProductImage";
 
 export function ProductsPage() {
   const { has } = useSession();
@@ -76,18 +78,21 @@ export function ProductsPage() {
       key: "name",
       label: t("Product"),
       render: (r) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>
-            {r.is_favorite ? (
-              <Star size={12} fill="var(--warning)" color="var(--warning)" style={{ marginInlineEnd: 4 }} />
-            ) : null}
-            {r.name}
-          </div>
-          {r.name_ar ? (
-            <div className="tiny" dir="rtl">
-              {r.name_ar}
+        <div className="row" style={{ gap: 10, alignItems: "center" }}>
+          <ProductImage hash={r.image_hash} name={r.name} size="xs" />
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 600 }}>
+              {r.is_favorite ? (
+                <Star size={12} fill="var(--warning)" color="var(--warning)" style={{ marginInlineEnd: 4 }} />
+              ) : null}
+              {r.name}
             </div>
-          ) : null}
+            {r.name_ar ? (
+              <div className="tiny" dir="rtl">
+                {r.name_ar}
+              </div>
+            ) : null}
+          </div>
         </div>
       ),
       sort: (r) => r.name.toLowerCase(),
@@ -338,6 +343,7 @@ export function ProductEditorPage() {
   const [opening, setOpening] = useState("");
   const [reorder, setReorder] = useState("0");
   const [leave, setLeave] = useState(false);
+  const [image, setImage] = useState<string | null>(null);
   const act = useAction();
   const cats = useLoad(() => api.categories.list(), []);
   const taxes = useLoad(() => api.tax.list(), []);
@@ -420,6 +426,7 @@ export function ProductEditorPage() {
           cost_minor: has("products.view_cost") ? c : null,
           barcodes: bcInput.trim() ? [...barcodes, bcInput.trim()] : barcodes,
           opening_stock_milli: o,
+          image_b64: image,
         }),
       );
       if (created) {
@@ -588,6 +595,11 @@ export function ProductEditorPage() {
             </div>
           </div>
           <div className="col gap-16">
+            {isNew ? (
+              <NewProductImageField name={form.name} value={image} onChange={(v) => (setImage(v), setDirty(true))} />
+            ) : detail ? (
+              <ProductImageField productId={detail.product_id} name={detail.name} canEdit={canEdit} />
+            ) : null}
             {isNew ? (
               <div className="card card-pad col gap-16">
                 <h3>{t("Price & stock")}</h3>

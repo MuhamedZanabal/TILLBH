@@ -388,6 +388,17 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "tickets.not_delivered" => out(core.ticket_not_delivered(tk()?, all(&args)?)),
         "customers.block_area" => out(core.block_area(tk()?, &req::<String>(&args, "block")?)),
         "riders.cash" => out(core.rider_cash_list(tk()?)),
+        // product images
+        "products.images" => out(core.product_images_get(tk()?, req(&args, "hashes")?)),
+        "products.image_state" => out(core.product_image_state(tk()?, &req::<String>(&args, "product_id")?)),
+        "products.image_upload" => {
+            out(core.product_image_upload(tk()?, &req::<String>(&args, "product_id")?, &req::<String>(&args, "data")?))
+        }
+        "products.image_remove" => out(core.product_image_remove(tk()?, &req::<String>(&args, "product_id")?)),
+        "products.image_find" => out(core.product_image_find(tk()?, &req::<String>(&args, "product_id")?)),
+        "products.image_backfill" => out(core.product_image_backfill(tk()?, opt(&args, "limit")?)),
+        "products.image_overview" => out(core.product_image_overview(tk()?)),
+        "products.image_configure" => out(core.product_image_configure(tk()?, req(&args, "settings")?, opt(&args, "google_key")?)),
         "riders.handover" => out(core.rider_handover(tk()?, all(&args)?)),
         "whatsapp.phone_contacts_import" => out(core.wa_contacts_import(tk()?, all(&args)?)),
         // payment screenshot reviews

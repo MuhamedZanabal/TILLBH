@@ -1078,3 +1078,76 @@ details.tech pre {
   outline: none;
   box-shadow: var(--focus);
 }
+
+/* ---------- product image ----------
+   Square, white, contained (packaged goods never crop or stretch); a
+   monogram placeholder when there is no picture or it cannot be shown. */
+.pimg {
+  --pimg: 42px;
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--pimg);
+  height: var(--pimg);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid var(--border);
+}
+.pimg.xs {
+  --pimg: 32px;
+  border-radius: 8px;
+}
+.pimg.md {
+  --pimg: 56px;
+  border-radius: 14px;
+}
+.pimg.lg {
+  --pimg: 120px;
+  border-radius: 18px;
+}
+.pimg.xl {
+  --pimg: 200px;
+  border-radius: 20px;
+}
+.pimg img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 6%;
+  display: block;
+}
+.pimg.empty {
+  background: hsl(var(--h) 60% 93%);
+  border-color: hsl(var(--h) 45% 85%);
+  color: hsl(var(--h) 45% 30%);
+}
+[data-theme="dark"] .pimg.empty {
+  background: hsl(var(--h) 35% 20%);
+  border-color: hsl(var(--h) 35% 28%);
+  color: hsl(var(--h) 70% 82%);
+}
+.pimg-mono {
+  font-size: calc(var(--pimg) * 0.34);
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  user-select: none;
+}
+.pimg.loading {
+  background: linear-gradient(90deg, var(--surface-hover), var(--surface-2), var(--surface-hover));
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite linear;
+}
+.pimg-edit {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pimg.loading {
+    animation: none;
+  }
+}

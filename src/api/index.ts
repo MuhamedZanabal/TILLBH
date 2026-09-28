@@ -123,8 +123,20 @@ export const api = {
         cost_minor?: number | null;
         barcodes: string[];
         opening_stock_milli?: number | null;
+        image_b64?: string | null;
       },
     ) => call<T.ProductDetail>("products.create", a),
+    /** Stored images by hash, as data URLs (unknown hashes are left out). */
+    images: (hashes: string[]) => call<Record<string, string>>("products.images", { hashes }),
+    imageState: (product_id: string) => call<T.ProductImageState>("products.image_state", { product_id }),
+    imageUpload: (product_id: string, data: string) =>
+      call<T.ProductImageState>("products.image_upload", { product_id, data }),
+    imageRemove: (product_id: string) => call<T.ProductImageState>("products.image_remove", { product_id }),
+    imageFind: (product_id: string) => call<T.ProductImageState>("products.image_find", { product_id }),
+    imageBackfill: (limit?: number) => call<{ queued: number }>("products.image_backfill", { limit }),
+    imageOverview: () => call<T.ImageOverview>("products.image_overview"),
+    imageConfigure: (settings: T.ImageSearchSettings, google_key?: string | null) =>
+      call<T.ImageOverview>("products.image_configure", { settings, google_key }),
     update: (a: T.ProductInput & { product_id: string; expected_version: number }) =>
       call<T.ProductDetail>("products.update", a),
     setActive: (product_id: string, active: boolean) =>

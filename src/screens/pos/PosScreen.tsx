@@ -45,6 +45,7 @@ import { HashRouter } from "react-router-dom";
 import type { AiContext } from "../../api/types";
 import { CartPanel } from "./CartPanel";
 import { initials } from "../login/Login";
+import { ProductImage } from "../../components/ProductImage";
 import { PaymentModal, SaleSuccess } from "./PaymentModal";
 import { SendRail, TicketSheet } from "./SendLoop";
 import {
@@ -724,6 +725,7 @@ export function PosScreen({
                         className={`result-row ${i === sel ? "sel" : ""}`}
                         onMouseDown={(e) => (e.preventDefault(), void addProduct(r))}
                       >
+                        <ProductImage hash={r.image_hash} name={r.name} size="sm" />
                         <div className="grow">
                           <div className="r-name ellipsis">{r.name}</div>
                           <div className="tiny ellipsis">

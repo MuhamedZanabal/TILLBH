@@ -41,6 +41,7 @@ import { Confirm, DataTable, DateRange, Drawer, Pager, download, useAction, useL
 import { t, tb } from "../../i18n";
 import { LoyaltySettingsSection } from "./pillars";
 import { codeLabel } from "../../i18n/codes";
+import { ProductImageSettings } from "./productImageField";
 
 // ---------------- Devices ----------------
 
@@ -1256,11 +1257,13 @@ type Section =
   | "features"
   | "loyalty"
   | "delivery"
+  | "images"
   | "whatsapp"
   | "ai"
   | "about";
 
 export function SettingsPage() {
+  const { has } = useSession();
   const [params] = useSearchParams();
   const [section, setSection] = useState<Section>((params.get("section") as Section | null) ?? "business");
   const sections: [Section, string][] = [
@@ -1278,6 +1281,7 @@ export function SettingsPage() {
     ["features", t("Features")],
     ["loyalty", t("Loyalty")],
     ["delivery", t("Delivery")],
+    ["images", t("Product images")],
     ["whatsapp", t("WhatsApp")],
     ["ai", t("AI assistant")],
     ["about", t("About")],
@@ -1308,6 +1312,7 @@ export function SettingsPage() {
           {section === "features" ? <FeaturesSettings /> : null}
           {section === "loyalty" ? <LoyaltySettingsSection /> : null}
           {section === "delivery" ? <DeliverySettingsSection /> : null}
+          {section === "images" ? <ProductImageSettings canManage={has("settings.manage")} /> : null}
           {section === "whatsapp" ? <WaTemplates /> : null}
           {section === "ai" ? <AiSettingsSection /> : null}
           {section === "about" ? <AboutSettings /> : null}
@@ -2148,6 +2153,10 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
   "pwa.companion": () =>
     t(
       "A read-only page for the owner's phone on the store network: today's sales, pending deliveries and low stock. Needs the hub and a short-lived link issued from Admin → Phone view.",
+    ),
+  "catalog.auto_images": () =>
+    t(
+      "Looks once for a white-background photo of each new product by barcode and name, and stores it on this computer. A picture you upload always wins. Sources are chosen in Settings → Product images.",
     ),
 };
 

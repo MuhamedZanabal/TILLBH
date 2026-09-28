@@ -23,6 +23,7 @@ import {
 } from "../../components/ui";
 import { Confirm, DataTable, DateRange, Pager, useAction, useLoad } from "./common";
 import { t } from "../../i18n";
+import { ProductImage } from "../../components/ProductImage";
 import { codeLabel } from "../../i18n/codes";
 
 export function AdjustDialog({
@@ -220,7 +221,17 @@ export function InventoryPage() {
         rowKey={(r) => r.product_id}
         onRowClick={(r) => nav(`/admin/products/${r.product_id}`)}
         columns={[
-          { key: "p", label: t("Product"), render: (r) => r.name, sort: (r) => r.name },
+          {
+            key: "p",
+            label: t("Product"),
+            render: (r) => (
+              <span className="row" style={{ gap: 10, alignItems: "center" }}>
+                <ProductImage hash={r.image_hash} name={r.name} size="xs" />
+                <span>{r.name}</span>
+              </span>
+            ),
+            sort: (r) => r.name,
+          },
           { key: "s", label: t("SKU"), render: (r) => <span className="mono">{r.sku}</span> },
           { key: "b", label: t("Barcode"), render: (r) => <span className="mono">{r.primary_barcode ?? "—"}</span> },
           {

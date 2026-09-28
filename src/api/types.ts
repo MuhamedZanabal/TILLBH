@@ -118,6 +118,7 @@ export interface FeatureFlags {
   "orders.digital": boolean;
   "org.multi_branch": boolean;
   "pwa.companion": boolean;
+  "catalog.auto_images": boolean;
 }
 
 export type FeatureName = keyof FeatureFlags;
@@ -147,6 +148,7 @@ export interface Totals {
 export interface CartLine {
   line_id: string;
   line_no: number;
+  image_hash?: string | null;
   product_id: string | null;
   name: string;
   sku: string | null;
@@ -390,6 +392,7 @@ export interface PosSearchRow {
   track_inventory: boolean;
   unit: string;
   stock_status: string;
+  image_hash?: string | null;
 }
 
 export interface HeldCart {
@@ -608,6 +611,39 @@ export interface ProductRow {
   tax_rate_bp: number;
   tax_inclusive: boolean;
   stock_status: string;
+  /** Stored product image (content hash; fetched through `products.images`). */
+  image_hash?: string | null;
+  image_source?: "manual" | "automatic" | null;
+  auto_image_status?: AutoImageStatus;
+}
+
+export type AutoImageStatus = "not_attempted" | "pending" | "processing" | "found" | "not_found" | "failed" | "skipped";
+
+export interface ProductImageState {
+  product_id: string;
+  image_hash: string | null;
+  image_source: "manual" | "automatic" | null;
+  auto_image_status: AutoImageStatus;
+  auto_image_attempted_at: string | null;
+  auto_image_note: Record<string, unknown> | null;
+}
+
+export interface ImageSearchSettings {
+  open_food_facts: boolean;
+  bing: boolean;
+  google: boolean;
+  google_cx: string;
+  region: string;
+  language: "en" | "ar";
+}
+
+export interface ImageOverview {
+  enabled: boolean;
+  counts: Partial<Record<AutoImageStatus, number>>;
+  with_image: number;
+  never_searched: number;
+  settings: ImageSearchSettings;
+  google_key_set: boolean;
 }
 
 export interface BarcodeRow {

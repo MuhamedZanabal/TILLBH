@@ -57,6 +57,11 @@ pub struct ProductRow {
     pub tax_rate_bp: i64,
     pub tax_inclusive: bool,
     pub stock_status: String,
+    /// Stored product image (content hash; fetch with `products.images`).
+    pub image_hash: Option<String>,
+    /// manual | automatic (None: no image).
+    pub image_source: Option<String>,
+    pub auto_image_status: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -169,6 +174,10 @@ pub struct ProductCreate {
     pub barcodes: Vec<String>,
     #[serde(default)]
     pub opening_stock_milli: Option<i64>,
+    /// A picture chosen in the editor (base64 or a data URL). Without one,
+    /// the product is queued for the one automatic lookup (when turned on).
+    #[serde(default)]
+    pub image_b64: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -192,7 +201,7 @@ pub(crate) const PRODUCT_ROW_SQL: &str = "SELECT p.product_id, p.sku, p.name, p.
     (SELECT avg_cost_minor FROM product_costs pc WHERE pc.product_id = p.product_id AND pc.branch_id = ?1),
     COALESCE((SELECT qty_milli FROM stock_levels s WHERE s.product_id = p.product_id AND s.branch_id = ?1), 0),
     p.reorder_point_milli, p.unit, p.track_inventory, p.allow_decimal_quantity, p.active, p.is_favorite,
-    p.tax_rule_id, t.rate_bp, t.inclusive
+    p.tax_rule_id, t.rate_bp, t.inclusive, p.image_hash, p.image_source, p.auto_image_status
   FROM products p
   JOIN tax_rules t ON t.tax_rule_id = p.tax_rule_id
   LEFT JOIN categories c ON c.category_id = p.category_id";
@@ -241,6 +250,9 @@ pub(crate) fn map_product_row(r: &Row, show_cost: bool) -> rusqlite::Result<Prod
         tax_rate_bp: r.get(18)?,
         tax_inclusive: r.get::<_, i64>(19)? == 1,
         stock_status: stock_status(track, qty, reorder).to_string(),
+        image_hash: r.get(20)?,
+        image_source: r.get(21)?,
+        auto_image_status: r.get(22)?,
     })
 }
 
@@ -657,9 +669,24 @@ impl AppCore {
         if req.cost_minor.is_some() && !s.has("products.view_cost") {
             return Err(AppError::forbidden("products.view_cost"));
         }
+        // A chosen picture is validated before anything is saved.
+        let image = match req.image_b64.as_deref().filter(|d| !d.trim().is_empty()) {
+            Some(d) => Some(crate::product_images::decode_b64_image(d)?),
+            None => None,
+        };
+        let auto = self.features().map(|f| f.is_on("catalog.auto_images")).unwrap_or(false);
         let actor = self.actor(&s, None);
         let pid = self.db.write(|tx| {
             let pid = insert_product(tx, &s, &req, "manual")?;
+            match &image {
+                Some(n) => {
+                    crate::product_images::set_manual(tx, &pid, n)?;
+                }
+                None if auto => {
+                    tx.execute("UPDATE products SET auto_image_status='pending' WHERE product_id=?1", [&pid])?;
+                }
+                None => {}
+            }
             let after = product_json(tx, &pid)?;
             audit::record(
                 tx,
@@ -670,7 +697,7 @@ impl AppCore {
                 None,
                 Some(&json!({
                     "product": after, "price_minor": req.price_minor, "barcodes": req.barcodes,
-                    "opening_stock_milli": req.opening_stock_milli
+                    "opening_stock_milli": req.opening_stock_milli, "image_hash": image.as_ref().map(|n| n.hash.clone()),
                 })),
             )?;
             Ok(pid)

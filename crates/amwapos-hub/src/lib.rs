@@ -5,6 +5,7 @@ pub mod ai_client;
 pub mod ai_stream;
 pub mod client;
 pub mod discovery;
+pub mod image_worker;
 pub mod ocr_worker;
 pub mod runtime;
 pub mod server;

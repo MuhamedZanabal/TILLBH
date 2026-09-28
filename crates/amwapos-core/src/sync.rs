@@ -63,6 +63,7 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("users", &["user_id"], Policy::Hub),
     ("categories", &["category_id"], Policy::Hub),
     ("tax_rules", &["tax_rule_id"], Policy::Hub),
+    ("product_images", &["image_hash"], Policy::Hub),
     ("products", &["product_id"], Policy::Hub),
     ("product_barcodes", &["barcode_id"], Policy::Hub),
     ("product_prices", &["price_id"], Policy::Hub),

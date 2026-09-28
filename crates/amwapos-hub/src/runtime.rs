@@ -57,6 +57,8 @@ pub struct Runtime {
     pub whatsapp: Arc<WhatsAppService>,
     /// OCR worker (bundled Tesseract), feature `ocr.enabled`.
     pub ocr: Arc<OcrWorker>,
+    /// One-time product image lookups, feature `catalog.auto_images`.
+    pub images: Arc<crate::image_worker::ImageWorker>,
     /// Signed update checker/installer.
     pub updater: Arc<crate::updater::Updater>,
     /// OS step-up provider (set by the desktop shell on Windows).
@@ -85,6 +87,7 @@ impl Runtime {
             maintenance: Mutex::new(None),
             whatsapp: WhatsAppService::new(core.clone(), Arc::new(RustWhatsAppAdapter::new())),
             ocr: OcrWorker::new(core.clone()),
+            images: crate::image_worker::ImageWorker::new(core.clone()),
             updater: crate::updater::Updater::new(),
             step_up: Mutex::new(None),
             bind_ip: Ipv4Addr::UNSPECIFIED,
@@ -101,6 +104,7 @@ impl Runtime {
             maintenance: Mutex::new(None),
             whatsapp: WhatsAppService::new(core.clone(), Arc::new(RustWhatsAppAdapter::new())),
             ocr: OcrWorker::new(core.clone()),
+            images: crate::image_worker::ImageWorker::new(core.clone()),
             updater: crate::updater::Updater::new(),
             step_up: Mutex::new(None),
             bind_ip: ip,
@@ -262,12 +266,13 @@ impl Runtime {
         // Optional modules; each runs on its own tasks and never blocks selling.
         self.whatsapp.ensure();
         self.ocr.ensure();
+        self.images.ensure();
         // Maintenance: scheduled backups.
         let mut g = self.maintenance.lock().unwrap();
         if g.as_ref().map(|h| h.is_finished()).unwrap_or(true) {
             let core = self.core.clone();
             let updater = self.updater.clone();
-            let (wa, ocr) = (self.whatsapp.clone(), self.ocr.clone());
+            let (wa, ocr, images) = (self.whatsapp.clone(), self.ocr.clone(), self.images.clone());
             *g = Some(tokio::spawn(async move {
                 let mut minutes: u64 = 0;
                 loop {
@@ -276,6 +281,7 @@ impl Runtime {
                     // Watchdog: restart a WhatsApp or OCR task that died.
                     wa.ensure();
                     ocr.ensure();
+                    images.ensure();
                     // A8: scheduled AI briefings (only while the app is open).
                     let c = core.clone();
                     if let Ok(Ok(due)) = tokio::task::spawn_blocking(move || c.ai_briefings_due()).await {
@@ -632,6 +638,10 @@ impl Runtime {
                         | "deliveries.update"
                         | "pos.finalize" => self.whatsapp.poke.notify_one(),
                         "invoicescan.import" | "payreviews.upload" | "ocr.retry" => self.ocr.poke.notify_one(),
+                        "products.create" | "products.image_find" | "products.image_backfill" | "products.image_configure" => {
+                            self.images.ensure();
+                            self.images.poke.notify_one();
+                        }
                         _ => {}
                     }
                 }
