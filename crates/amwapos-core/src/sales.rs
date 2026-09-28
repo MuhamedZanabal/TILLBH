@@ -47,7 +47,7 @@ pub struct Fulfilment {
     #[serde(default)]
     pub area: Option<String>,
     /// Flat / Building / Road / Block for this drop.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::address::null_as_default")]
     pub address_parts: crate::address::AddressParts,
     #[serde(default)]
     pub phone: Option<String>,

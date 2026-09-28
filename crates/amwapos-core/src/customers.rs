@@ -27,7 +27,7 @@ pub struct CustomerInput {
     #[serde(default)]
     pub address: Option<String>,
     /// Flat / Building / Road / Block; when given, `address` is composed from them.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::address::null_as_default")]
     pub address_parts: crate::address::AddressParts,
     #[serde(default = "yes")]
     pub active: bool,
@@ -102,7 +102,7 @@ pub struct DeliveryCreate {
     #[serde(default)]
     pub order_id: Option<String>,
     /// Flat / Building / Road / Block; when given, `address` is composed from them.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::address::null_as_default")]
     pub address_parts: crate::address::AddressParts,
     /// walk_in | phone | whatsapp | web | other
     #[serde(default)]

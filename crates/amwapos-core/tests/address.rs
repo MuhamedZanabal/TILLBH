@@ -60,11 +60,17 @@ fn customer_parts_compose_the_address_and_the_block_fills_the_area() {
         serde_json::from_value(json!({ "name": "X", "address_parts": { "road": "1" } })).unwrap(),
     );
     assert_eq!(bad.unwrap_err().code, ErrorCode::Validation);
-    // Free text still works.
+    // Free text still works (the UI sends address_parts: null for it).
     let f = e
         .core
-        .customer_save(&e.owner_token, None, serde_json::from_value(json!({ "name": "Free", "address": "Villa 7, Riffa" })).unwrap())
+        .customer_save(
+            &e.owner_token,
+            None,
+            serde_json::from_value(json!({ "name": "Free", "address": "Villa 7, Riffa", "address_parts": null })).unwrap(),
+        )
         .unwrap();
+    let fu: Fulfilment = serde_json::from_value(json!({ "mode": "send", "address": "x", "address_parts": null })).unwrap();
+    assert!(!fu.address_parts.is_structured());
     assert_eq!((f.info.address.as_deref(), f.info.area.as_deref()), (Some("Villa 7, Riffa"), Some("Riffa")));
     assert_eq!(e.core.block_area(&e.owner_token, "1205").unwrap().as_deref(), Some("Hamad Town"));
     assert_eq!(e.core.block_area(&e.owner_token, "999").unwrap(), None);

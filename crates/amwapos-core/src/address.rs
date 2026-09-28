@@ -23,6 +23,16 @@ pub struct AddressParts {
     pub landmark: Option<String>,
 }
 
+/// `address_parts: null` from the UI means "no parts" (serde's `default`
+/// alone only covers a missing field).
+pub fn null_as_default<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
+}
+
 fn part(v: &Option<String>, label: &str, max: usize) -> AppResult<Option<String>> {
     let t = v.as_deref().map(str::trim).unwrap_or("");
     if t.is_empty() {
