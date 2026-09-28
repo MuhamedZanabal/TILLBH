@@ -51,8 +51,19 @@ if (-not (Test-Path (Join-Path $dataRoot 'data'))) { Fail "the installer did not
 
 Step "Secret scan of the installed program"
 $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($app))
-foreach ($pat in @('sk-ant-[A-Za-z0-9_-]{20,}', 'AIzaSy[A-Za-z0-9_-]{30,}', 'sk-or-v1-[a-f0-9]{20,}', '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----', '/home/user/AMWAPOS')) {
+foreach ($pat in @('sk-ant-[A-Za-z0-9_-]{20,}', 'sk-or-v1-[a-f0-9]{20,}', '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----', '/home/user/AMWAPOS')) {
   if ($text -match $pat) { Fail "the program contains a secret or developer path matching '$pat'" }
+}
+# Google API keys (AIza + 35 = 39 characters). The one exception is a public
+# constant of the WhatsApp wire protocol: an entry of its token dictionary
+# (wacore-binary src/tokens.json, double_byte), compiled into the WhatsApp
+# client. It is allowed by its exact SHA-256 only; any other key fails.
+$publicProtocolKeys = @('7ab242f431236c83b2aeabba8d1ea0bb79619191ea1abacb68fdad4cf6a2c99f')
+$sha = [Security.Cryptography.SHA256]::Create()
+foreach ($m in [regex]::Matches($text, 'AIza[A-Za-z0-9_-]{35}')) {
+  $h = ($sha.ComputeHash([Text.Encoding]::ASCII.GetBytes($m.Value)) | ForEach-Object { $_.ToString('x2') }) -join ''
+  if ($publicProtocolKeys -notcontains $h) { Fail "the program contains a Google API key (sha256 $h)" }
+  Write-Host "allowed: WhatsApp protocol dictionary constant (sha256 $($h.Substring(0, 12)))"
 }
 
 function Start-App {
