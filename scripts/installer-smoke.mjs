@@ -76,13 +76,32 @@ async function appPage() {
   }
   if (!browser) throw new Error("the installed app's WebView2 never opened its debugging port");
   const ctx = browser.contexts()[0];
-  const page = ctx.pages()[0] ?? (await ctx.waitForEvent("page"));
-  await page.waitForLoadState("domcontentloaded");
-  page.setDefaultTimeout(30_000);
-  const desktop = await page.evaluate(() => Boolean(window.__TAURI_INTERNALS__));
-  if (!desktop) throw new Error(`not the desktop app: ${page.url()}`);
-  console.log(`connected: ${page.url()}`);
-  return { browser, page };
+  // The window may still be navigating to the app when the port opens: wait
+  // until the app has rendered with the desktop IPC bridge, retrying while
+  // the document is being replaced.
+  let last = "no page";
+  for (let i = 0; i < 60; i++) {
+    for (const page of ctx.pages()) {
+      try {
+        const ready = await page.evaluate(
+          () =>
+            document.readyState !== "loading" &&
+            Boolean(window.__TAURI_INTERNALS__) &&
+            (document.getElementById("root")?.childElementCount ?? 0) > 0,
+        );
+        last = page.url();
+        if (ready) {
+          page.setDefaultTimeout(30_000);
+          console.log(`connected: ${last}`);
+          return { browser, page };
+        }
+      } catch (e) {
+        last = `${page.url()} (${e?.message ?? e})`;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error(`not the desktop app after 60 s: ${last}`);
 }
 
 async function login(page) {
@@ -180,16 +199,16 @@ async function relaunch(page) {
   await shot(page, "01-after-restart");
 }
 
-const { browser, page } = await appPage();
+let page;
 try {
+  ({ page } = await appPage());
   if (mode === "first") await first(page);
   else await relaunch(page);
   console.log(`installer smoke (${mode}): passed`);
 } catch (e) {
-  if (shots) await page.screenshot({ path: `${shots}/${mode}-FAILED.png` }).catch(() => {});
+  if (shots && page) await page.screenshot({ path: `${shots}/${mode}-FAILED.png` }).catch(() => {});
   console.error(`installer smoke (${mode}) FAILED: ${e?.message ?? e}`);
   process.exitCode = 1;
 }
 // Only disconnect: closing a CDP-connected browser could close the app window.
-void browser;
 process.exit(process.exitCode ?? 0);
