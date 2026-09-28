@@ -1,3 +1,4 @@
+import { crc32, deflateSync } from "node:zlib";
 import { expect, test, type Page } from "@playwright/test";
 
 const shots = process.env.E2E_SHOTS;
@@ -383,4 +384,120 @@ test("AI assistant: live tool steps and thinking, slash commands, shortcuts, and
   await composer.evaluate((el) => (el as HTMLTextAreaElement).blur());
   await page.keyboard.press("?");
   await expect(page.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
+});
+
+// A 96×96 PNG: white with a red square (stands in for a product packshot).
+function packshotPng(): Buffer {
+  const w = 96;
+  const raw = Buffer.alloc((w * 3 + 1) * w, 255);
+  for (let y = 24; y < 72; y++) {
+    raw[y * (w * 3 + 1)] = 0;
+    for (let x = 24; x < 72; x++) {
+      const o = y * (w * 3 + 1) + 1 + x * 3;
+      raw[o] = 220;
+      raw[o + 1] = 30;
+      raw[o + 2] = 40;
+    }
+  }
+  for (let y = 0; y < w; y++) raw[y * (w * 3 + 1)] = 0;
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(td) >>> 0);
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(w, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+test("product pictures: upload in the editor, shown in the catalogue and at the till, placeholder otherwise", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /Zana/ }).click();
+  await page.getByLabel("PIN").fill("4826");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.goto("/#/admin/products/new");
+
+  // New product with a picture: preview first, stored on Save.
+  await page.getByLabel("Name").first().fill("Picture Test Juice 250ml");
+  await page.getByLabel("Selling price").fill("0.400");
+  const field = page.getByTestId("product-image-field");
+  await expect(field.getByTestId("product-image")).toHaveAttribute("data-state", "placeholder");
+  // A wrong type is refused in the browser before anything is sent.
+  await field.getByTestId("product-image-input").setInputFiles({
+    name: "notes.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("hello"),
+  });
+  await expect(field).toContainText("PNG, JPEG, WebP or GIF");
+  await field.getByTestId("product-image-input").setInputFiles({
+    name: "juice.png",
+    mimeType: "image/png",
+    buffer: packshotPng(),
+  });
+  await expect(field.getByTestId("product-image")).toHaveAttribute("data-state", "image");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Product created")).toBeVisible();
+  // The saved product shows the stored (normalised) picture and where it came from.
+  await expect(page.getByTestId("product-image-field").getByTestId("product-image")).toHaveAttribute(
+    "data-state",
+    "image",
+  );
+  await expect(page.getByTestId("product-image-field")).toContainText("Uploaded");
+  await shot(page, "40-product-picture");
+
+  // Catalogue list: the uploaded product has a picture, the others a placeholder.
+  await page.goto("/#/admin/products");
+  const row = page.getByRole("row", { name: /Picture Test Juice/ });
+  await expect(row.getByTestId("product-image")).toHaveAttribute("data-state", "image");
+  const milk = page.getByRole("row", { name: /Almarai Fresh Milk/ });
+  await expect(milk.getByTestId("product-image")).toHaveAttribute("data-state", "placeholder");
+
+  // Remove → placeholder again.
+  await row.click();
+  await page.getByRole("button", { name: "Remove picture" }).click();
+  await expect(page.getByTestId("product-image-field").getByTestId("product-image")).toHaveAttribute(
+    "data-state",
+    "placeholder",
+  );
+  // Put it back for the till check.
+  await page.getByTestId("product-image-input").setInputFiles({
+    name: "juice.png",
+    mimeType: "image/png",
+    buffer: packshotPng(),
+  });
+  await expect(page.getByTestId("product-image-field").getByTestId("product-image")).toHaveAttribute(
+    "data-state",
+    "image",
+  );
+
+  // Till search results carry the same picture (nothing is added: the next spec closes this shift).
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: /Logout|Log out/ })
+    .first()
+    .click();
+  await page.getByRole("button", { name: /Sara/ }).click();
+  await page.getByLabel("PIN").fill("7391");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByTestId("pos")).toBeVisible();
+  await page.getByTestId("scan-input").fill("picture test");
+  const opt = page.getByRole("option").first();
+  await expect(opt).toContainText("Picture Test Juice");
+  await expect(opt.getByTestId("product-image")).toHaveAttribute("data-state", "image");
+  await shot(page, "41-till-picture");
 });

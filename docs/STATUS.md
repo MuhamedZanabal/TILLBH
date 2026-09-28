@@ -119,6 +119,7 @@ the new tables exist (migrations 0009, 0010) but nothing reads or writes them.
 | `orders.digital` | Phone/WhatsApp/web/other orders; human confirm; idempotent load into a till sale; optional delivery on commit |
 | `org.multi_branch` | Branch CRUD, user branch assignment, session branch switch, branch prices, branch pairing, branch-scoped mutations and reports |
 | `pwa.companion` | Hub-served read-only owner phone page; hashed, revocable bearer token (≤ 24 h), LAN peers only |
+| `catalog.auto_images` | One-time automatic product picture search (see Product images below) |
 
 Always on (no flag, no behaviour change for existing flows): ticket number on hold
 and recall by number, low-stock hint on cart lines, safe-drop running total and
@@ -278,3 +279,47 @@ One record chain: person → channel → **ticket** (a sent sale, or a digital o
 | Notices | Complete | On-the-way and delivered notices carry the ticket, total, address and area; templates saved without `{address}` get an address line. Sent through the outbox with an idempotency key; a failure shows a banner on the ticket and nothing is rolled back. **Automatic notices are a new WhatsApp setting, off by default**; with it off a person taps Message. | — |
 | AI | Complete | New read tools `list_open_drops` and `ticket_get`. No new mutation tool skips Confirm. | — |
 | Flag defaults | Unchanged | `orders.digital`, `whatsapp.*` and `loyalty.enabled` stay off. | — |
+
+## Product images, 2026-09-28
+
+Precedence: uploaded picture > automatically found picture > monogram placeholder.
+
+- **Schema (migration 0020).** `products.image_hash`, `image_source` (`manual`|`automatic`),
+  `auto_image_status` (`not_attempted`|`pending`|`processing`|`found`|`not_found`|`failed`|`skipped`),
+  `auto_image_attempted_at`, `auto_image_attempts`, `auto_image_next_at`, `auto_image_note` (JSON evidence).
+  `product_images(image_hash PK, mime, width, height, bytes, data_b64, created_at)` is content-addressed:
+  sha256 of the normalised JPEG. It is synced hub → terminals (`Policy::Hub`).
+- **Storage.** Each picture is decoded server-side from its magic bytes (PNG/JPEG/WebP/GIF only, ≤ 8 MB,
+  ≥ 64 px, bounded decoder limits). It is re-encoded as JPEG q85 within 512×512, with transparency flattened
+  onto white. Pictures live in the database, so screens never hotlink. When no product references a picture
+  any more, it is deleted.
+- **Automatic search** runs only when the `catalog.auto_images` flag is on (default off). It is done by a
+  hub/standalone worker (never on terminals, never on render). It runs once per product, for new products
+  without a picture. The Settings "Find pictures for products without one" button queues existing products
+  in bounded batches.
+  - Claiming a product is one conditional UPDATE. A claim abandoned for 10 minutes is taken back.
+  - Transient errors are retried at most 3 times (after 5 min, 1 h, 6 h).
+  - A result is written only if the product still has no picture, so an upload made during a search always wins.
+- **Providers.** Open Food Facts (by barcode). Bing images (keyless, unofficial endpoint, white-background
+  and large-photo filters, market/language).
+  Google Programmable Search is optional: its key is kept in the OS secret store and its cx in settings.
+  Candidates are scored on barcode or name evidence, rejected words (logo, banner, …), size, aspect ratio,
+  white border, and a GCC domain bonus.
+- **Fetcher (SSRF).**
+  - Only http/https URLs on ports 80/443, with no user info and no local or internal names.
+  - Every resolved address must be public (IPv4/IPv6, including mapped and NAT64 forms), and the checked
+    address is the one connected to.
+  - Redirects are followed by hand: at most 3, and each one is checked again.
+  - 15 s timeout, image content types only, 8 MB streaming cap.
+- **Environment (optional, none required).** `AMWAPOS_IMAGE_SEARCH=off` disables all providers.
+  `AMWAPOS_OFF_BASE`, `AMWAPOS_BING_BASE` and `AMWAPOS_GOOGLE_SEARCH_BASE` override the provider base URLs
+  (used by tests).
+- **UI.** `ProductImage` batches up to 60 hashes per request, caches them by hash, and falls back to a
+  placeholder when a picture is unknown, fails or cannot be shown.
+  It is used on the till search results, cart lines, products list, stock list and product editor
+  (upload/replace/remove, find automatically, search status). Settings → Product images holds the sources,
+  market, counts and backfill.
+- **Limits.**
+  - Single business: access is controlled by permissions (`products.manage`, `settings.manage`), not per tenant.
+  - Bing is unofficial and may change or rate-limit; its errors count as transient.
+  - Behind an HTTP proxy, the address pinning applies to the proxy rather than the image host.

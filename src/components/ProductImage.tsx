@@ -7,7 +7,17 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 
 const cache = new Map<string, string>();
-const missing = new Set<string>();
+// Hashes the server did not have, with when we asked. A terminal can receive a
+// product before its picture has synced, so a miss is retried after a minute.
+const missed = new Map<string, number>();
+const MISS_TTL_MS = 60_000;
+const isMissing = (hash: string) => {
+  const at = missed.get(hash);
+  if (at === undefined) return false;
+  if (Date.now() - at < MISS_TTL_MS) return true;
+  missed.delete(hash);
+  return false;
+};
 const waiters = new Map<string, ((src: string | null) => void)[]>();
 const queue: string[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -37,7 +47,7 @@ async function flush() {
     for (const h of batch) {
       const src = got[h] ?? null;
       if (src) remember(h, src);
-      else missing.add(h);
+      else missed.set(h, Date.now());
       settle(h, src);
     }
   } catch {
@@ -50,7 +60,7 @@ async function flush() {
 export function loadProductImage(hash: string): Promise<string | null> {
   const hit = cache.get(hash);
   if (hit) return Promise.resolve(hit);
-  if (missing.has(hash)) return Promise.resolve(null);
+  if (isMissing(hash)) return Promise.resolve(null);
   return new Promise((resolve) => {
     const list = waiters.get(hash);
     if (list) {
@@ -65,7 +75,7 @@ export function loadProductImage(hash: string): Promise<string | null> {
 
 /** Seed the cache with an image the page already has (e.g. just uploaded). */
 export function primeProductImage(hash: string, dataUrl: string) {
-  missing.delete(hash);
+  missed.delete(hash);
   remember(hash, dataUrl);
 }
 
@@ -96,7 +106,7 @@ export function ProductImage({
   className?: string;
 }) {
   const [src, setSrc] = useState<string | null>(() => (hash ? (cache.get(hash) ?? null) : null));
-  const [loading, setLoading] = useState(() => !!hash && !cache.has(hash) && !missing.has(hash));
+  const [loading, setLoading] = useState(() => !!hash && !cache.has(hash) && !isMissing(hash));
   const [broken, setBroken] = useState(false);
   useEffect(() => {
     setBroken(false);
@@ -113,7 +123,7 @@ export function ProductImage({
     }
     let live = true;
     setSrc(null);
-    setLoading(!missing.has(hash));
+    setLoading(!isMissing(hash));
     void loadProductImage(hash).then((s) => {
       if (!live) return;
       setSrc(s);
