@@ -121,3 +121,18 @@ jobs:
         with:
           name: amwapos-windows-unsigned
           path: target/release/bundle/nsis/*.exe
+      # The installer itself, not just the build: silent install, the installed
+      # app driven through its own WebView2 window (setup, products with
+      # pictures, WhatsApp and its Catalogue tab, till, a cash sale), database
+      # and build-commit checks, relaunch, reinstall and uninstall (business
+      # data kept). See scripts/installer-smoke.ps1.
+      - name: Installer smoke test
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1
+          ./scripts/installer-smoke.ps1 -Installer $exe.FullName -ExpectSha "${{ github.sha }}" -Shots installer-smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-smoke-evidence
+          path: installer-smoke/

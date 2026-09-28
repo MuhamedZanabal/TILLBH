@@ -17,8 +17,20 @@ explicit decision.
 
 Every push to the working branch runs CI. The **Windows build + tests + installer** job uploads
 `amwapos-windows-unsigned`, which contains `AMWAPOS_<ver>_x64-setup.exe`, and prints its SHA-256
-in the "Installer hashes" step. The installer used for a soak is recorded in
-[STATUS.md](STATUS.md) with the run, the commit and the hash.
+in the "Installer hashes" step. The **Installer smoke test** step then installs that exact installer
+silently on the Windows runner and checks it (`scripts/installer-smoke.ps1`, `scripts/installer-smoke.mjs`):
+- packaged files and the installed program contain no session file, `.env`, test data, keys or developer paths;
+- the installed version matches `tauri.conf.json`;
+- the installed app starts and its log names the commit being built;
+- its own WebView2 window is driven through remote debugging: setup wizard, a product with a picture,
+  the products list, Settings → Product images, WhatsApp → Catalogue, the till and a cash sale;
+- the database reaches the latest schema and passes `integrity_check`;
+- it closes normally, relaunches with the data kept, survives a reinstall, and uninstalls without
+  touching `%ProgramData%\AMWAPOS`.
+
+Screenshots and the step output are uploaded as `installer-smoke-evidence`.
+
+The installer used for a soak is recorded in [STATUS.md](STATUS.md) with the run, the commit and the hash.
 
 A tag such as `v0.1.0-soak.1` runs the release workflow. The result is a **draft** release with
 the installer, SBOMs and `SHA256SUMS.txt`, unsigned unless the certificate secrets exist.

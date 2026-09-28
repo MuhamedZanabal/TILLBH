@@ -383,6 +383,72 @@ mod tests {
         assert_eq!(db.integrity_check().unwrap(), vec!["ok".to_string()]);
     }
 
+    /// Installations on an earlier schema (13: the last `main` release line;
+    /// 19: the last soak build before product images and the WhatsApp
+    /// catalogue) upgrade through the normal runner: data kept, a safety
+    /// backup taken, no automatic picture search queued and nothing
+    /// published to WhatsApp by the upgrade itself.
+    #[test]
+    fn upgrade_from_earlier_schemas_keeps_data_and_starts_nothing() {
+        for from in [13, 19] {
+            upgrade_from(from);
+        }
+    }
+
+    fn upgrade_from(from: i64) {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("t.db");
+        {
+            let c = Connection::open(&p).unwrap();
+            c.execute_batch(
+                "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at TEXT NOT NULL);",
+            )
+            .unwrap();
+            for m in MIGRATIONS.iter().filter(|m| m.version <= from) {
+                c.execute_batch(m.sql).unwrap();
+                c.execute(
+                    "INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES (?1,?2,?3,'2026-09-01T00:00:00.000Z')",
+                    rusqlite::params![m.version, m.name, checksum(m.sql)],
+                )
+                .unwrap();
+            }
+            c.execute_batch(
+                "INSERT INTO tax_rules(tax_rule_id,name,rate_bp,inclusive,active,effective_from,created_at)
+                   VALUES ('T1','VAT',1000,1,1,'2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z');
+                 INSERT INTO categories(category_id,name,created_at,updated_at) VALUES ('C1','Dairy','x','x');
+                 INSERT INTO products(product_id,sku,name,category_id,tax_rule_id,created_at,updated_at)
+                   VALUES ('P1','100001','Laban','C1','T1','x','x');",
+            )
+            .unwrap();
+        }
+        let (db, rep) = Db::open(&p, false).unwrap();
+        assert_eq!((rep.from_version, rep.to_version), (from, latest_schema_version()));
+        assert_eq!(rep.applied, (from + 1..=latest_schema_version()).collect::<Vec<_>>());
+        assert!(rep.safety_backup.as_deref().is_some_and(|b| Path::new(b).exists()), "backup before upgrading");
+        let (name, hash, status): (String, Option<String>, String) = db
+            .read(|c| {
+                Ok(c.query_row("SELECT name, image_hash, auto_image_status FROM products WHERE product_id='P1'", [], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })?)
+            })
+            .unwrap();
+        assert_eq!((name.as_str(), hash, status.as_str()), ("Laban", None, "not_attempted"), "no search queued by the upgrade");
+        let published: i64 = db
+            .read(|c| {
+                Ok(c.query_row(
+                    "SELECT (SELECT COUNT(*) FROM wa_catalog_products) + (SELECT COUNT(*) FROM wa_catalog_collections)",
+                    [],
+                    |r| r.get(0),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(published, 0, "nothing published by the upgrade");
+        assert_eq!(db.integrity_check().unwrap(), vec!["ok".to_string()]);
+        drop(db);
+        let (_db, rep) = Db::open(&p, false).unwrap();
+        assert!(rep.applied.is_empty(), "idempotent: nothing re-applied");
+    }
+
     #[test]
     fn tampered_migration_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
