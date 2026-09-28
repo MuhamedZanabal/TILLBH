@@ -19,8 +19,19 @@ fn features(e: &Env, v: serde_json::Value) {
     e.core.settings_save(&e.owner_token, "features", v).unwrap();
 }
 
-fn send(address: &str, area: Option<&str>) -> Option<Fulfilment> {
-    Some(Fulfilment { mode: "send".into(), address: Some(address.into()), area: area.map(Into::into), ..Default::default() })
+/// A Send to building 12, block 905, with `landmark` as the rest of the address.
+fn send(landmark: &str, area: Option<&str>) -> Option<Fulfilment> {
+    Some(Fulfilment {
+        mode: "send".into(),
+        area: area.map(Into::into),
+        address_parts: amwapos_core::address::AddressParts {
+            building: Some("12".into()),
+            block: Some("905".into()),
+            landmark: Some(landmark.into()),
+            ..Default::default()
+        },
+        ..Default::default()
+    })
 }
 
 fn cash(total: i64) -> Vec<TenderInput> {
@@ -104,9 +115,14 @@ fn pay_here_makes_no_drop_and_send_makes_one_on_the_rail() {
     let sheet = e.core.ticket_get(&ct, &did).unwrap();
     assert_eq!(sheet["lines"].as_array().unwrap().len(), 1);
     assert_eq!(sheet["next"], json!(["preparing", "dispatched"]), "a cashier never cancels");
-    // Send needs a customer.
+    // Send needs a customer, and a building and block (a free-text line is not enough).
     let err = sell(&e, &ct, None, cash, send("Road 1", None)).unwrap_err();
     assert_eq!(err.code, ErrorCode::Validation);
+    let line_only = Some(Fulfilment { mode: "send".into(), address: Some("Villa 7, Riffa".into()), ..Default::default() });
+    let before = count(&e, "SELECT COUNT(*) FROM sales");
+    let err = sell(&e, &ct, Some(&cu), cash, line_only).unwrap_err();
+    assert_eq!((err.code, err.message.as_str()), (ErrorCode::Validation, "Enter the building and block to send to."));
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM sales"), before, "nothing committed");
 }
 
 #[test]

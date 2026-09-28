@@ -279,6 +279,12 @@ test("1024×768: PAY Send with pay on delivery → Send rail → ticket sheet �
   await page.getByTestId("send-area").fill("Riffa");
   await page.getByTestId("pay-on-delivery").click();
   const confirm = page.getByTestId("complete-sale");
+  // A free-text line is not enough to send: building and block first.
+  await expect(confirm).toBeDisabled();
+  await expect(page.getByText("Enter the building and block to send to.")).toBeVisible();
+  await page.getByTestId("send-building").fill("1203");
+  await page.getByTestId("send-block").fill("905");
+  await expect(page.getByTestId("send-preview")).toContainText("Bldg 1203, Block 905, House 1203, Road 45");
   await expect(confirm).toBeEnabled();
   await expect(confirm).toContainText("pay on delivery");
   const cb = (await confirm.boundingBox())!;
@@ -511,6 +517,12 @@ test("Display size: the setting zooms the app; at 125% and 150% the till still f
     const pay = (await page.getByTestId("pay").boundingBox())!;
     expect(pay.width).toBeGreaterThanOrEqual(200);
     expect(pay.height).toBeGreaterThanOrEqual(56);
+    // The fold-back bar: nothing covers PAY.
+    const onTop = await page.evaluate(
+      ([x, y]) => !!document.elementFromPoint(x, y)?.closest('[data-testid="pay"]'),
+      [pay.x + pay.width / 2, pay.y + pay.height / 2],
+    );
+    expect(onTop, `PAY on top at ${tag}%`).toBe(true);
     expect(pay.x + pay.width).toBeLessThanOrEqual(w);
     expect(pay.y + pay.height).toBeLessThanOrEqual(h - 16);
     await expect(page.getByTestId("cart-total")).toBeInViewport();

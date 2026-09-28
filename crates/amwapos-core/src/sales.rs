@@ -601,6 +601,13 @@ impl AppCore {
                         address_parts: f.address_parts.clone(),
                     };
                     let did = crate::customers::insert_delivery(tx, &s, &self.actor(&s, None), &req_d)?;
+                    // A Send goes to a Bahrain address: building and block at least
+                    // (typed for this drop, or the customer's saved parts).
+                    let parts = crate::address::read_parts(tx, "delivery_orders", "delivery_id", &did)?;
+                    if parts.building.is_none() || parts.block.is_none() {
+                        return Err(AppError::validation("Enter the building and block to send to.")
+                            .with_details(json!({ "field": "address_parts" })));
+                    }
                     if f.save_on_customer {
                         crate::customers::save_drop_address_on_customer(tx, &cid, &did)?;
                     }

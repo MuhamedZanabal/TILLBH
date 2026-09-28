@@ -35,7 +35,15 @@ fn pod_drop(e: &Env, ct: &str, cu: &str, rider: &str) -> (String, i64) {
                 tenders: vec![TenderInput { method: "pay_on_delivery".into(), amount_minor: total, reference: None }],
                 approval_token: None,
                 expected_total_minor: Some(total),
-                fulfilment: Some(Fulfilment { mode: "send".into(), address: Some("Villa 7".into()), ..Default::default() }),
+                fulfilment: Some(Fulfilment {
+                    mode: "send".into(),
+                    address_parts: amwapos_core::address::AddressParts {
+                        building: Some("7".into()),
+                        block: Some("905".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
             },
         )
         .unwrap();

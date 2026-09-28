@@ -1255,6 +1255,7 @@ type Section =
   | "appearance"
   | "features"
   | "loyalty"
+  | "delivery"
   | "whatsapp"
   | "ai"
   | "about";
@@ -1276,6 +1277,7 @@ export function SettingsPage() {
     ["appearance", t("Appearance")],
     ["features", t("Features")],
     ["loyalty", t("Loyalty")],
+    ["delivery", t("Delivery")],
     ["whatsapp", t("WhatsApp")],
     ["ai", t("AI assistant")],
     ["about", t("About")],
@@ -1305,6 +1307,7 @@ export function SettingsPage() {
           {section === "appearance" ? <AppearanceSettings /> : null}
           {section === "features" ? <FeaturesSettings /> : null}
           {section === "loyalty" ? <LoyaltySettingsSection /> : null}
+          {section === "delivery" ? <DeliverySettingsSection /> : null}
           {section === "whatsapp" ? <WaTemplates /> : null}
           {section === "ai" ? <AiSettingsSection /> : null}
           {section === "about" ? <AboutSettings /> : null}
@@ -2459,6 +2462,114 @@ export function UpdatesPage() {
             "AMWAPOS verifies the installer again, takes a safety backup, then closes and runs the installer. Finish open sales first. Business data is kept.",
           )}
         </Confirm>
+      ) : null}
+    </div>
+  );
+}
+
+interface BlockRow {
+  from: number;
+  to: number;
+  area: string;
+}
+
+/** Block → area list used when the shop has no history for a block yet. */
+function DeliverySettingsSection() {
+  const toast = useToast();
+  const { has } = useSession();
+  const { data, setData, error } = useLoad(() => api.settings.get<{ blocks: BlockRow[] }>("delivery"), []);
+  const act = useAction();
+  if (error) return <Banner tone="danger">{error}</Banner>;
+  if (!data) return <Skeleton />;
+  const editable = has("settings.manage");
+  const rows = data.blocks;
+  const set = (i: number, patch: Partial<BlockRow>) =>
+    setData({ ...data, blocks: rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
+  const num = (v: string) => Number(v.replace(/[^\d]/g, "")) || 0;
+  return (
+    <div className="card card-pad col gap-16" data-testid="delivery-blocks">
+      <div>
+        <h3>{t("Blocks and areas")}</h3>
+        <div className="tiny">
+          {t(
+            "When a block number is typed, the area comes from this shop's own past deliveries first. This list is used only for blocks the shop has not delivered to yet.",
+          )}
+        </div>
+      </div>
+      <table className="table">
+        <thead>
+          <tr>
+            <th className="num">{t("From block")}</th>
+            <th className="num">{t("To block")}</th>
+            <th>{t("Area")}</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td>
+                <input
+                  className="input num"
+                  inputMode="numeric"
+                  aria-label={t("From block")}
+                  value={r.from || ""}
+                  disabled={!editable}
+                  onChange={(e) => set(i, { from: num(e.target.value) })}
+                />
+              </td>
+              <td>
+                <input
+                  className="input num"
+                  inputMode="numeric"
+                  aria-label={t("To block")}
+                  value={r.to || ""}
+                  disabled={!editable}
+                  onChange={(e) => set(i, { to: num(e.target.value) })}
+                />
+              </td>
+              <td>
+                <input
+                  className="input"
+                  aria-label={t("Area")}
+                  value={r.area}
+                  disabled={!editable}
+                  onChange={(e) => set(i, { area: e.target.value })}
+                />
+              </td>
+              <td className="num">
+                {editable ? (
+                  <Button
+                    variant="ghost"
+                    aria-label={t("Remove row")}
+                    onClick={() => setData({ ...data, blocks: rows.filter((_, j) => j !== i) })}
+                  >
+                    {t("Remove")}
+                  </Button>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+      {editable ? (
+        <div className="row">
+          <Button onClick={() => setData({ ...data, blocks: [...rows, { from: 0, to: 0, area: "" }] })}>
+            {t("Add row")}
+          </Button>
+          <Button
+            variant="primary"
+            className="right"
+            loading={act.busy}
+            onClick={async () => {
+              const r = await act.run(() => api.settings.save("delivery", data));
+              if (r) toast("success", t("Settings saved"));
+            }}
+          >
+            {t("Save changes")}
+          </Button>
+        </div>
       ) : null}
     </div>
   );

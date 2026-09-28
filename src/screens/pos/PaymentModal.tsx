@@ -1,4 +1,4 @@
-import { addrIsEmpty, addrPayload, addrProblem } from "../../components/AddressFields";
+import { addrPayload, addrProblem } from "../../components/AddressFields";
 import { WhatsAppSendButton } from "../admin/automation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -105,8 +105,8 @@ export function PaymentModal({
   const change = paid > due ? paid - due : 0;
   const validation = useMemo(() => {
     if (sending && !cart.customer) return t("Choose the customer to send to.");
-    if (sending && addrIsEmpty(send)) return t("Enter the address or area.");
     if (sending && addrProblem(send)) return addrProblem(send);
+    if (sending && (!send.building.trim() || !send.block.trim())) return t("Enter the building and block to send to.");
     if (pod) return null;
     if (!tenderList)
       return split

@@ -416,6 +416,38 @@ pub struct UpdateSettings {
     pub auto_check: bool,
 }
 
+/// One row of the block → area list: blocks `from..=to` are in `area`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BlockArea {
+    pub from: u32,
+    pub to: u32,
+    pub area: String,
+}
+
+/// Delivery settings. The block list is only a starting point: the shop's own
+/// past drops and customers decide a block's area first.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct DeliverySettings {
+    pub blocks: Vec<BlockArea>,
+}
+impl Default for DeliverySettings {
+    fn default() -> Self {
+        let b = |from, to, area: &str| BlockArea { from, to, area: area.into() };
+        Self {
+            blocks: vec![
+                b(256, 258, "Amwaj"),
+                b(340, 342, "Juffair"),
+                b(428, 428, "Seef"),
+                b(436, 436, "Seef"),
+                b(801, 841, "Isa Town"),
+                b(1201, 1217, "Hamad Town"),
+            ],
+        }
+    }
+}
+pub const KEY_DELIVERY: &str = "delivery";
+
 pub const KEY_UPDATES: &str = "updates";
 pub const KEY_FEATURES: &str = "features";
 pub const KEY_WHATSAPP: &str = "whatsapp";
@@ -444,6 +476,7 @@ pub const EDITABLE_KEYS: &[&str] = &[
     KEY_FEATURES,
     KEY_WHATSAPP,
     KEY_LOYALTY,
+    KEY_DELIVERY,
 ];
 
 pub fn get<T: DeserializeOwned + Default>(conn: &Connection, key: &str) -> AppResult<T> {
@@ -579,6 +612,33 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             serde_json::to_value(s)?
         }
         KEY_APPEARANCE => roundtrip::<AppearanceSettings>(value)?,
+        KEY_DELIVERY => {
+            let mut d: DeliverySettings =
+                serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
+            if d.blocks.len() > 500 {
+                return Err(AppError::validation("The block list can hold up to 500 rows."));
+            }
+            for r in &mut d.blocks {
+                r.area = r.area.trim().to_string();
+                if r.area.is_empty() || r.area.chars().count() > 80 {
+                    return Err(AppError::validation("Each block row needs an area name (up to 80 characters)."));
+                }
+                if r.from == 0 || r.to > 9999 || r.from > r.to {
+                    return Err(AppError::validation(format!(
+                        "Blocks {}–{}: enter a range between 1 and 9999, lowest first.",
+                        r.from, r.to
+                    )));
+                }
+            }
+            d.blocks.sort_by_key(|r| r.from);
+            if let Some(w) = d.blocks.windows(2).find(|w| w[1].from <= w[0].to) {
+                return Err(AppError::validation(format!(
+                    "Blocks {}–{} ({}) overlap blocks {}–{} ({}).",
+                    w[0].from, w[0].to, w[0].area, w[1].from, w[1].to, w[1].area
+                )));
+            }
+            serde_json::to_value(d)?
+        }
         _ => return Err(AppError::validation(format!("'{key}' is not an editable setting."))),
     };
     Ok(v)

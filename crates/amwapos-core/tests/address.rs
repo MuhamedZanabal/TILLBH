@@ -113,3 +113,41 @@ fn a_drop_uses_its_own_parts_or_the_customers_and_the_shop_learns_blocks() {
     assert_eq!(c["customer"]["address_parts"]["block"], "257");
     assert_eq!(c["customer"]["address"], "Flat 3, Bldg 7, Road 4518, Block 257");
 }
+
+#[test]
+fn the_block_list_is_an_editable_setting_and_shop_history_still_wins() {
+    let e = env();
+    let t = &e.owner_token;
+    // Starter rows ship as data, not code.
+    let d = e.core.settings_get(t, "delivery").unwrap();
+    assert!(d["blocks"].as_array().unwrap().iter().any(|r| r["area"] == "Amwaj" && r["from"] == 256));
+    // The owner corrects it: 256 is now "Amwaj Islands"; a new range is added.
+    e.core
+        .settings_save(
+            t,
+            "delivery",
+            json!({ "blocks": [ { "from": 256, "to": 258, "area": "Amwaj Islands" }, { "from": 901, "to": 939, "area": "Riffa East" } ] }),
+        )
+        .unwrap();
+    assert_eq!(e.core.block_area(t, "256").unwrap().as_deref(), Some("Amwaj Islands"));
+    assert_eq!(e.core.block_area(t, "905").unwrap().as_deref(), Some("Riffa East"));
+    assert_eq!(e.core.block_area(t, "1205").unwrap(), None, "removed rows are gone");
+    // Overlapping or empty rows are refused.
+    let bad = e.core.settings_save(
+        t,
+        "delivery",
+        json!({ "blocks": [ { "from": 1, "to": 10, "area": "A" }, { "from": 5, "to": 20, "area": "B" } ] }),
+    );
+    assert_eq!(bad.unwrap_err().code, ErrorCode::Validation);
+    let bad = e.core.settings_save(t, "delivery", json!({ "blocks": [ { "from": 1, "to": 10, "area": " " } ] }));
+    assert_eq!(bad.unwrap_err().code, ErrorCode::Validation);
+    // The shop's own history for a block beats the list.
+    e.core
+        .customer_save(
+            t,
+            None,
+            serde_json::from_value(json!({ "name": "H", "area": "Galali", "address_parts": { "building": "1", "block": "256" } })).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(e.core.block_area(t, "256").unwrap().as_deref(), Some("Galali"));
+}

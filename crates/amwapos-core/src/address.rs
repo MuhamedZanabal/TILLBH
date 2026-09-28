@@ -4,7 +4,7 @@
 //! searched) and composed into the one-line `address` every other screen,
 //! slip and WhatsApp notice already prints. The block number tells the area:
 //! the shop's own past drops decide first (most used area for that block),
-//! then a small starting list of well-known blocks. Free-text addresses keep
+//! then the block list in Settings → Delivery (editable). Free-text addresses keep
 //! working when no parts are given.
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -95,18 +95,8 @@ impl AddressParts {
     }
 }
 
-/// A starting list of blocks whose area is well known. The shop's own drops
-/// take precedence, so a wrong or missing entry corrects itself with use.
-const KNOWN_BLOCKS: &[(u32, u32, &str)] = &[
-    (256, 258, "Amwaj"),
-    (340, 342, "Juffair"),
-    (428, 428, "Seef"),
-    (436, 436, "Seef"),
-    (801, 841, "Isa Town"),
-    (1201, 1217, "Hamad Town"),
-];
-
-/// The area for a block: the shop's most used area for it, else the known list.
+/// The area for a block: the shop's most used area for it, else the editable
+/// block list in Settings → Delivery (`delivery.blocks`).
 pub fn area_for_block(c: &Connection, block: &str) -> AppResult<Option<String>> {
     let block = block.trim();
     if block.is_empty() {
@@ -130,7 +120,8 @@ pub fn area_for_block(c: &Connection, block: &str) -> AppResult<Option<String>> 
         Ok(n) => n,
         Err(_) => return Ok(None),
     };
-    Ok(KNOWN_BLOCKS.iter().find(|(a, b, _)| (*a..=*b).contains(&n)).map(|(_, _, area)| area.to_string()))
+    let cfg: crate::settings::DeliverySettings = crate::settings::get(c, crate::settings::KEY_DELIVERY)?;
+    Ok(cfg.blocks.into_iter().find(|r| (r.from..=r.to).contains(&n)).map(|r| r.area))
 }
 
 /// Read the parts stored on a row (`prefix.` is the table alias).

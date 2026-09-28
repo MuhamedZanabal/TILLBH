@@ -3277,4 +3277,20 @@ export const AR: Record<string, string> = {
   "For loyalty, credit or Send": "للولاء أو الآجل أو التوصيل",
   "Last sale": "آخر عملية بيع",
   "Change given": "الباقي المُعطى",
+  "holds {0}": "يحمل {0}",
+  "{0} still to collect": "{0} لم يُحصَّل بعد",
+  "Hand over": "تسليم",
+  "Enter the building and block to send to.": "أدخل رقم المبنى والمجمع للتوصيل.",
+  "Blocks and areas": "المجمعات والمناطق",
+  "When a block number is typed, the area comes from this shop's own past deliveries first. This list is used only for blocks the shop has not delivered to yet.":
+    "عند كتابة رقم المجمع تُؤخذ المنطقة أولاً من توصيلات المتجر السابقة. تُستخدم هذه القائمة فقط للمجمعات التي لم يوصل إليها المتجر بعد.",
+  "From block": "من مجمع",
+  "To block": "إلى مجمع",
+  "Remove row": "حذف الصف",
+  "Add row": "إضافة صف",
+  "The block list can hold up to 500 rows.": "تتسع قائمة المجمعات لـ 500 صف كحد أقصى.",
+  "Each block row needs an area name (up to 80 characters).": "كل صف يحتاج اسم منطقة (حتى 80 حرفاً).",
+  "Blocks {0}–{1}: enter a range between 1 and 9999, lowest first.":
+    "المجمعات {0}–{1}: أدخل نطاقاً بين 1 و9999، الأصغر أولاً.",
+  "Blocks {0}–{1} ({2}) overlap blocks {3}–{4} ({5}).": "المجمعات {0}–{1} ({2}) تتداخل مع المجمعات {3}–{4} ({5}).",
 };

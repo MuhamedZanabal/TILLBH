@@ -508,16 +508,23 @@ export function SendRail({
 }) {
   const { has } = useSession();
   const [tab, setTab] = useState<RailTab>("now");
-  const [handover, setHandover] = useState(false);
+  const [handover, setHandover] = useState<string | null | false>(false);
   const [rows, setRows] = useState<TicketRow[] | null>(null);
   const [counts, setCounts] = useState<TicketCounts | null>(null);
+  const [holding, setHolding] = useState<RiderCash[]>([]);
   const { error, handle, setError } = useErr();
+  const canHandOver = has("pos.sell");
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [r, c] = await Promise.all([api.tickets.list({ tab }), api.tickets.counts()]);
+      const [r, c, h] = await Promise.all([
+        api.tickets.list({ tab }),
+        api.tickets.counts(),
+        canHandOver ? api.riders.cash() : Promise.resolve([] as RiderCash[]),
+      ]);
       setRows(r);
       setCounts(c);
+      setHolding(h);
     } catch (e) {
       handle(e);
     }
@@ -540,7 +547,7 @@ export function SendRail({
           <Button
             variant="ghost"
             icon={<Banknote size={20} />}
-            onClick={() => setHandover(true)}
+            onClick={() => setHandover(null)}
             data-testid="rider-handover-open"
           >
             {t("Rider hand-over")}
@@ -554,8 +561,9 @@ export function SendRail({
           onClick={onClose}
         />
       </div>
-      {handover ? (
+      {handover !== false ? (
         <RiderHandoverSheet
+          initialRider={handover}
           onClose={() => setHandover(false)}
           onDone={() => {
             setHandover(false);
@@ -579,6 +587,32 @@ export function SendRail({
           </button>
         ))}
       </div>
+      {holding.length ? (
+        <div className="rail-cash" data-testid="rail-cash">
+          {holding.map((h) => (
+            <button
+              key={h.rider_user_id}
+              type="button"
+              className="rail-cash-row"
+              onClick={() => setHandover(h.rider_user_id)}
+              data-testid="rail-cash-row"
+            >
+              <Banknote size={20} aria-hidden />
+              <span className="grow ellipsis">
+                <span className="strong" dir="auto">
+                  {h.name}
+                </span>{" "}
+                <span className="tiny">
+                  {h.held_minor > 0 ? t("holds {0}", formatMoney(h.held_minor)) : ""}
+                  {h.held_minor > 0 && h.uncollected_minor > 0 ? " · " : ""}
+                  {h.uncollected_minor > 0 ? t("{0} still to collect", formatMoney(h.uncollected_minor)) : ""}
+                </span>
+              </span>
+              <span className="rail-cash-go">{t("Hand over")}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="rail-list">
         {error ? <Banner tone="danger">{error}</Banner> : null}
         {rows && rows.length === 0 ? (
@@ -1078,7 +1112,15 @@ function RecordPaymentSheet({
 
 /** A rider hands their cash to the cashier: tick what they collected without
  * recording it, count the notes, and the counted amount enters this drawer. */
-function RiderHandoverSheet({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function RiderHandoverSheet({
+  initialRider,
+  onClose,
+  onDone,
+}: {
+  initialRider?: string | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const [riders, setRiders] = useState<RiderCash[] | null>(null);
   const [pick, setPick] = useState<string | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
@@ -1093,7 +1135,8 @@ function RiderHandoverSheet({ onClose, onDone }: { onClose: () => void; onDone: 
       .cash()
       .then((r) => {
         setRiders(r);
-        if (r.length === 1) setPick(r[0].rider_user_id);
+        if (initialRider && r.some((x) => x.rider_user_id === initialRider)) setPick(initialRider);
+        else if (r.length === 1) setPick(r[0].rider_user_id);
       })
       .catch(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps

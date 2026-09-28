@@ -3947,3 +3947,100 @@ table.diff tr.changed {
   background: var(--brand);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 18%, transparent);
 }
+
+/* Send rail: riders holding cash, one tap to the hand-over. */
+.rail-cash {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 0;
+  flex: none;
+}
+.rail-cash-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 8px 0 12px;
+  padding-inline: 12px 8px;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  border-radius: 14px;
+  background: var(--warning-soft);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.rail-cash-row > svg {
+  color: var(--warning);
+  flex: none;
+}
+.rail-cash-row:active {
+  transform: scale(0.99);
+}
+.rail-cash-go {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-weight: 650;
+  font-size: 14px;
+}
+
+/* Send loop on the v2 till: same radii, segments and rows as the checkout column. */
+.seg {
+  padding: 4px;
+  gap: 4px;
+  border-radius: 14px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+}
+.seg-btn {
+  border-radius: 10px;
+  border: 0;
+}
+.seg-btn + .seg-btn {
+  border: 0;
+}
+.seg-btn.active {
+  box-shadow: var(--shadow-sm);
+}
+.send-body {
+  border-radius: 16px;
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.send-row,
+.ticket-row {
+  border-radius: 14px;
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.send-rail .rail-tabs {
+  margin: 8px 12px 0;
+  padding: 4px;
+  gap: 2px;
+  border-radius: 14px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+}
+.rail-tab {
+  border-radius: 10px;
+  border-bottom: 0;
+}
+.rail-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.ticket-money {
+  border-radius: 16px;
+}
+.addr-cell .input,
+.send-where .input {
+  border-radius: 12px;
+}
