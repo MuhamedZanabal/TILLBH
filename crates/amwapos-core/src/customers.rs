@@ -421,6 +421,7 @@ impl AppCore {
         }
         let actor = self.actor(&s, None);
         let id = self.db.write(|tx| insert_delivery(tx, &s, &actor, &req))?;
+        self.wa_after_delivery(&s, &id, "pending");
         self.db.read(|c| load_delivery(c, &id))
     }
 

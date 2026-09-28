@@ -1200,6 +1200,7 @@ interface WaSettings {
   auto_payment_ack: boolean;
   auto_delivery_notice: boolean;
   receipt: { en: string; ar: string };
+  received: { en: string; ar: string };
   dispatch: { en: string; ar: string };
   delivered: { en: string; ar: string };
   reminder: { en: string; ar: string };
@@ -1214,7 +1215,11 @@ export function WaTemplates() {
   if (error) return <Banner tone="danger">{error}</Banner>;
   if (!data) return <Skeleton />;
   const editable = has("settings.manage");
-  const tpl = (k: "receipt" | "dispatch" | "delivered" | "reminder" | "payment_ack", label: string, vars: string) => (
+  const tpl = (
+    k: "receipt" | "received" | "dispatch" | "delivered" | "reminder" | "payment_ack",
+    label: string,
+    vars: string,
+  ) => (
     <div className="col gap-8">
       <h3>{label}</h3>
       <div className="tiny">
@@ -1278,12 +1283,15 @@ export function WaTemplates() {
         onChange={(x) => setData({ ...data, auto_payment_ack: x })}
       />
       <Checkbox
-        label={t("Send the on-the-way and delivered notices by themselves when a drop is marked Out or Delivered")}
+        label={t(
+          "Send the order-received, on-the-way and delivered notices by themselves (when a Send order is taken, marked Out or Delivered)",
+        )}
         checked={!!data.auto_delivery_notice}
         disabled={!editable}
         onChange={(x) => setData({ ...data, auto_delivery_notice: x })}
       />
       {tpl("receipt", t("Receipt"), "{business} {customer} {receipt} {total} {date}")}
+      {tpl("received", t("Order received"), "{business} {customer} {ticket} {delivery} {total} {address} {area}")}
       {tpl(
         "dispatch",
         t("Out for delivery"),
@@ -1321,7 +1329,7 @@ export function WhatsAppSendButton({
   phone,
   size,
 }: {
-  kind: "receipt" | "dispatch" | "delivered" | "reminder";
+  kind: "receipt" | "received" | "dispatch" | "delivered" | "reminder";
   saleId?: string | null;
   deliveryId?: string | null;
   customerId?: string | null;
@@ -1346,11 +1354,13 @@ export function WhatsAppSendButton({
   const label =
     kind === "receipt"
       ? t("Send receipt on WhatsApp")
-      : kind === "dispatch"
-        ? t("Send delivery update")
-        : kind === "delivered"
-          ? t("Send delivered notice")
-          : t("Send payment reminder");
+      : kind === "received"
+        ? t("Send order received")
+        : kind === "dispatch"
+          ? t("Send delivery update")
+          : kind === "delivered"
+            ? t("Send delivered notice")
+            : t("Send payment reminder");
   return (
     <>
       <Button size={size} icon={<Send size={14} />} onClick={() => setOpen(true)} data-testid={`wa-send-${kind}`}>

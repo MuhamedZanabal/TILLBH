@@ -851,6 +851,7 @@ export function TicketSheet({
         ) : null}
         {sheet.can.message && did ? (
           <section className="row gap-8 wrap">
+            <WhatsAppSendButton kind="received" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
             <WhatsAppSendButton kind="dispatch" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
             <WhatsAppSendButton kind="delivered" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
           </section>

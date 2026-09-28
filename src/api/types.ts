@@ -1112,7 +1112,7 @@ export interface WaRecent {
 
 export interface WaQueueRequest {
   operation_id: string;
-  kind: "receipt" | "dispatch" | "delivered" | "reminder" | "payment_ack" | "text" | "document";
+  kind: "receipt" | "received" | "dispatch" | "delivered" | "reminder" | "payment_ack" | "text" | "document";
   to_phone?: string | null;
   customer_id?: string | null;
   sale_id?: string | null;

@@ -61,6 +61,7 @@ pub struct QueueRequest {
 /// Message kinds and the feature flag each one needs.
 pub const MESSAGE_KINDS: &[(&str, &str)] = &[
     ("receipt", "whatsapp.send_receipts"),
+    ("received", "whatsapp.delivery_notices"),
     ("dispatch", "whatsapp.delivery_notices"),
     ("delivered", "whatsapp.delivery_notices"),
     ("reminder", "whatsapp.enabled"),
@@ -398,7 +399,7 @@ impl AppCore {
             .map(|(_, f)| *f)
             .ok_or_else(|| AppError::validation("Unknown message type."))?;
         match req.kind.as_str() {
-            "receipt" | "dispatch" | "delivered" => {
+            "receipt" | "received" | "dispatch" | "delivered" => {
                 if !s.has("whatsapp.send") {
                     s.require("whatsapp.manage")?;
                 }
@@ -501,7 +502,7 @@ impl AppCore {
                     vars.push(("date", time::display(&at, &tz)));
                     sale_id = Some(sid);
                 }
-                "dispatch" | "delivered" | "reminder" => {
+                "received" | "dispatch" | "delivered" | "reminder" => {
                     let did = validate::id(req.delivery_id.as_deref().unwrap_or(""), "Delivery")?;
                     type Drop = (String, i64, Option<String>, Option<String>, String, Option<String>, Option<String>, Option<String>);
                     let (number, amount, cust, dphone, pay, address, area, receipt): Drop = tx
@@ -585,6 +586,7 @@ impl AppCore {
             let lang = req.lang.clone().filter(|l| l == "en" || l == "ar").unwrap_or_else(|| wa.default_lang.clone());
             let body = match req.kind.as_str() {
                 "receipt" => render_template(&pick(&wa.receipt, &lang), &vars),
+                "received" => with_address(render_template(&pick(&wa.received, &lang), &vars), &pick(&wa.received, &lang), &vars, &lang),
                 "dispatch" => with_address(render_template(&pick(&wa.dispatch, &lang), &vars), &pick(&wa.dispatch, &lang), &vars, &lang),
                 "delivered" => with_address(render_template(&pick(&wa.delivered, &lang), &vars), &pick(&wa.delivered, &lang), &vars, &lang),
                 "reminder" => render_template(&pick(&wa.reminder, &lang), &vars),
@@ -660,6 +662,7 @@ impl AppCore {
     /// Post-commit: dispatch / delivered notices (`whatsapp.delivery_notices`).
     pub fn wa_after_delivery(&self, s: &Session, delivery_id: &str, status: &str) {
         let kind = match status {
+            "pending" => "received",
             "dispatched" => "dispatch",
             "delivered" => "delivered",
             _ => return,

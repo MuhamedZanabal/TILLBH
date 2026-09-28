@@ -673,6 +673,9 @@ impl AppCore {
             self.receipt_pdf_after_commit("sale", &result.sale_id);
             // Only queues a row; WhatsApp sending happens elsewhere.
             self.wa_after_sale(&s, &result.sale_id);
+            if let Some(did) = &result.delivery_id {
+                self.wa_after_delivery(&s, did, "pending");
+            }
             result.print = self.db.read(|c| crate::printing::latest_job_outcome(c, "sale", &result.sale_id)).unwrap_or(None);
         } else {
             result.print = self.db.read(|c| crate::printing::latest_job_outcome(c, "sale", &result.sale_id)).unwrap_or(None);

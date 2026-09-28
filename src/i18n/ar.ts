@@ -3269,4 +3269,8 @@ export const AR: Record<string, string> = {
   "Road is too long.": "رقم الطريق طويل جداً.",
   "Block is too long.": "رقم المجمع طويل جداً.",
   "Landmark is too long.": "العلامة المميزة طويلة جداً.",
+  "Order received": "تم استلام الطلب",
+  "Send order received": "إرسال تأكيد استلام الطلب",
+  "Send the order-received, on-the-way and delivered notices by themselves (when a Send order is taken, marked Out or Delivered)":
+    "إرسال إشعارات استلام الطلب وفي الطريق والتسليم تلقائياً (عند استلام طلب توصيل، أو تحديده خرج أو سُلِّم)",
 };

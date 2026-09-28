@@ -301,3 +301,28 @@ fn chat_links_to_a_customer_by_number_and_unmatched_stays_unmatched() {
     features(&e, json!({ "whatsapp.enabled": true }));
     assert_eq!(e.core.wa_contacts_preview(&ct).unwrap_err().code, ErrorCode::Forbidden);
 }
+
+#[test]
+fn order_received_notice_is_manual_by_default_and_automatic_when_the_setting_is_on() {
+    let e = env();
+    let t = &e.owner_token;
+    e.product("Laban 1L", "7001", 450, 300, 100_000);
+    let cu = customer(&e, "Layla", "33338181", None);
+    e.open_shift(t, 0);
+    features(&e, json!({ "whatsapp.enabled": true, "whatsapp.delivery_notices": true }));
+    // Off by default: taking a Send order queues nothing by itself.
+    let did = sell(&e, t, Some(&cu), cash, send("Bldg 7, Road 12", Some("Saar"))).unwrap().delivery_id.unwrap();
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM wa_outbox"), 0);
+    // A person can send it: ticket, total and the address are in it.
+    let m = e
+        .core
+        .wa_queue(t, serde_json::from_value(json!({ "operation_id": op(), "kind": "received", "delivery_id": did, "lang": "en" })).unwrap())
+        .unwrap();
+    assert!(m.body.contains("has your order") && m.body.contains("Bldg 7, Road 12"), "{}", m.body);
+    // With the automatic notice on, the next Send order queues it once.
+    let mut wa = e.core.settings_get(t, "whatsapp").unwrap();
+    wa["auto_delivery_notice"] = json!(true);
+    e.core.settings_save(t, "whatsapp", wa).unwrap();
+    let d2 = sell(&e, t, Some(&cu), cash, send("Villa 2", Some("Saar"))).unwrap().delivery_id.unwrap();
+    assert_eq!(count(&e, &format!("SELECT COUNT(*) FROM wa_outbox WHERE kind='received' AND delivery_id='{d2}'")), 1);
+}

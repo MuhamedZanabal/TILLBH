@@ -333,10 +333,13 @@ pub struct WhatsAppSettings {
     /// Send the payment acknowledgement automatically after a person confirms
     /// a payment screenshot.
     pub auto_payment_ack: bool,
-    /// Queue the "on the way" / "delivered" notice by itself when a drop is
-    /// marked Out or Delivered. Off: a person taps Message and confirms.
+    /// Queue the "order received" / "on the way" / "delivered" notice by
+    /// itself when a drop is created, marked Out or Delivered. Off: a person
+    /// taps Message and confirms.
     pub auto_delivery_notice: bool,
     pub receipt: MessageTemplate,
+    /// Sent when the shop takes a Send order (the drop is created).
+    pub received: MessageTemplate,
     pub dispatch: MessageTemplate,
     pub delivered: MessageTemplate,
     /// Payment reminder.
@@ -356,6 +359,11 @@ impl Default for WhatsAppSettings {
             receipt: MessageTemplate {
                 en: "Thank you for shopping at {business}.\nReceipt {receipt}\nTotal: {total}\nDate: {date}".into(),
                 ar: "شكراً لتسوقك من {business}.\nالإيصال {receipt}\nالإجمالي: {total}\nالتاريخ: {date}".into(),
+            },
+            received: MessageTemplate {
+                en: "Hello {customer}, {business} has your order {ticket}.\nTotal: {total}\nWe will message you when it is on its way."
+                    .into(),
+                ar: "مرحباً {customer}، استلم {business} طلبك {ticket}.\nالإجمالي: {total}\nسنراسلك عندما يكون في الطريق إليك.".into(),
             },
             dispatch: MessageTemplate {
                 en: "Hello {customer}, your order {delivery} from {business} is on its way.\nAmount due: {amount}".into(),
@@ -507,7 +515,7 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             if !["en", "ar"].contains(&w.default_lang.as_str()) {
                 return Err(AppError::validation("Default message language must be English or Arabic."));
             }
-            for t in [&w.receipt, &w.dispatch, &w.reminder] {
+            for t in [&w.receipt, &w.received, &w.dispatch, &w.delivered, &w.reminder, &w.payment_ack] {
                 if t.en.trim().is_empty() || t.ar.trim().is_empty() || t.en.len() > 2000 || t.ar.len() > 2000 {
                     return Err(AppError::validation("Every message template needs English and Arabic text (up to 2000 characters)."));
                 }

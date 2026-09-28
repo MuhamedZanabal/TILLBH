@@ -301,6 +301,11 @@ test("1024×768: PAY Send with pay on delivery → Send rail → ticket sheet �
   await payIsTappable(page);
   await touchTargets(page, "[data-testid=send-rail]");
   await shot(page, "09-send-rail");
+  // Rider hand-over opens from the rail (nobody holds cash yet).
+  await rail.getByTestId("rider-handover-open").click();
+  await expect(page.getByTestId("rider-handover")).toContainText("No rider is holding cash.");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("rider-handover")).toBeHidden();
 
   // ---- Ticket sheet: Out → Delivered asks "Paid?" → take cash → paid ----
   await row.click();
