@@ -15,7 +15,7 @@
 //!   WhatsApp is acknowledged and before anything else can observe them.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -28,6 +28,7 @@ use tokio::sync::{mpsc, oneshot, watch, Notify};
 use tokio::task::JoinHandle;
 
 use super::adapter::*;
+use super::catalog::{catalog_worker, CatalogInfo};
 use super::session::SessionPath;
 
 const TICK: Duration = Duration::from_secs(3);
@@ -105,9 +106,14 @@ pub struct WhatsAppService {
     status: watch::Sender<WaStatus>,
     session: watch::Sender<Session>,
     cmd: Mutex<Option<mpsc::Sender<Cmd>>>,
-    tasks: Mutex<Option<(JoinHandle<()>, JoinHandle<()>)>>,
+    tasks: Mutex<Option<(JoinHandle<()>, JoinHandle<()>, JoinHandle<()>)>>,
     /// Wakes the I/O worker (new outbox row, read mark).
     pub poke: Arc<Notify>,
+    /// Wakes the catalogue worker (catalogue change, sync request).
+    pub catalog_poke: Arc<Notify>,
+    catalog: Mutex<CatalogInfo>,
+    catalog_recheck: AtomicBool,
+    catalog_dirty: AtomicBool,
     inbox_rev: Arc<AtomicU64>,
     /// Set when the session location was refused; the client never starts.
     path_error: Option<String>,
@@ -152,6 +158,10 @@ impl WhatsAppService {
             cmd: Mutex::new(None),
             tasks: Mutex::new(None),
             poke: Arc::new(Notify::new()),
+            catalog_poke: Arc::new(Notify::new()),
+            catalog: Mutex::new(CatalogInfo { capability: "disconnected".into(), ..Default::default() }),
+            catalog_recheck: AtomicBool::new(false),
+            catalog_dirty: AtomicBool::new(true),
             inbox_rev: Arc::new(AtomicU64::new(0)),
             path_error,
         })
@@ -165,6 +175,43 @@ impl WhatsAppService {
 
     pub fn session_path(&self) -> &SessionPath {
         &self.session_path
+    }
+
+    pub fn core(&self) -> &Arc<AppCore> {
+        &self.core
+    }
+
+    pub(super) fn session_watch(&self) -> watch::Receiver<Session> {
+        self.session.subscribe()
+    }
+
+    /// Catalogue capability and worker state (admin screen).
+    pub fn catalog(&self) -> CatalogInfo {
+        self.catalog.lock().unwrap().clone()
+    }
+
+    pub(super) fn set_catalog(&self, f: impl FnOnce(&mut CatalogInfo)) {
+        f(&mut self.catalog.lock().unwrap());
+    }
+
+    /// Detect the catalogue capability again on the next pass.
+    pub fn catalog_recheck(&self) {
+        self.catalog_recheck.store(true, Ordering::SeqCst);
+        self.catalog_poke.notify_one();
+    }
+
+    /// The POS catalogue changed: compare it with WhatsApp on the next pass.
+    pub fn catalog_changed(&self) {
+        self.catalog_dirty.store(true, Ordering::SeqCst);
+        self.catalog_poke.notify_one();
+    }
+
+    pub(super) fn take_catalog_dirty(&self) -> bool {
+        self.catalog_dirty.swap(false, Ordering::SeqCst)
+    }
+
+    pub(super) fn take_catalog_recheck(&self) -> bool {
+        self.catalog_recheck.swap(false, Ordering::SeqCst)
     }
 
     pub fn status(&self) -> WaStatus {
@@ -184,7 +231,7 @@ impl WhatsAppService {
     pub fn ensure(self: &Arc<Self>) {
         let on = self.enabled();
         let mut g = self.tasks.lock().unwrap();
-        let alive = g.as_ref().map(|(a, b)| !a.is_finished() && !b.is_finished()).unwrap_or(false);
+        let alive = g.as_ref().map(|(a, b, c)| !a.is_finished() && !b.is_finished() && !c.is_finished()).unwrap_or(false);
         if !on {
             self.status.send_modify(|s| {
                 s.enabled = false;
@@ -197,15 +244,17 @@ impl WhatsAppService {
         if alive {
             return;
         }
-        if let Some((a, b)) = g.take() {
+        if let Some((a, b, c)) = g.take() {
             a.abort();
             b.abort();
+            c.abort();
         }
         let (tx, rx) = mpsc::channel(16);
         *self.cmd.lock().unwrap() = Some(tx);
         let sup = tokio::spawn(supervise(self.clone(), rx));
         let io = tokio::spawn(io_worker(self.clone()));
-        *g = Some((sup, io));
+        let cat = tokio::spawn(catalog_worker(self.clone()));
+        *g = Some((sup, io, cat));
     }
 
     async fn send_cmd<T>(&self, make: impl FnOnce(oneshot::Sender<T>) -> Cmd) -> AppResult<T> {

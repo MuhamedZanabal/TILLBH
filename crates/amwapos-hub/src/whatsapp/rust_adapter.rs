@@ -21,6 +21,8 @@ use whatsapp_rust::upload::UploadOptions;
 use whatsapp_rust::InboundDurabilityHook;
 
 use super::adapter::*;
+use super::catalog_proto as cp;
+use whatsapp_rust::request::{InfoQuery, IqError};
 
 const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 
@@ -225,6 +227,54 @@ fn jid(phone_or_jid: &str) -> Result<Jid, AdapterError> {
     s.parse::<Jid>().map_err(|e| AdapterError::permanent(format!("Invalid WhatsApp address: {e}")))
 }
 
+/// Catalogue IQ errors: 404 → the remote object is gone; 429 / 5xx /
+/// connection problems → temporary (with the server's back-off); other
+/// server refusals (validation, not allowed) → permanent.
+fn iq_err(e: IqError) -> AdapterError {
+    match e {
+        IqError::ServerError { code: 404, .. } => AdapterError::not_found("WhatsApp has no such catalogue product."),
+        IqError::ServerError { code: 429, backoff, .. } => AdapterError {
+            retry_after_s: backoff.map(u64::from).or(Some(60)),
+            ..AdapterError::temporary("WhatsApp is limiting catalogue changes; retrying later.")
+        },
+        IqError::ServerError { code, text, backoff, .. } if code >= 500 => AdapterError {
+            retry_after_s: backoff.map(u64::from),
+            ..AdapterError::temporary(format!("WhatsApp server error {code} {text}"))
+        },
+        IqError::ServerError { code, text, .. } => AdapterError::permanent(format!(
+            "WhatsApp refused the catalogue change ({code} {})",
+            text.chars().take(120).collect::<String>()
+        )),
+        IqError::Timeout => AdapterError::temporary("WhatsApp did not answer in time."),
+        IqError::NotConnected | IqError::Disconnected(_) => AdapterError::temporary("WhatsApp is not connected."),
+        other => AdapterError::temporary(other.to_string()),
+    }
+}
+
+const CATALOG_IQ_TIMEOUT: Duration = Duration::from_secs(30);
+
+impl RustSession {
+    /// This account's own JID without the device part.
+    fn me(&self) -> Result<Jid, AdapterError> {
+        self.client.pn().map(|j| j.to_non_ad()).ok_or_else(|| AdapterError::temporary("The linked WhatsApp number is not known yet."))
+    }
+
+    async fn catalog_iq(
+        &self,
+        set: bool,
+        content: whatsapp_rust::wacore_binary::NodeContent,
+    ) -> Result<Arc<whatsapp_rust::OwnedNodeRef>, AdapterError> {
+        let to = Jid::new("", Server::Pn);
+        let q = if set { InfoQuery::set(cp::NS, to, Some(content)) } else { InfoQuery::get(cp::NS, to, Some(content)) };
+        self.client.send_iq(q.with_timeout(CATALOG_IQ_TIMEOUT)).await.map_err(iq_err)
+    }
+
+    async fn catalog_write(&self, op: &'static str, remote_id: Option<&str>, p: &CatalogProduct) -> Result<RemoteProduct, AdapterError> {
+        let resp = self.catalog_iq(true, cp::write_content(op, cp::product_node(remote_id, p))).await?;
+        cp::parse_write_reply(resp.get(), op).ok_or_else(|| AdapterError::temporary("WhatsApp answered without the product."))
+    }
+}
+
 fn send_err(e: SendError) -> AdapterError {
     match e {
         SendError::InvalidRequest(m) => AdapterError::permanent(m),
@@ -321,6 +371,63 @@ impl AdapterSession for RustSession {
 
     async fn logout(&self) {
         self.client.logout().await;
+    }
+
+    async fn catalog_capability(&self) -> Result<CatalogCapability, AdapterError> {
+        if !self.client.is_connected() || !self.client.is_logged_in() {
+            return Err(AdapterError::temporary("WhatsApp is not connected."));
+        }
+        let me = self.me()?;
+        // A Business account has a business profile; a personal one has none.
+        match self.client.get_business_profile(&me).await {
+            Ok(None) => return Ok(CatalogCapability::Personal),
+            Ok(Some(_)) => {}
+            Err(e) => return Ok(CatalogCapability::Unavailable(iq_err(e).message)),
+        }
+        // Read the account's own catalogue (one item): proves catalogue access.
+        match self.catalog_iq(false, cp::list_content(&me, 1, None)).await {
+            Ok(_) => Ok(CatalogCapability::Supported),
+            Err(e) if e.permanent => Ok(CatalogCapability::BusinessNoCatalog(e.message)),
+            Err(e) => Ok(CatalogCapability::Unavailable(e.message)),
+        }
+    }
+
+    async fn catalog_upload_image(&self, jpeg: Vec<u8>) -> Result<String, AdapterError> {
+        if !jpeg.starts_with(&[0xFF, 0xD8, 0xFF]) || jpeg.len() > 8 * 1024 * 1024 {
+            return Err(AdapterError::permanent("The product picture is not a stored JPEG."));
+        }
+        let up = self
+            .client
+            .upload(jpeg, whatsapp_rust::download::MediaType::ProductCatalogImage, UploadOptions::default())
+            .await
+            .map_err(|e| AdapterError::temporary(format!("Picture upload failed: {e}")))?;
+        // As WhatsApp Web does: the product refers to the CDN path.
+        Ok(if up.direct_path.starts_with('/') { format!("https://mmg.whatsapp.net{}", up.direct_path) } else { up.url })
+    }
+
+    async fn catalog_create(&self, product: &CatalogProduct) -> Result<RemoteProduct, AdapterError> {
+        self.catalog_write(cp::ADD, None, product).await
+    }
+
+    async fn catalog_update(&self, remote_id: &str, product: &CatalogProduct) -> Result<RemoteProduct, AdapterError> {
+        if !cp::valid_remote_id(remote_id) {
+            return Err(AdapterError::permanent("Invalid WhatsApp product id."));
+        }
+        self.catalog_write(cp::EDIT, Some(remote_id), product).await
+    }
+
+    async fn catalog_delete(&self, remote_ids: &[String]) -> Result<u32, AdapterError> {
+        if remote_ids.iter().any(|i| !cp::valid_remote_id(i)) {
+            return Err(AdapterError::permanent("Invalid WhatsApp product id."));
+        }
+        let resp = self.catalog_iq(true, cp::delete_content(remote_ids)).await?;
+        Ok(cp::parse_deleted(resp.get()))
+    }
+
+    async fn catalog_list(&self, cursor: Option<&str>) -> Result<(Vec<RemoteProduct>, Option<String>), AdapterError> {
+        let me = self.me()?;
+        let resp = self.catalog_iq(false, cp::list_content(&me, 50, cursor)).await?;
+        Ok(cp::parse_list(resp.get()))
     }
 
     async fn resync_contacts(&self) -> Result<(), AdapterError> {

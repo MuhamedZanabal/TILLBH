@@ -4,12 +4,14 @@
 //! local HTTP port.
 
 pub mod adapter;
+pub mod catalog;
+pub mod catalog_proto;
 pub mod fake;
 pub mod rust_adapter;
 pub mod service;
 pub mod session;
 
-pub use adapter::{AdapterSession, WaContact, WhatsAppAdapter};
+pub use adapter::{AdapterSession, CatalogCapability, CatalogProduct, RemoteProduct, WaContact, WhatsAppAdapter};
 pub use fake::FakeAdapter;
 pub use rust_adapter::RustWhatsAppAdapter;
 pub use service::{WaStatus, WhatsAppService};

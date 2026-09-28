@@ -3,7 +3,7 @@
 //! a persistent session file, de-duplication by message id, inbound batches
 //! that must be committed before they are acknowledged, and media downloads.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -40,6 +40,30 @@ pub struct FakeState {
     logged_out: AtomicBool,
     /// Contacts "saved on the phone": sent by `resync_contacts`.
     pub phone_contacts: Mutex<Vec<WaContact>>,
+    /// The linked number (changes when a different phone links).
+    pub account: Mutex<String>,
+    pub catalog: FakeCatalog,
+}
+
+/// A WhatsApp Business catalogue per linked account, as the fake server.
+#[derive(Default)]
+pub struct FakeCatalog {
+    /// Per account: `personal` unless set. Missing = personal.
+    pub capability: Mutex<HashMap<String, CatalogCapability>>,
+    /// Per account: remote id → product.
+    pub products: Mutex<HashMap<String, BTreeMap<String, CatalogProduct>>>,
+    pub next_id: AtomicU32,
+    pub creates: AtomicU32,
+    pub updates: AtomicU32,
+    pub deletes: AtomicU32,
+    /// Picture bytes uploaded, in order.
+    pub uploads: Mutex<Vec<Vec<u8>>>,
+    /// Fail the next N writes with a temporary error.
+    pub fail_writes: AtomicU32,
+    /// Refuse writes for this retailer id (a permanent validation error).
+    pub reject_retailer: Mutex<Option<String>>,
+    /// Reading the catalogue fails.
+    pub fail_list: AtomicBool,
 }
 
 #[derive(Clone, Default)]
@@ -57,8 +81,8 @@ impl FakeAdapter {
         let sink = self.state.sink.lock().unwrap().clone();
         if let Some(s) = sink {
             self.state.connected.store(true, Ordering::SeqCst);
-            s.event(AdapterEvent::Paired { account: "97330000000@s.whatsapp.net".into() });
-            s.event(AdapterEvent::Connected { account: Some("97330000000@s.whatsapp.net".into()) });
+            s.event(AdapterEvent::Paired { account: self.account() });
+            s.event(AdapterEvent::Connected { account: Some(self.account()) });
         }
     }
 
@@ -98,6 +122,47 @@ impl FakeAdapter {
     pub fn sent(&self) -> Vec<FakeSent> {
         self.state.sent.lock().unwrap().clone()
     }
+
+    fn account(&self) -> String {
+        self.state.account()
+    }
+
+    /// Link a different phone number on the next start.
+    pub fn set_account(&self, jid: &str) {
+        *self.state.account.lock().unwrap() = jid.to_string();
+    }
+
+    /// Make the linked account a WhatsApp Business account with a catalogue.
+    pub fn make_business(&self, jid: &str, cap: CatalogCapability) {
+        self.state.catalog.capability.lock().unwrap().insert(jid.to_string(), cap);
+    }
+
+    /// The remote catalogue of `jid` (id → product).
+    pub fn remote(&self, jid: &str) -> BTreeMap<String, CatalogProduct> {
+        self.state.catalog.products.lock().unwrap().get(jid).cloned().unwrap_or_default()
+    }
+
+    /// A product someone created in the WhatsApp Business app.
+    pub fn add_remote(&self, jid: &str, p: CatalogProduct) -> String {
+        let id = format!("{}", 900_000 + self.state.catalog.next_id.fetch_add(1, Ordering::SeqCst));
+        self.state.catalog.products.lock().unwrap().entry(jid.to_string()).or_default().insert(id.clone(), p);
+        id
+    }
+
+    pub fn current_account(&self) -> String {
+        self.account()
+    }
+}
+
+impl FakeState {
+    fn account(&self) -> String {
+        let a = self.account.lock().unwrap().clone();
+        if a.is_empty() {
+            "97330000000@s.whatsapp.net".into()
+        } else {
+            a
+        }
+    }
 }
 
 #[async_trait]
@@ -120,7 +185,7 @@ impl WhatsAppAdapter for FakeAdapter {
         *self.state.sink.lock().unwrap() = Some(sink.clone());
         if paired {
             self.state.connected.store(true, Ordering::SeqCst);
-            sink.event(AdapterEvent::Connected { account: Some("97330000000@s.whatsapp.net".into()) });
+            sink.event(AdapterEvent::Connected { account: Some(self.state.account()) });
         } else if let Some(p) = opts.pair_phone {
             sink.event(AdapterEvent::PairCode {
                 code: format!("FAKE{}", &p[p.len().saturating_sub(4)..]),
@@ -154,6 +219,25 @@ struct FakeSession {
 }
 
 impl FakeSession {
+    /// Connected, Business with a catalogue, and not asked to fail.
+    fn catalog_gate(&self, retailer: Option<&str>) -> Result<(), AdapterError> {
+        if !self.state.connected.load(Ordering::SeqCst) {
+            return Err(AdapterError::temporary("WhatsApp is not connected."));
+        }
+        let acc = self.state.account();
+        if self.state.catalog.capability.lock().unwrap().get(&acc) != Some(&CatalogCapability::Supported) {
+            return Err(AdapterError::permanent("not a Business catalogue"));
+        }
+        if self.state.catalog.fail_writes.load(Ordering::SeqCst) > 0 {
+            self.state.catalog.fail_writes.fetch_sub(1, Ordering::SeqCst);
+            return Err(AdapterError::temporary("server busy"));
+        }
+        if retailer.is_some() && self.state.catalog.reject_retailer.lock().unwrap().as_deref() == retailer {
+            return Err(AdapterError::permanent("WhatsApp refused the catalogue change (400 bad product)"));
+        }
+        Ok(())
+    }
+
     fn accept(&self, send_id: &str, to: &str, text: &str, document: Option<(String, usize)>) -> Result<String, AdapterError> {
         if !self.state.connected.load(Ordering::SeqCst) {
             return Err(AdapterError::temporary("not connected"));
@@ -204,6 +288,74 @@ impl AdapterSession for FakeSession {
         caption: Option<&str>,
     ) -> Result<String, AdapterError> {
         self.accept(send_id, to_phone, caption.unwrap_or_default(), Some((file_name.to_string(), bytes.len())))
+    }
+    async fn catalog_capability(&self) -> Result<CatalogCapability, AdapterError> {
+        if !self.state.connected.load(Ordering::SeqCst) {
+            return Err(AdapterError::temporary("WhatsApp is not connected."));
+        }
+        let acc = self.state.account();
+        Ok(self.state.catalog.capability.lock().unwrap().get(&acc).cloned().unwrap_or(CatalogCapability::Personal))
+    }
+    async fn catalog_upload_image(&self, jpeg: Vec<u8>) -> Result<String, AdapterError> {
+        self.catalog_gate(None)?;
+        let mut u = self.state.catalog.uploads.lock().unwrap();
+        u.push(jpeg);
+        Ok(format!("https://mmg.whatsapp.net/product/image/fake-{}", u.len()))
+    }
+    async fn catalog_create(&self, product: &CatalogProduct) -> Result<RemoteProduct, AdapterError> {
+        self.catalog_gate(Some(&product.retailer_id))?;
+        let id = format!("{}", 700_000 + self.state.catalog.next_id.fetch_add(1, Ordering::SeqCst));
+        self.state.catalog.products.lock().unwrap().entry(self.state.account()).or_default().insert(id.clone(), product.clone());
+        self.state.catalog.creates.fetch_add(1, Ordering::SeqCst);
+        Ok(RemoteProduct { id, retailer_id: Some(product.retailer_id.clone()), name: Some(product.name.clone()), hidden: product.hidden })
+    }
+    async fn catalog_update(&self, remote_id: &str, product: &CatalogProduct) -> Result<RemoteProduct, AdapterError> {
+        self.catalog_gate(Some(&product.retailer_id))?;
+        let mut all = self.state.catalog.products.lock().unwrap();
+        let cat = all.entry(self.state.account()).or_default();
+        let Some(p) = cat.get_mut(remote_id) else { return Err(AdapterError::not_found("no such product")) };
+        *p = product.clone();
+        self.state.catalog.updates.fetch_add(1, Ordering::SeqCst);
+        Ok(RemoteProduct {
+            id: remote_id.into(),
+            retailer_id: Some(product.retailer_id.clone()),
+            name: Some(product.name.clone()),
+            hidden: product.hidden,
+        })
+    }
+    async fn catalog_delete(&self, remote_ids: &[String]) -> Result<u32, AdapterError> {
+        self.catalog_gate(None)?;
+        let mut all = self.state.catalog.products.lock().unwrap();
+        let cat = all.entry(self.state.account()).or_default();
+        let n = remote_ids.iter().filter(|id| cat.remove(*id).is_some()).count() as u32;
+        self.state.catalog.deletes.fetch_add(n, Ordering::SeqCst);
+        Ok(n)
+    }
+    async fn catalog_list(&self, cursor: Option<&str>) -> Result<(Vec<RemoteProduct>, Option<String>), AdapterError> {
+        if !self.state.connected.load(Ordering::SeqCst) || self.state.catalog.fail_list.load(Ordering::SeqCst) {
+            return Err(AdapterError::temporary("catalogue read failed"));
+        }
+        let all = self.state.catalog.products.lock().unwrap();
+        let items: Vec<RemoteProduct> = all
+            .get(&self.state.account())
+            .map(|c| {
+                c.iter()
+                    .map(|(id, p)| RemoteProduct {
+                        id: id.clone(),
+                        retailer_id: Some(p.retailer_id.clone()),
+                        name: Some(p.name.clone()),
+                        hidden: p.hidden,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        // Two pages, to exercise paging.
+        let half = items.len() / 2;
+        Ok(match cursor {
+            None if half > 0 => (items[..half].to_vec(), Some("page-2".into())),
+            None => (items, None),
+            Some(_) => (items[half..].to_vec(), None),
+        })
     }
     async fn mark_read(&self, chat: &str, ids: &[String]) -> Result<(), AdapterError> {
         self.state.read_marks.lock().unwrap().push((chat.to_string(), ids.to_vec()));

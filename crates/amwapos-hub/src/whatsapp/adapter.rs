@@ -63,15 +63,65 @@ pub struct AdapterError {
     pub message: String,
     /// Retrying will not help (bad number, bad input, not a WhatsApp user).
     pub permanent: bool,
+    /// The addressed remote object does not exist (catalogue: 404).
+    pub not_found: bool,
+    /// Server-directed retry delay (rate limiting), in seconds.
+    pub retry_after_s: Option<u64>,
 }
 
 impl AdapterError {
     pub fn temporary(m: impl Into<String>) -> Self {
-        Self { message: m.into(), permanent: false }
+        Self { message: m.into(), permanent: false, not_found: false, retry_after_s: None }
     }
     pub fn permanent(m: impl Into<String>) -> Self {
-        Self { message: m.into(), permanent: true }
+        Self { message: m.into(), permanent: true, not_found: false, retry_after_s: None }
     }
+    pub fn not_found(m: impl Into<String>) -> Self {
+        Self { message: m.into(), permanent: true, not_found: true, retry_after_s: None }
+    }
+    pub fn unsupported() -> Self {
+        Self::permanent("This WhatsApp client cannot manage a WhatsApp Business catalogue.")
+    }
+}
+
+/// What the linked account can do with a WhatsApp Business catalogue,
+/// determined from the live connection (never assumed from "connected").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CatalogCapability {
+    /// A personal (non-Business) WhatsApp account.
+    Personal,
+    /// A Business account whose catalogue could not be read (none created
+    /// yet, or not available to this account).
+    BusinessNoCatalog(String),
+    /// A Business account whose catalogue can be read and written.
+    Supported,
+    /// Could not be determined right now (timeout, disconnect, server error).
+    Unavailable(String),
+    /// This client has no catalogue support at all.
+    Unsupported,
+}
+
+/// A product as sent to WhatsApp (built from AMWAPOS' `CatalogItem`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CatalogProduct {
+    pub name: String,
+    pub description: Option<String>,
+    /// Thousandths of the currency unit.
+    pub price_1000: Option<i64>,
+    pub currency: String,
+    pub retailer_id: String,
+    /// WhatsApp URL of the uploaded POS picture.
+    pub image_url: Option<String>,
+    pub hidden: bool,
+}
+
+/// A product as WhatsApp reports it (untrusted; validated by the parser).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteProduct {
+    pub id: String,
+    pub retailer_id: Option<String>,
+    pub name: Option<String>,
+    pub hidden: bool,
 }
 
 pub struct StartOptions {
@@ -131,6 +181,40 @@ pub trait AdapterSession: Send + Sync {
     /// sync); they arrive through `AdapterSink::contacts`.
     async fn resync_contacts(&self) -> Result<(), AdapterError> {
         Err(AdapterError::temporary("This WhatsApp client cannot refresh contacts."))
+    }
+
+    // ---- WhatsApp Business catalogue, through this same linked session ----
+
+    /// Detect whether the linked account has a usable Business catalogue.
+    async fn catalog_capability(&self) -> Result<CatalogCapability, AdapterError> {
+        Ok(CatalogCapability::Unsupported)
+    }
+    /// Collections (POS categories) can be created and edited.
+    fn catalog_collections_writable(&self) -> bool {
+        false
+    }
+    /// Upload a product picture (JPEG bytes); returns its WhatsApp URL.
+    async fn catalog_upload_image(&self, jpeg: Vec<u8>) -> Result<String, AdapterError> {
+        let _ = jpeg;
+        Err(AdapterError::unsupported())
+    }
+    async fn catalog_create(&self, product: &CatalogProduct) -> Result<RemoteProduct, AdapterError> {
+        let _ = product;
+        Err(AdapterError::unsupported())
+    }
+    async fn catalog_update(&self, remote_id: &str, product: &CatalogProduct) -> Result<RemoteProduct, AdapterError> {
+        let _ = (remote_id, product);
+        Err(AdapterError::unsupported())
+    }
+    /// Delete remote products; returns how many WhatsApp deleted.
+    async fn catalog_delete(&self, remote_ids: &[String]) -> Result<u32, AdapterError> {
+        let _ = remote_ids;
+        Err(AdapterError::unsupported())
+    }
+    /// One page of the linked account's catalogue (for reconciliation).
+    async fn catalog_list(&self, cursor: Option<&str>) -> Result<(Vec<RemoteProduct>, Option<String>), AdapterError> {
+        let _ = cursor;
+        Err(AdapterError::unsupported())
     }
 }
 

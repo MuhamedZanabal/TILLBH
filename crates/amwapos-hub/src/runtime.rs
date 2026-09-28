@@ -573,6 +573,80 @@ impl Runtime {
                 self.whatsapp.resync_contacts().await?;
                 Ok(json!({ "requested": true }))
             }
+            "whatsapp.catalog_status" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let st = self.whatsapp.status();
+                let info = self.whatsapp.catalog();
+                let account = info.account.clone().or(st.account.clone());
+                let c = self.core.clone();
+                let overview = blocking(move || c.wa_catalog_overview(&t, account.as_deref())).await?;
+                self.whatsapp.ensure();
+                Ok(json!({
+                    "capability": info,
+                    "connection": { "connected": st.connected, "ready": st.ready, "enabled": st.enabled },
+                    "catalog": overview,
+                }))
+            }
+            "whatsapp.catalog_sync" | "whatsapp.catalog_retry" | "whatsapp.catalog_configure" | "whatsapp.catalog_recheck" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let c = self.core.clone();
+                let t2 = t.clone();
+                blocking(move || {
+                    let s = c.session(&t2)?;
+                    s.require("whatsapp.manage")?;
+                    s.require("products.manage")
+                })
+                .await?;
+                let info = self.whatsapp.catalog();
+                // Only the account linked right now, and only once its
+                // capability was checked for that same account.
+                let linked = self.whatsapp.status().account.as_deref().and_then(amwapos_core::wa_catalog::account_key);
+                let account = linked.clone().unwrap_or_default();
+                let checked_for_linked = linked.is_some() && info.account == linked;
+                let c = self.core.clone();
+                let r = match cmd {
+                    "whatsapp.catalog_recheck" => {
+                        self.whatsapp.catalog_recheck();
+                        json!({ "requested": true })
+                    }
+                    "whatsapp.catalog_configure" => {
+                        let on = args
+                            .get("auto_sync")
+                            .and_then(|v| v.as_bool())
+                            .ok_or_else(|| AppError::validation("Missing argument 'auto_sync'."))?;
+                        blocking(move || c.wa_catalog_configure(&t, on)).await?
+                    }
+                    "whatsapp.catalog_retry" if !checked_for_linked => {
+                        return Err(AppError::conflict("WhatsApp is not connected, or the linked account is still being checked."));
+                    }
+                    "whatsapp.catalog_retry" => {
+                        let pid = args.get("product_id").and_then(|v| v.as_str()).map(String::from);
+                        blocking(move || c.wa_catalog_retry(&t, &account, pid.as_deref())).await?
+                    }
+                    _ => {
+                        // Publishing only through a connection that really supports it.
+                        if info.capability != "supported" || !checked_for_linked {
+                            return Err(AppError::conflict(match info.capability.as_str() {
+                                "personal" => "The linked WhatsApp number is a personal account. Catalogues need WhatsApp Business.",
+                                "business_no_catalog" => "This WhatsApp Business account has no catalogue that AMWAPOS can read. Create the catalogue once in the WhatsApp Business app, then check again.",
+                                "disconnected" => "WhatsApp is not connected.",
+                                _ => "The WhatsApp catalogue is not available right now. Check again in a moment.",
+                            })
+                            .with_details(json!({ "kind": "catalog_unavailable", "capability": info.capability })));
+                        }
+                        blocking(move || c.wa_catalog_start(&t, &account)).await?
+                    }
+                };
+                self.whatsapp.catalog_changed();
+                Ok(r)
+            }
+            "whatsapp.catalog_product" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let pid = arg(&args, "product_id")?;
+                let account = self.whatsapp.catalog().account.or(self.whatsapp.status().account);
+                let c = self.core.clone();
+                blocking(move || c.wa_catalog_product_state(&t, account.as_deref(), &pid)).await
+            }
             "whatsapp.session_backup" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 if args.get("acknowledge_risk").and_then(|v| v.as_bool()) != Some(true) {
@@ -643,6 +717,11 @@ impl Runtime {
                             self.images.poke.notify_one();
                         }
                         _ => {}
+                    }
+                    // A catalogue change: the WhatsApp catalogue worker checks
+                    // what differs (only acts once publishing was started).
+                    if ["products.", "categories.", "pricing.", "import.", "branches.prices"].iter().any(|p| cmd.starts_with(p)) {
+                        self.whatsapp.catalog_changed();
                     }
                 }
                 res
