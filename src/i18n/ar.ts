@@ -3366,4 +3366,55 @@ export const AR: Record<string, string> = {
     "يضيف حتى 200 منتج لم يُبحث عنها إلى الانتظار؛ اضغط مرة أخرى للدفعة التالية.",
   "Automatic product pictures are switched off. An owner can turn them on in Settings → Product images.":
     "الصور التلقائية للمنتجات متوقفة. يمكن للمالك تفعيلها من الإعدادات ← صور المنتجات.",
+  "WhatsApp Business account with a catalogue": "حساب واتساب للأعمال مع كتالوج",
+  "Personal WhatsApp account: catalogues need WhatsApp Business": "حساب واتساب شخصي: الكتالوج يحتاج واتساب للأعمال",
+  "WhatsApp Business account, but its catalogue could not be read": "حساب واتساب للأعمال، لكن تعذّرت قراءة الكتالوج",
+  "Could not check the catalogue right now": "تعذّر التحقق من الكتالوج الآن",
+  "This WhatsApp client cannot manage catalogues": "عميل واتساب هذا لا يستطيع إدارة الكتالوجات",
+  "Catalogue publishing runs on the hub computer": "نشر الكتالوج يعمل على جهاز المحور",
+  "Checking the linked account…": "جارٍ التحقق من الحساب المرتبط…",
+  "WhatsApp is not connected": "واتساب غير متصل",
+  "On WhatsApp": "على واتساب",
+  "Waiting to publish": "بانتظار النشر",
+  "Hidden on WhatsApp": "مخفي على واتساب",
+  "Removed from WhatsApp": "أُزيل من واتساب",
+  "Could not publish": "تعذّر النشر",
+  "Deleted on WhatsApp": "حُذف على واتساب",
+  "Not on WhatsApp": "ليس على واتساب",
+  "WhatsApp catalogue": "كتالوج واتساب",
+  "Publishes this shop's products to the WhatsApp Business catalogue of the linked number, through the same WhatsApp link that sends receipts. AMWAPOS stays the source of truth: prices, names, descriptions and pictures flow from AMWAPOS to WhatsApp, never back.":
+    "ينشر منتجات المتجر في كتالوج واتساب للأعمال للرقم المرتبط، عبر نفس ربط واتساب الذي يرسل الإيصالات. يبقى AMWAPOS المصدر المعتمد: الأسعار والأسماء والأوصاف والصور تنتقل من AMWAPOS إلى واتساب، ولا تعود أبداً.",
+  "Linked number": "الرقم المرتبط",
+  Supported: "مدعوم",
+  "Not available": "غير متاح",
+  "Collections (categories)": "المجموعات (الفئات)",
+  "Not supported by this WhatsApp link: products are published without collections.":
+    "غير مدعومة في ربط واتساب هذا: تُنشر المنتجات بدون مجموعات.",
+  Checked: "آخر تحقق",
+  "Check again": "تحقق مجدداً",
+  "Not published yet": "لم يُنشر بعد",
+  "Nothing is sent to WhatsApp until you start. The first sync publishes every active product with a price; archived products and products without a price are left out.":
+    "لا يُرسل شيء إلى واتساب حتى تبدأ. المزامنة الأولى تنشر كل منتج نشط له سعر؛ وتُستبعد المنتجات المؤرشفة والمنتجات بلا سعر.",
+  "Products that can be published": "منتجات يمكن نشرها",
+  "Left out (no price)": "مستبعدة (بلا سعر)",
+  "Last published": "آخر نشر",
+  "Keep the WhatsApp catalogue synchronised automatically": "إبقاء كتالوج واتساب متزامناً تلقائياً",
+  "Sync catalogue now": "مزامنة الكتالوج الآن",
+  "Sync catalogue to WhatsApp": "مزامنة الكتالوج مع واتساب",
+  "Retry failed": "إعادة محاولة الفاشلة",
+  Start: "ابدأ",
+  "Catalogue sync started": "بدأت مزامنة الكتالوج",
+  "{0} products will be published or updated in the WhatsApp catalogue of +{1}. Products you created directly in WhatsApp are not changed.":
+    "سيُنشر أو يُحدَّث {0} منتجاً في كتالوج واتساب للرقم +{1}. المنتجات التي أنشأتها مباشرة في واتساب لا تتغير.",
+  "The linked WhatsApp number is a personal account. Catalogues need WhatsApp Business.":
+    "رقم واتساب المرتبط حساب شخصي. الكتالوجات تحتاج واتساب للأعمال.",
+  "This WhatsApp Business account has no catalogue that AMWAPOS can read. Create the catalogue once in the WhatsApp Business app, then check again.":
+    "لا يوجد في حساب واتساب للأعمال هذا كتالوج يستطيع AMWAPOS قراءته. أنشئ الكتالوج مرة واحدة في تطبيق واتساب للأعمال ثم تحقق مجدداً.",
+  "The WhatsApp catalogue is not available right now. Check again in a moment.":
+    "كتالوج واتساب غير متاح الآن. تحقق مجدداً بعد قليل.",
+  "WhatsApp is not connected, or the linked account is still being checked.":
+    "واتساب غير متصل، أو ما زال الحساب المرتبط قيد التحقق.",
+  "The product was deleted on WhatsApp.": "حُذف المنتج على واتساب.",
+  "WhatsApp is not connected.": "واتساب غير متصل.",
+  "WhatsApp did not answer in time.": "لم يرد واتساب في الوقت المحدد.",
 };

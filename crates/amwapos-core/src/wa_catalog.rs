@@ -263,6 +263,9 @@ fn valid_account(account: &str) -> AppResult<String> {
     account_key(account).ok_or_else(|| AppError::conflict("WhatsApp is not linked to a number yet."))
 }
 
+/// (status, remote_id, last_synced_at, last_error) of one mapping.
+type ProductMappingRow = (String, Option<String>, Option<String>, Option<String>);
+
 struct Mapping {
     status: String,
     fingerprint: Option<String>,
@@ -531,7 +534,7 @@ impl AppCore {
         let Some(acc) = account.and_then(account_key) else { return Ok(json!({ "status": null, "published": false })) };
         self.db.read(|c| {
             let published = is_published(c, &acc)?;
-            let row: Option<(String, Option<String>, Option<String>, Option<String>)> = c
+            let row: Option<ProductMappingRow> = c
                 .query_row(
                     "SELECT status, remote_id, last_synced_at, last_error FROM wa_catalog_products WHERE account=?1 AND product_id=?2",
                     params![acc, pid],

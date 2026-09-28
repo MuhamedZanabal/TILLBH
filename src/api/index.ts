@@ -414,6 +414,13 @@ export const api = {
     linkCustomer: (chat: string, customer_id: string | null) =>
       call<T.WaThreadContext>("whatsapp.link_customer", { chat, customer_id }),
     phoneContactsRefresh: () => call<{ requested: boolean }>("whatsapp.phone_contacts_refresh"),
+    /** WhatsApp Business catalogue (same linked session). */
+    catalogStatus: () => call<T.WaCatalogStatus>("whatsapp.catalog_status"),
+    catalogSync: () => call<T.WaCatalogOverview>("whatsapp.catalog_sync"),
+    catalogRetry: (product_id?: string) => call<{ queued: number }>("whatsapp.catalog_retry", { product_id }),
+    catalogConfigure: (auto_sync: boolean) => call<{ auto_sync: boolean }>("whatsapp.catalog_configure", { auto_sync }),
+    catalogRecheck: () => call<{ requested: boolean }>("whatsapp.catalog_recheck"),
+    catalogProduct: (product_id: string) => call<T.WaCatalogProductState>("whatsapp.catalog_product", { product_id }),
     phoneContactsImport: (jids: string[] | null, update_existing: boolean) =>
       call<{ created: number; updated: number; skipped: number }>("whatsapp.phone_contacts_import", {
         jids,

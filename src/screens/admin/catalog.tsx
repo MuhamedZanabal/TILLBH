@@ -44,6 +44,7 @@ import { t } from "../../i18n";
 import { BranchPricesCard } from "./pillars";
 import { codeLabel } from "../../i18n/codes";
 import { NewProductImageField, ProductImageField } from "./productImageField";
+import { WaCatalogProductLine } from "./waCatalog";
 import { ProductImage } from "../../components/ProductImage";
 
 export function ProductsPage() {
@@ -598,7 +599,10 @@ export function ProductEditorPage() {
             {isNew ? (
               <NewProductImageField name={form.name} value={image} onChange={(v) => (setImage(v), setDirty(true))} />
             ) : detail ? (
-              <ProductImageField productId={detail.product_id} name={detail.name} canEdit={canEdit} />
+              <div className="col gap-8">
+                <ProductImageField productId={detail.product_id} name={detail.name} canEdit={canEdit} />
+                <WaCatalogProductLine productId={detail.product_id} />
+              </div>
             ) : null}
             {isNew ? (
               <div className="card card-pad col gap-16">

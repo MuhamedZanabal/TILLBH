@@ -1774,3 +1774,54 @@ export interface WaPhoneContacts {
   counts: { new: number; exists: number; no_phone: number; no_name: number };
   last_sync_at: string | null;
 }
+
+/** WhatsApp Business catalogue: what the linked connection can do. */
+export type WaCatalogCapability =
+  | "disconnected"
+  | "checking"
+  | "personal"
+  | "business_no_catalog"
+  | "supported"
+  | "unavailable"
+  | "unsupported"
+  | "terminal";
+
+export type WaCatalogItemStatus =
+  "queued" | "syncing" | "synced" | "hidden" | "removed" | "not_synced" | "failed" | "remote_missing";
+
+export interface WaCatalogOverview {
+  account: string | null;
+  published: boolean;
+  auto_sync: boolean;
+  publishable: number;
+  not_publishable: Partial<Record<"archived" | "no_name" | "no_price", number>>;
+  counts: Partial<Record<WaCatalogItemStatus, number>>;
+  last_synced_at: string | null;
+  failures: { product_id: string; name: string | null; status: string; error: string | null }[];
+  categories: number;
+  collections_recorded: number;
+}
+
+export interface WaCatalogStatus {
+  capability: {
+    capability: WaCatalogCapability;
+    detail: string | null;
+    account: string | null;
+    checked_at: string | null;
+    collections: boolean;
+    last_pass_at: string | null;
+    last_pass_done: number;
+    last_error: string | null;
+  };
+  connection: { connected: boolean; ready: boolean; enabled: boolean };
+  catalog: WaCatalogOverview;
+}
+
+export interface WaCatalogProductState {
+  published: boolean;
+  status: WaCatalogItemStatus | null;
+  on_whatsapp?: boolean;
+  last_synced_at?: string | null;
+  last_error?: string | null;
+  not_publishable?: "archived" | "no_name" | "no_price" | null;
+}

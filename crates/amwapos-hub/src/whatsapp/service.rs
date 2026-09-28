@@ -98,6 +98,8 @@ enum Cmd {
 }
 
 type Session = Option<Arc<dyn AdapterSession>>;
+/// Supervisor, message I/O worker, catalogue worker.
+type ServiceTasks = (JoinHandle<()>, JoinHandle<()>, JoinHandle<()>);
 
 pub struct WhatsAppService {
     core: Arc<AppCore>,
@@ -106,7 +108,7 @@ pub struct WhatsAppService {
     status: watch::Sender<WaStatus>,
     session: watch::Sender<Session>,
     cmd: Mutex<Option<mpsc::Sender<Cmd>>>,
-    tasks: Mutex<Option<(JoinHandle<()>, JoinHandle<()>, JoinHandle<()>)>>,
+    tasks: Mutex<Option<ServiceTasks>>,
     /// Wakes the I/O worker (new outbox row, read mark).
     pub poke: Arc<Notify>,
     /// Wakes the catalogue worker (catalogue change, sync request).

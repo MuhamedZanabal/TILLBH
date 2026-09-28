@@ -384,3 +384,82 @@ Precedence: uploaded picture > automatically found picture > monogram placeholde
 - Single business: access control is by permission (`products.manage`, `settings.manage`), not per tenant.
 - Bing is unofficial and may change or rate-limit; a break only produces bounded retries.
 - Imported products are not searched until the explicit backfill.
+
+## WhatsApp Business catalogue, 2026-09-28
+
+Publishes the POS catalogue to the WhatsApp Business catalogue of the linked number. It runs **through the existing WhatsApp link**: the same `whatsapp-rust` 0.7.0 client, session file, supervisor and hub/standalone runtime that send receipts. It adds no second login, no Meta Graph or Cloud API, and no other provider.
+
+**How it talks to WhatsApp.**
+- New `AdapterSession` methods, with defaults that report "unsupported":
+  - `catalog_capability`, `catalog_upload_image`;
+  - `catalog_create`, `catalog_update`, `catalog_delete`, `catalog_list`.
+- `RustWhatsAppAdapter` implements them with the client's public primitives:
+  - `get_business_profile` (Business detection);
+  - `send_iq` with `w:biz:catalog` stanzas: `product_catalog_add`, `product_catalog_edit`, `product_catalog_delete` and the `product_catalog` read;
+  - `upload(…, MediaType::ProductCatalogImage)` for pictures.
+- These are the stanzas WhatsApp Web uses for its own catalogue. The `Baileys` library is the reference implementation (`crates/amwapos-hub/src/whatsapp/catalog_proto.rs`).
+- The library's GraphQL catalogue operations are read-only, and there is no collection write stanza. So **Collections are not written**: POS categories are recorded as `unsupported` collections, and products are published without collection membership.
+
+**Capability, from the live connection.**
+- The states are `disconnected`, `checking`, `personal`, `business_no_catalog`, `supported`, `unavailable` and `terminal`.
+- `personal` means no business profile. `business_no_catalog` means a business profile exists but the catalogue read is refused; create the catalogue once in the WhatsApp Business app.
+- `supported` means the business profile exists and the catalogue read succeeded.
+- The capability is re-checked on every new client or relink, every 30 min, or when "Check again" is pressed.
+- Sync is refused unless the capability is `supported` **and** was checked for the account that is linked right now.
+
+**Direction and ownership.**
+- POS → WhatsApp only. WhatsApp edits never change POS data.
+- The worker only touches remote products it created or adopted.
+- Adoption: before creating an unmapped product, the account's catalogue is read. A remote product whose retailer id equals the POS product code, with exactly one match and not mapped to another product, is updated instead of duplicated. This also makes an interrupted run resumable.
+- If the catalogue cannot be read, the create waits; it never runs blind.
+- Remote products created in the WhatsApp app are never modified or deleted.
+
+**Mapping (migration 0021).**
+- `wa_catalog_products` is keyed by (account = linked number digits, product_id). It holds:
+  - the remote id;
+  - the synced fingerprint and the attempted fingerprint;
+  - the uploaded picture hash and URL;
+  - retries, timestamps and the last error.
+- `wa_catalog_collections` is keyed by (account, category_id).
+- These tables are local to the computer owning the session (not in the row sync).
+- Names are never identifiers.
+- A different linked number starts with no mappings and needs its own first sync. The old account's rows are kept as history and never used.
+
+**What is sent.**
+- Name: at most 150 characters, cut deterministically with "…".
+- Description: the product description, else the Arabic name, else none (nothing invented); at most 1000 characters.
+- Price in thousandths of the currency (the protocol's amount×1000). For BHD, fils map 1:1: 0.100 → 100, 1.250 → 1250, 9.990 → 9990, 100.000 → 100000. Integer arithmetic only.
+- Currency code, retailer id = the POS product code (SKU), hidden flag.
+- Picture: the POS-managed stored JPEG (uploaded or automatically found), sent byte for byte. It is re-uploaded only when its hash changes. Outside search URLs are never used, and a product without a picture is published without one.
+- These character limits are AMWAPOS' conservative choice; WhatsApp does not publish its limits.
+
+**Eligibility.**
+- Published: active products with a name and a price above zero.
+- Not published: archived products and products without a price. A published product that is archived or loses its price is **hidden** on WhatsApp, not deleted.
+- A mapping whose POS product no longer exists deletes only its POS-owned remote product.
+
+**Lifecycle.**
+- `queued → syncing → synced | hidden | removed | failed | remote_missing`.
+- Temporary errors (disconnect, timeout, 429 with the server's back-off, 5xx) retry after 1, 5, 30 and 120 min; the 5th failure gives `failed`.
+- `failed` is terminal until the product's representation changes, or an administrator presses Retry. There is no loop.
+- `remote_missing` (deleted on WhatsApp) is re-created only on Retry.
+- A claim abandoned for 10 min is taken back.
+- An unchanged fingerprint means no remote write.
+
+**When it runs.**
+- Nothing is published on upgrade. An administrator starts it with "Sync catalogue to WhatsApp" (WhatsApp → Catalogue), per linked number.
+- After that, "Keep the WhatsApp catalogue synchronised automatically" is on by default. It compares POS and WhatsApp after every catalogue command (products, categories, pricing, import) and at least once a minute.
+- With it off, changes stay local until the next manual sync.
+- The worker runs next to the message I/O worker, only where the session is (hub / standalone, never a terminal). It processes 5 products per claim, one remote change at a time, 1.2 s apart.
+- POS writes never wait for it. While disconnected, work stays queued and resumes on reconnect without duplicates.
+
+**Permissions and logging.**
+- Sync, retry, the setting and re-check need `whatsapp.manage` **and** `products.manage`. Status needs `whatsapp.manage`; the product line needs `products.view`. Cashiers can do none of these.
+- Session material never leaves the backend.
+- Logs cover capability detected, changes queued, product created / updated / hidden, not synchronised (with the error), abandoned claims re-queued and full sync started. No session keys or tokens are logged.
+
+**Verified here.**
+- Core state machine: `crates/amwapos-core/tests/wa_catalog.rs`.
+- End to end with the fake adapter: `crates/amwapos-hub/tests/whatsapp_catalog.rs`.
+- Stanza building and parsing: unit tests in `catalog_proto.rs`.
+- **Not verified live**: no WhatsApp Business account was available in this environment. Business detection, catalogue access, product create/update with picture and BHD price, and re-sync without duplicates must be checked once on a real linked Business number. Collections are unsupported by design (blocked).

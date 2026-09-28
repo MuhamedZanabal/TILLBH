@@ -33,6 +33,7 @@ import { newOperationId } from "../../lib/ids";
 import { t, tb } from "../../i18n";
 import { OrderEditor } from "../orders";
 import { AreaPicker, PayChip, TicketRowButton, TicketSheet } from "../pos/SendLoop";
+import { WaCatalog } from "./waCatalog";
 import type { DigitalOrder, WaTriageItem } from "../../api/types";
 
 // ---------------------------------------------------------------- helpers
@@ -190,7 +191,7 @@ function WaAbout() {
 
 // ---------------------------------------------------------------- WhatsApp
 
-type WaTab = "connection" | "conversations" | "triage" | "outbox" | "templates" | "diagnostics";
+type WaTab = "connection" | "conversations" | "triage" | "outbox" | "templates" | "catalogue" | "diagnostics";
 
 export function WhatsAppPage() {
   const [tab, setTab] = useState<WaTab>("connection");
@@ -214,6 +215,7 @@ export function WhatsAppPage() {
               { key: "triage", label: t("Triage") },
               { key: "outbox", label: t("Sent messages") },
               { key: "templates", label: t("Templates") },
+              { key: "catalogue", label: t("Catalogue") },
               { key: "diagnostics", label: t("Diagnostics") },
             ]}
           />
@@ -223,6 +225,7 @@ export function WhatsAppPage() {
             {tab === "triage" ? <WaTriage /> : null}
             {tab === "outbox" ? <WaOutbox /> : null}
             {tab === "templates" ? <WaTemplates /> : null}
+            {tab === "catalogue" ? <WaCatalog /> : null}
             {tab === "diagnostics" ? <WaDiagnostics /> : null}
           </div>
         </FeatureGate>
