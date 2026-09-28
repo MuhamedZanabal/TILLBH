@@ -93,7 +93,7 @@ sys.exit(0 if (v >= 21 and p == 1 and s >= 1 and ok == 'ok') else 1)
 $check | Set-Content "$env:RUNNER_TEMP\dbcheck.py"
 python "$env:RUNNER_TEMP\dbcheck.py" $db
 if ($LASTEXITCODE -ne 0) { Fail "database check failed" }
-$logs = Get-ChildItem (Join-Path $dataRoot 'logs') -Filter 'amwapos*.log' | Get-Content -Raw
+$logs = (Get-ChildItem (Join-Path $dataRoot 'logs') -Filter 'amwapos*.log' | Get-Content -Raw) -join "`n"
 $short = $ExpectSha.Substring(0, 12)
 if ($logs -notmatch '"message":"AMWAPOS starting"') { Fail "no startup line in the log" }
 if ($logs -notmatch "`"build`":`"$short`"") { Fail "the installed app was not built from $short" }
