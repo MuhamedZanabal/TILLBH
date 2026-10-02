@@ -51,7 +51,7 @@ test("first run → products → offline checkout → refund → shift close", a
   await expect(page.getByTestId("pos")).toBeVisible();
 
   // Seed catalogue through the same API the admin screens use.
-  const token = await page.evaluate(() => sessionStorage.getItem("amwapos.session"));
+  const token = await page.evaluate(() => sessionStorage.getItem("tillbh.session"));
   const tax = (await rpc(page, "tax.list", {}, token))[0].tax_rule_id;
   const cat = await rpc(page, "categories.save", { name: "Beverages" }, token);
   const mk = (name: string, barcode: string, price: number, stock: number, fav = true) =>
@@ -334,7 +334,7 @@ test("AI assistant: live tool steps and thinking, slash commands, shortcuts, and
   await page.getByLabel("PIN").fill("4826");
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
-  const token = await page.evaluate(() => sessionStorage.getItem("amwapos.session"));
+  const token = await page.evaluate(() => sessionStorage.getItem("tillbh.session"));
   const features = await rpc(page, "settings.get", { key: "features" }, token);
   await rpc(page, "settings.save", { key: "features", value: { ...features, "ai.enabled": true } }, token);
   // The owner lets cashiers use the assistant at the till (read-only for them).

@@ -16,10 +16,10 @@
 
 | Path | Content |
 | --- | --- |
-| `%ProgramData%\TILLBH\data\amwapos.db` (+ `-wal`, `-shm`) | The store database |
+| `%ProgramData%\TILLBH\data\tillbh.db` (+ `-wal`, `-shm`) | The store database |
 | `%ProgramData%\TILLBH\data\backups\` | Scheduled and manual backups (`*.amwbak` + `.amwbak.json` manifest) |
 | `%ProgramData%\TILLBH\data\backups\safety\` | Automatic backups before restore/migration |
-| `%ProgramData%\TILLBH\logs\amwapos.YYYY-MM-DD.log` | JSON logs, one file per day, last 30 kept (level via `TILLBH_LOG`) |
+| `%ProgramData%\TILLBH\logs\tillbh.YYYY-MM-DD.log` | JSON logs, one file per day, last 30 kept (level via `TILLBH_LOG`) |
 
 ## Daily routine
 

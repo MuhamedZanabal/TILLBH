@@ -1,5 +1,5 @@
 {
-  "name": "amwapos",
+  "name": "tillbh",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -14,7 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "devserver": "cargo run -p amwapos-devserver -- --data-dir .amwapos-dev/data --port 8787",
+    "devserver": "cargo run -p tillbh-devserver -- --data-dir .tillbh-dev/data --port 8787",
     "tauri": "tauri"
   },
   "dependencies": {

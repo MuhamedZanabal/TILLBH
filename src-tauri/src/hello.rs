@@ -2,7 +2,7 @@
 //! sensitive commands after the staff PIN / manager approval; it never
 //! replaces the PIN.
 
-use amwapos_hub::runtime::StepUp;
+use tillbh_hub::runtime::StepUp;
 
 #[cfg(windows)]
 pub fn verify(message: &str) -> StepUp {

@@ -3,7 +3,7 @@
 ## Processes and layers
 
 ```
-React UI ──invoke("rpc",{cmd,token,args})──▶ Tauri shell ──▶ amwapos-hub::Runtime ──▶ amwapos-core::commands::dispatch ──▶ AppCore
+React UI ──invoke("rpc",{cmd,token,args})──▶ Tauri shell ──▶ tillbh-hub::Runtime ──▶ tillbh-core::commands::dispatch ──▶ AppCore
                                                                   │                                                    │
                                                                   ├─ hub HTTP server :47800 (hub mode)                 └─ SQLite (WAL, FULL sync)
                                                                   ├─ UDP discovery :47801
@@ -17,7 +17,7 @@ same `dispatch` serves Tauri IPC, the devserver (`/rpc`) and the tests.
 
 ## Storage
 
-- A single SQLite database, `amwapos.db`, in the data directory
+- A single SQLite database, `tillbh.db`, in the data directory
   (`%ProgramData%\TILLBH\data`; override with `TILLBH_DATA_DIR`).
 - `journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`. One writer connection (every write is
   `BEGIN IMMEDIATE`) plus a pool of readers.
@@ -78,7 +78,7 @@ The same id with a different payload fails with `idempotency_mismatch`.
     reported instead of being silently replaced.
   - **Versioning:** the hub refuses any other protocol version with HTTP 426. `/info` reports the
     version, and terminals check it before pairing and before every sync cycle. Code in
-    `crates/amwapos-core/src/channel.rs`.
+    `crates/tillbh-core/src/channel.rs`.
 - **Policies:**
   - Hub-owned: the catalogue, prices, users and settings are edited only on the hub.
   - Append-only: sales, refunds, cash and stock movements are appended, and the hub checks that the
@@ -113,7 +113,7 @@ or other non-ASCII text is:
 3. drawn with embedded, subset Noto Sans Arabic / Noto Sans (SIL OFL);
 4. sent as an ESC/POS `GS v 0` raster image at 12 dots per character column (576 dots on 80 mm).
 
-This works on any ESC/POS printer, with no Arabic code page needed (`crates/amwapos-core/src/raster.rs`).
+This works on any ESC/POS printer, with no Arabic code page needed (`crates/tillbh-core/src/raster.rs`).
 
 ## UI language
 
@@ -149,13 +149,13 @@ local network port.
 ```
 React ── Tauri commands only (status, start/stop, pair code, queue, mark read, recent) ──┐
                                                                                         │
-Runtime ── WhatsAppService (crates/amwapos-hub/src/whatsapp/service.rs)                 │
+Runtime ── WhatsAppService (crates/tillbh-hub/src/whatsapp/service.rs)                 │
              ├─ supervisor task: owns the client, restarts it with back-off             │
              ├─ I/O worker task: outbox sends, read receipts, media downloads           │
              └─ WhatsAppAdapter trait                                                   │
                   ├─ RustWhatsAppAdapter  (whatsapp-rust =0.7.0, unofficial Web client)  │
                   └─ FakeAdapter          (tests)                                        │
-         ── OcrWorker (crates/amwapos-hub/src/ocr_worker.rs): bundled Tesseract,        │
+         ── OcrWorker (crates/tillbh-hub/src/ocr_worker.rs): bundled Tesseract,        │
             one child process per image, on its own task                                │
 AppCore ── wa_outbox / wa_inbox / payment_reviews / invoice_scans (ledger DB) ◄──────────┘
 ```
@@ -164,7 +164,7 @@ How the rules are enforced:
 
 - **Separate session store.** `SessionPath::for_data_dir` is the only way to get the session
   location: `<data>/whatsapp/session.db` (`%ProgramData%\TILLBH\data\whatsapp` on Windows). It
-  refuses a relative path, the ledger file (`amwapos.db`) and the executable's folder. The file is
+  refuses a relative path, the ledger file (`tillbh.db`) and the executable's folder. The file is
   opened only by the crate's own SQLite store inside the adapter; TILLBH' connection pool never
   opens it. The explicit owner-only session backup opens its own read-only connection.
 - **No lock across the client.** The supervisor keeps the client's exit future in its own task

@@ -1,8 +1,8 @@
 //! Secrets in the operating system's credential store (Windows Credential
 //! Manager on Windows). Secret values are never logged.
 
-use amwapos_core::service::SecretStore;
-use amwapos_core::{AppError, AppResult, ErrorCode};
+use tillbh_core::service::SecretStore;
+use tillbh_core::{AppError, AppResult, ErrorCode};
 
 const SERVICE: &str = "TILLBH";
 

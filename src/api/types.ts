@@ -1,4 +1,4 @@
-// Types mirroring the Rust command contracts (crates/amwapos-core).
+// Types mirroring the Rust command contracts (crates/tillbh-core).
 // Money: integer minor units (fils). Quantities: integer thousandths.
 
 export type ErrorCode =

@@ -60,11 +60,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "amwapos"
+name = "tillbh"
 version = "0.1.0"
 dependencies = [
- "amwapos-core",
- "amwapos-hub",
+ "tillbh-core",
+ "tillbh-hub",
  "keyring",
  "serde",
  "serde_json",
@@ -80,7 +80,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "amwapos-core"
+name = "tillbh-core"
 version = "0.1.0"
 dependencies = [
  "ab_glyph_rasterizer",
@@ -114,11 +114,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "amwapos-devserver"
+name = "tillbh-devserver"
 version = "0.1.0"
 dependencies = [
- "amwapos-core",
- "amwapos-hub",
+ "tillbh-core",
+ "tillbh-hub",
  "axum",
  "serde",
  "serde_json",
@@ -128,10 +128,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "amwapos-hub"
+name = "tillbh-hub"
 version = "0.1.0"
 dependencies = [
- "amwapos-core",
+ "tillbh-core",
  "anyhow",
  "async-trait",
  "axum",

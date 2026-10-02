@@ -13,8 +13,8 @@ dist/
 coverage/
 *.log
 .DS_Store
-/.amwapos-dev/
-/.amwapos-e2e/
+/.tillbh-dev/
+/.tillbh-e2e/
 *.tsbuildinfo
 *.cdx.json
 src-tauri/resources/tesseract/

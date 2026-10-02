@@ -17,9 +17,9 @@ function Step($m) { Write-Host "== $m" }
 $exe = Get-Item $Installer
 $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
 $installDir = Join-Path $env:ProgramFiles 'TILLBH'
-$app = Join-Path $installDir 'amwapos.exe'
+$app = Join-Path $installDir 'tillbh.exe'
 $dataRoot = Join-Path $env:ProgramData 'TILLBH'
-$db = Join-Path $dataRoot 'data\amwapos.db'
+$db = Join-Path $dataRoot 'data\tillbh.db'
 New-Item -ItemType Directory -Force $Shots | Out-Null
 
 Step "Artifact"
@@ -34,7 +34,7 @@ Write-Host "signature: $($sig.Status)"
 Step "Packaged files (no session, secrets, test data)"
 $listing = & 7z l $exe.FullName | Out-String
 if ($LASTEXITCODE -ne 0) { Fail "7-Zip could not list the installer" }
-foreach ($bad in @('session\.db', '\.env\b', 'test-results', '\.amwapos-e2e', '\.amwapos-smoke', 'playwright', '\.pfx\b', 'id_rsa')) {
+foreach ($bad in @('session\.db', '\.env\b', 'test-results', '\.tillbh-e2e', '\.tillbh-smoke', 'playwright', '\.pfx\b', 'id_rsa')) {
   if ($listing -match $bad) { Fail "the installer contains '$bad'" }
 }
 Write-Host ($listing -split "`n" | Select-String -Pattern '\.(exe|dll|traineddata)\s*$' | Out-String)
@@ -43,7 +43,7 @@ Step "Silent install"
 if (Test-Path $dataRoot) { Fail "a previous TILLBH data folder exists on this machine" }
 $p = Start-Process $exe.FullName -ArgumentList '/S' -Wait -PassThru
 if ($p.ExitCode -ne 0) { Fail "installer exit code $($p.ExitCode)" }
-if (-not (Test-Path $app)) { Fail "amwapos.exe not installed in $installDir" }
+if (-not (Test-Path $app)) { Fail "tillbh.exe not installed in $installDir" }
 $pv = (Get-Item $app).VersionInfo.ProductVersion
 Write-Host "installed: $app (product version $pv)"
 if (-not $pv.StartsWith($version)) { Fail "installed version $pv does not match $version" }
@@ -72,9 +72,9 @@ function Start-App {
 }
 function Stop-App {
   # A normal close (WM_CLOSE), not a kill.
-  & taskkill /IM amwapos.exe | Out-Null
+  & taskkill /IM tillbh.exe | Out-Null
   for ($i = 0; $i -lt 60; $i++) {
-    if (-not (Get-Process amwapos -ErrorAction SilentlyContinue)) { return }
+    if (-not (Get-Process tillbh -ErrorAction SilentlyContinue)) { return }
     Start-Sleep -Milliseconds 500
   }
   Fail "the app did not close normally within 30 s"
@@ -104,7 +104,7 @@ sys.exit(0 if (v >= 21 and p == 1 and s >= 1 and ok == 'ok') else 1)
 $check | Set-Content "$env:RUNNER_TEMP\dbcheck.py"
 python "$env:RUNNER_TEMP\dbcheck.py" $db
 if ($LASTEXITCODE -ne 0) { Fail "database check failed" }
-$logs = (Get-ChildItem (Join-Path $dataRoot 'logs') -Filter 'amwapos*.log' | Get-Content -Raw) -join "`n"
+$logs = (Get-ChildItem (Join-Path $dataRoot 'logs') -Filter 'tillbh*.log' | Get-Content -Raw) -join "`n"
 $short = $ExpectSha.Substring(0, 12)
 if ($logs -notmatch '"message":"TILLBH starting"') { Fail "no startup line in the log" }
 if ($logs -notmatch "`"build`":`"$short`"") { Fail "the installed app was not built from $short" }
@@ -128,6 +128,6 @@ $un = Join-Path $installDir 'uninstall.exe'
 if (-not (Test-Path $un)) { Fail "no uninstaller" }
 Start-Process $un -ArgumentList '/S' -Wait | Out-Null
 for ($i = 0; $i -lt 60 -and (Test-Path $app); $i++) { Start-Sleep -Milliseconds 500 }
-if (Test-Path $app) { Fail "amwapos.exe is still installed after uninstall" }
+if (Test-Path $app) { Fail "tillbh.exe is still installed after uninstall" }
 if (-not (Test-Path $db)) { Fail "uninstall removed the business database" }
 Write-Host "INSTALLER SMOKE PASSED: $($exe.Name) sha256=$hash"
