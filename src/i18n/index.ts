@@ -3,7 +3,7 @@
 import { AR } from "./ar";
 
 export type Lang = "en" | "ar";
-const KEY = "amwapos.lang";
+const KEY = "tillbh.lang";
 
 function initial(): Lang {
   try {

@@ -58,7 +58,7 @@ function packshotPng() {
 async function rpc(page, cmd, args = {}) {
   return page.evaluate(
     async ([cmd, args]) => {
-      const token = sessionStorage.getItem("amwapos.session");
+      const token = sessionStorage.getItem("tillbh.session");
       return window.__TAURI_INTERNALS__.invoke("rpc", { cmd, token, args });
     },
     [cmd, args],

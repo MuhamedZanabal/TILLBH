@@ -20,7 +20,7 @@
   ; runs the bundled Tesseract as a child process; neither listens on a port.
   ; The UDP discovery rule of earlier versions is removed.
   nsExec::Exec 'netsh advfirewall firewall delete rule name="TILLBH Hub"'
-  nsExec::Exec 'netsh advfirewall firewall add rule name="TILLBH Hub" dir=in action=allow program="$INSTDIR\amwapos.exe" protocol=TCP localport=47800 profile=private enable=yes'
+  nsExec::Exec 'netsh advfirewall firewall add rule name="TILLBH Hub" dir=in action=allow program="$INSTDIR\tillbh.exe" protocol=TCP localport=47800 profile=private enable=yes'
   nsExec::Exec 'netsh advfirewall firewall delete rule name="TILLBH Discovery"'
 !macroend
 

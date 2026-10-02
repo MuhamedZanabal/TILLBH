@@ -11,9 +11,9 @@ mod secrets;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use amwapos_core::service::AppCore;
-use amwapos_core::AppError;
-use amwapos_hub::Runtime;
+use tillbh_core::service::AppCore;
+use tillbh_core::AppError;
+use tillbh_hub::Runtime;
 use serde_json::Value;
 use tauri::Manager;
 
@@ -44,7 +44,7 @@ fn data_dir(app: &tauri::App) -> PathBuf {
             return PathBuf::from(pd).join("TILLBH").join("data");
         }
     }
-    app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("amwapos-data")).join("data")
+    app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("tillbh-data")).join("data")
 }
 
 fn init_logging(dir: &std::path::Path) -> Option<tracing_appender::non_blocking::WorkerGuard> {
@@ -53,7 +53,7 @@ fn init_logging(dir: &std::path::Path) -> Option<tracing_appender::non_blocking:
     // Daily files, 30 kept: a till runs for years and must not fill its disk with logs.
     let appender = tracing_appender::rolling::RollingFileAppender::builder()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
-        .filename_prefix("amwapos")
+        .filename_prefix("tillbh")
         .filename_suffix("log")
         .max_log_files(30)
         .build(&logs)
@@ -82,7 +82,7 @@ pub fn run() {
             let guard = init_logging(&dir);
             // Keep the log writer alive for the process lifetime.
             app.manage(LogGuard(guard));
-            tracing::info!(version = amwapos_core::audit::APP_VERSION, build = env!("TILLBH_BUILD_SHA"), data_dir = %dir.display(), "TILLBH starting");
+            tracing::info!(version = tillbh_core::audit::APP_VERSION, build = env!("TILLBH_BUILD_SHA"), data_dir = %dir.display(), "TILLBH starting");
             let state = match AppCore::open(&dir, Arc::new(secrets::OsSecretStore)) {
                 Ok(core) => {
                     let rt = Runtime::new(Arc::new(core));

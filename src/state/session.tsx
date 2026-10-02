@@ -36,7 +36,7 @@ export function useSession(): SessionCtx {
   return c;
 }
 
-const TOKEN_KEY = "amwapos.session";
+const TOKEN_KEY = "tillbh.session";
 
 export function SessionProvider({ initialStatus, children }: { initialStatus: SetupStatus; children: ReactNode }) {
   const [status, setStatus] = useState(initialStatus);

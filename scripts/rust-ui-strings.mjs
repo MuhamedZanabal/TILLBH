@@ -2,7 +2,7 @@
 // labels, diagnostics, dashboard notes). format! placeholders become {0}, {1}…
 import fs from "node:fs";
 import path from "node:path";
-const dirs = ["crates/amwapos-core/src", "crates/amwapos-hub/src"];
+const dirs = ["crates/tillbh-core/src", "crates/tillbh-hub/src"];
 const files = dirs.flatMap((d) => fs.readdirSync(d).filter((f) => f.endsWith(".rs")).map((f) => path.join(d, f)));
 const SQL = /\b(SELECT|INSERT|UPDATE|DELETE FROM|CREATE|FROM|WHERE|JOIN|PRAGMA|VALUES|ORDER BY|GROUP BY|COALESCE|strftime)\b/;
 const out = new Map();

@@ -27,7 +27,7 @@
   credential. It does not generate a new one, which would silently break every paired terminal.
   **Admin → Sync / Hub → Reset hub credentials** replaces it; every terminal must then pair again.
 - Staff sessions exist only in memory. They are never written to disk or logs.
-- The dev bridge (`amwapos-devserver`) keeps secrets in a plain file. It binds to loopback only
+- The dev bridge (`tillbh-devserver`) keeps secrets in a plain file. It binds to loopback only
   and is not shipped.
 
 ## Residual risks (accepted, documented)
@@ -47,7 +47,7 @@ These are known and deliberate. None of them is silently weakened by the code.
 
 ## What BitLocker covers, and what a stolen database yields
 
-**Stolen database.** Someone who copies `amwapos.db`, or an unencrypted backup, can read
+**Stolen database.** Someone who copies `tillbh.db`, or an unencrypted backup, can read
 everything the store records:
 - sales, refunds, payments and cash history;
 - products, costs and suppliers;
@@ -85,7 +85,7 @@ share.
 ## Network
 
 - The hub listens on TCP 47800 and UDP 47801 discovery. The installer's firewall rules allow them
-  on **private** profiles only, bound to `amwapos.exe`.
+  on **private** profiles only, bound to `tillbh.exe`.
 - **Encrypted (sync protocol 2):** everything a terminal sends or receives after `/info`:
   - pairing request and reply, including the device key and the bootstrap snapshot of catalogue,
     users with PIN hashes, and recent sales;

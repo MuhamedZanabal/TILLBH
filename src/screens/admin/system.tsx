@@ -1715,7 +1715,7 @@ type ReceiptCfg = {
   language: "en" | "bilingual";
 };
 
-// Must match `arabic()` in crates/amwapos-core/src/receipt.rs.
+// Must match `arabic()` in crates/tillbh-core/src/receipt.rs.
 const RECEIPT_AR: Record<string, string> = {
   "TAX INVOICE": "فاتورة ضريبية",
   Receipt: "الإيصال",
@@ -2255,7 +2255,7 @@ export function DiagnosticsPage() {
                 const r = await act.run(() => api.diagnostics.export());
                 if (r) {
                   download(
-                    `amwapos-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+                    `tillbh-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
                     JSON.stringify(r, null, 2),
                     "application/json",
                   );

@@ -38,7 +38,7 @@ interface Draft {
   pair_code: string;
 }
 
-const DRAFT_KEY = "amwapos.setup.draft";
+const DRAFT_KEY = "tillbh.setup.draft";
 
 const initial: Draft = {
   path: "new",

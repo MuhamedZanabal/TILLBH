@@ -16,12 +16,12 @@ Classes:
 
 | | |
 | --- | --- |
-| File | `TILLBH_0.1.0_x64-setup.exe` (artifact `amwapos-windows-unsigned`) |
+| File | `TILLBH_0.1.0_x64-setup.exe` (artifact `tillbh-windows-unsigned`) |
 | SHA-256 | `d6c0e260be719cd05a3755601bc7c70ea95153e535695173934ab371ee94f452` |
 | Built by | GitHub Actions CI run #12 (`36024872450`) on `windows-2022`, commit `ad7e650` |
 | WebView2 | Bootstrapper **embedded** (`webviewInstallMode: embedBootstrapper`); the CI job fails if the configuration changes to an install-time download |
 | Signing | **Unsigned.** For internal soak only (SmartScreen will warn). |
-| Download | https://github.com/ZanaNowshad/TILLBH/actions/runs/36024872450 (artifact `amwapos-windows-unsigned`, id 10819612747, kept for 90 days) |
+| Download | https://github.com/ZanaNowshad/TILLBH/actions/runs/36024872450 (artifact `tillbh-windows-unsigned`, id 10819612747, kept for 90 days) |
 
 Evidence was re-run on 2026-09-24:
 - **Rust** (`cargo test --workspace`, Linux and Windows CI), 77 tests:
@@ -131,10 +131,10 @@ still shows the last snapshot it received. Soak, signing keys, the live WhatsApp
 phone and Windows Hello hardware remain the owner's checks; nothing here is
 claimed as soak-tested or production-ready.
 
-Tests: `crates/amwapos-core/tests/pillars.rs` (transfers in transit + idempotency,
+Tests: `crates/tillbh-core/tests/pillars.rs` (transfers in transit + idempotency,
 loyalty money/VAT/refund reversal, digital-order idempotent convert, multi-branch
 isolation with the flag on and identical behaviour with it off, end-of-day pack)
-and `crates/amwapos-hub/tests/companion.rs` (flag, token, revoke, LAN routes).
+and `crates/tillbh-hub/tests/companion.rs` (flag, token, revoke, LAN routes).
 
 ## AI: bring your own API key, 2026-09-26
 
@@ -147,20 +147,20 @@ and `crates/amwapos-hub/tests/companion.rs` (flag, token, revoke, LAN routes).
   timeout_ms, model list cache) are in SQLite; no secret is.
 - Owner-only: `ai.configure`, `ai.test`, `ai.models`. Changes apply on the next
   request (settings are re-read every round).
-- Every prompt starts with `crates/amwapos-core/src/ai_prompts/constitution.txt`
+- Every prompt starts with `crates/tillbh-core/src/ai_prompts/constitution.txt`
   (verbatim) plus matching lines of `ai_prompts/playbooks.txt`; untrusted text is
   wrapped in `<<<DATA … END DATA>>>`; proposals need the user's own change request,
   and zeroing stock after DATA was read is refused. One retry on 429/502/503.
 - Errors: `AI_NOT_ENABLED`, `AI_NO_KEY`, `AI_PROVIDER_ERROR`, `AI_TIMEOUT`,
   `AI_MODEL_NOT_FOUND`. Diagnostics export replaces any stored AI secret value.
-- Tests: `crates/amwapos-hub/tests/ai_byok.rs` (loopback stubs only).
+- Tests: `crates/tillbh-hub/tests/ai_byok.rs` (loopback stubs only).
 
 ## AI: full admin tool map, 2026-09-26
 
 Status: **Partially complete.** Tested here with the offline test model only;
 never run against a live provider, the live WhatsApp phone or Windows Hello.
 
-- `crates/amwapos-core/src/ai_tools.rs`: 71 read tools and 93 `propose_*` tools,
+- `crates/tillbh-core/src/ai_tools.rs`: 71 read tools and 93 `propose_*` tools,
   each an existing command. A tool is offered only with `admin.access`, one of its
   permissions, the owner role when owner-only, and its feature flag. The
   accountant role never gets proposal tools. With `ai.mutations` off, every
@@ -188,7 +188,7 @@ never run against a live provider, the live WhatsApp phone or Windows Hello.
   Invoice scan: **Improve parse** (`invoicescan.ai_parse`).
 - Consent is per provider: moving between two real providers asks the owner to
   agree again.
-- Tests: `crates/amwapos-hub/tests/ai_admin.rs` (15), `ai_byok.rs` unchanged.
+- Tests: `crates/tillbh-hub/tests/ai_admin.rs` (15), `ai_byok.rs` unchanged.
 
 ## AI workspace, 2026-09-26
 
@@ -232,12 +232,12 @@ provider, OpenRouter, the live WhatsApp phone or a Windows till.
 - **F6 till assistant.** The full assistant in a drawer from the till header, with
   the open cart as DATA context (optional). Till shortcuts pause while it is open.
   Cashiers need `ai.use` (not granted by default).
-- Tests: `crates/amwapos-hub/tests/ai_workspace.rs` (12), unit tests in
+- Tests: `crates/tillbh-hub/tests/ai_workspace.rs` (12), unit tests in
   `ai_workspace.rs` and `ai_stream.rs`, e2e "AI assistant" in `e2e/checkout.spec.ts`.
 
 ## AI hardening, 2026-09-27
 
-Evidence: `crates/amwapos-hub/tests/ai_hardening.rs` (12 tests), `ai_admin.rs`, `ai_byok.rs`, `ai_workspace.rs`, `src/components/__tests__/WaQr.test.tsx`. Everything here ran offline (test model or a loopback stub). No real provider, WhatsApp or Windows Hello was used.
+Evidence: `crates/tillbh-hub/tests/ai_hardening.rs` (12 tests), `ai_admin.rs`, `ai_byok.rs`, `ai_workspace.rs`, `src/components/__tests__/WaQr.test.tsx`. Everything here ran offline (test model or a loopback stub). No real provider, WhatsApp or Windows Hello was used.
 
 | Item | Status | Evidence | Pending |
 | --- | --- | --- | --- |
@@ -261,7 +261,7 @@ Evidence: `crates/amwapos-hub/tests/ai_hardening.rs` (12 tests), `ai_admin.rs`, 
 
 ## Send loop (customer → WhatsApp → ticket → drop), 2026-09-27
 
-One record chain: person → channel → **ticket** (a sent sale, or a digital order) → **drop** (the delivery row) → close. There is no third document type. It is additive: migration 15 adds `order_id`, `branch_id`, `channel` and `pay_state` to `delivery_orders`, plus `sale_collections` (append, synced) and `wa_chat_links`. Old delivery rows stay open and editable. Evidence: `crates/amwapos-core/tests/sendloop.rs` (6 tests), `wa_contacts` unit tests, `automation.rs`, and the e2e test "PAY Send with pay on delivery" in `e2e/layout1024.spec.ts`.
+One record chain: person → channel → **ticket** (a sent sale, or a digital order) → **drop** (the delivery row) → close. There is no third document type. It is additive: migration 15 adds `order_id`, `branch_id`, `channel` and `pay_state` to `delivery_orders`, plus `sale_collections` (append, synced) and `wa_chat_links`. Old delivery rows stay open and editable. Evidence: `crates/tillbh-core/tests/sendloop.rs` (6 tests), `wa_contacts` unit tests, `automation.rs`, and the e2e test "PAY Send with pay on delivery" in `e2e/layout1024.spec.ts`.
 
 | Item | Status | Evidence | Pending |
 | --- | --- | --- | --- |
@@ -305,7 +305,7 @@ Precedence: uploaded picture > automatically found picture > monogram placeholde
 - On the hub or a standalone till only. It never runs on a terminal (tested) and never on a read or render path.
 - One product at a time, 3 s apart, 30 s idle poll. Product creation never waits for a source.
 
-**Sources, in priority order** (`crates/amwapos-hub/src/image_worker.rs`):
+**Sources, in priority order** (`crates/tillbh-hub/src/image_worker.rs`):
 1. **Open Food Facts.** `GET https://world.openfoodfacts.org/api/v2/product/<barcode>?fields=…`, only when the product has an 8–14 digit barcode. No region parameter. Its results carry exact-barcode evidence.
 2. **Bing images.** This is keyless, unofficial and best effort (the `bing-image-urls` approach). `GET https://www.bing.com/images/async` with:
    - `q`: the query text;
@@ -377,7 +377,7 @@ Precedence: uploaded picture > automatically found picture > monogram placeholde
 - No keys (network errors never include URLs) and no image data are logged.
 
 **Live check** (by hand, never in CI):
-- Run `cargo test -p amwapos-hub --test image_live -- --ignored --nocapture`.
+- Run `cargo test -p tillbh-hub --test image_live -- --ignored --nocapture`.
 - It checks that Bing still returns parseable candidates, that Open Food Facts answers by barcode (5449000000996), and that a candidate downloads through the production fetcher.
 
 **Limits.**
@@ -397,7 +397,7 @@ Publishes the POS catalogue to the WhatsApp Business catalogue of the linked num
   - `get_business_profile` (Business detection);
   - `send_iq` with `w:biz:catalog` stanzas: `product_catalog_add`, `product_catalog_edit`, `product_catalog_delete` and the `product_catalog` read;
   - `upload(…, MediaType::ProductCatalogImage)` for pictures.
-- These are the stanzas WhatsApp Web uses for its own catalogue. The `Baileys` library is the reference implementation (`crates/amwapos-hub/src/whatsapp/catalog_proto.rs`).
+- These are the stanzas WhatsApp Web uses for its own catalogue. The `Baileys` library is the reference implementation (`crates/tillbh-hub/src/whatsapp/catalog_proto.rs`).
 - The library's GraphQL catalogue operations are read-only, and there is no collection write stanza. So **Collections are not written**: POS categories are recorded as `unsupported` collections, and products are published without collection membership.
 
 **Capability, from the live connection.**
@@ -459,7 +459,7 @@ Publishes the POS catalogue to the WhatsApp Business catalogue of the linked num
 - Logs cover capability detected, changes queued, product created / updated / hidden, not synchronised (with the error), abandoned claims re-queued and full sync started. No session keys or tokens are logged.
 
 **Verified here.**
-- Core state machine: `crates/amwapos-core/tests/wa_catalog.rs`.
-- End to end with the fake adapter: `crates/amwapos-hub/tests/whatsapp_catalog.rs`.
+- Core state machine: `crates/tillbh-core/tests/wa_catalog.rs`.
+- End to end with the fake adapter: `crates/tillbh-hub/tests/whatsapp_catalog.rs`.
 - Stanza building and parsing: unit tests in `catalog_proto.rs`.
 - **Not verified live**: no WhatsApp Business account was available in this environment. Business detection, catalogue access, product create/update with picture and BHD price, and re-sync without duplicates must be checked once on a real linked Business number. Collections are unsupported by design (blocked).

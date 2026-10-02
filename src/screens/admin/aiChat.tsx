@@ -1000,7 +1000,7 @@ export function AiChat({
   // A9: answer language for this viewer (the store setting wins when it is not "ui").
   const [lang, setLang] = useState<"ui" | "en" | "ar">(() => {
     try {
-      const v = localStorage.getItem("amwapos.ai.lang");
+      const v = localStorage.getItem("tillbh.ai.lang");
       return v === "en" || v === "ar" ? v : "ui";
     } catch {
       return "ui";
@@ -1270,7 +1270,7 @@ export function AiChat({
     const next = lang === "ui" ? "en" : lang === "en" ? "ar" : "ui";
     setLang(next);
     try {
-      localStorage.setItem("amwapos.ai.lang", next);
+      localStorage.setItem("tillbh.ai.lang", next);
     } catch {
       /* per-viewer convenience only */
     }
