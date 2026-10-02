@@ -243,6 +243,7 @@ export function SendPanel({
 }) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<CustomerRow[]>([]);
+  const [savedAddresses, setSavedAddresses] = useState<{ address_id: string; label: string; area: string | null; address: string; is_default: boolean }[]>([]);
   const [creating, setCreating] = useState(false);
   const { error, handle } = useErr();
   const customer = cart.customer;
@@ -257,13 +258,52 @@ export function SendPanel({
     return () => clearTimeout(tv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, value.mode, customer]);
+  useEffect(() => {
+    let live = true;
+    if (value.mode !== "send" || !customer) {
+      setSavedAddresses([]);
+      return () => {
+        live = false;
+      };
+    }
+    api.customers.account(customer.customer_id).then(
+      (v) => {
+        if (!live) return;
+        setSavedAddresses(v.addresses);
+        if (!hasAddr(value)) {
+          const preferred = v.addresses.find((a) => a.is_default) ?? v.addresses[0];
+          if (preferred) {
+            onChange({
+              ...value,
+              ...emptyAddr,
+              address: preferred.address,
+              area: preferred.area ?? "",
+            });
+          }
+        }
+      },
+      () => live && setSavedAddresses([]),
+    );
+    return () => {
+      live = false;
+    };
+    // The selected customer is the trigger; value/onChange are current payment-sheet state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.customer_id, value.mode]);
   const attach = async (id: string | null) => {
     try {
       const c = await api.pos.setCustomer(id);
       onCartChanged(c);
-      if (c.customer && !hasAddr(value)) {
-        // Prefill from the customer, editable for this drop only.
-        onChange({ ...value, ...fromCustomer(c.customer) });
+      setSavedAddresses([]);
+      if (!c.customer) {
+        // Never leave the previous customer's address behind when changing
+        // who the sale belongs to.
+        onChange({ ...value, ...emptyAddr, save: false });
+      } else {
+        // Customer selection is authoritative. Start from this person's main
+        // address; the saved-address effect above upgrades it to their default
+        // saved address when the main address is empty.
+        onChange({ ...value, ...emptyAddr, ...fromCustomer(c.customer), save: false });
       }
       setQ("");
     } catch (e) {
@@ -343,6 +383,34 @@ export function SendPanel({
               {!rows.length ? <div className="hint">{t("A sent sale needs the customer.")}</div> : null}
             </div>
           )}
+          {customer && savedAddresses.length ? (
+            <div className="col gap-8">
+              <div className="label">{t("Saved addresses")}</div>
+              <div className="area-chips">
+                {savedAddresses.map((a) => {
+                  const active = value.address.trim() === a.address.trim() && (value.area || "") === (a.area || "");
+                  return (
+                    <button
+                      key={a.address_id}
+                      type="button"
+                      className={`filter-chip ${active ? "active" : ""}`}
+                      onClick={() =>
+                        onChange({
+                          ...value,
+                          ...emptyAddr,
+                          address: a.address,
+                          area: a.area ?? "",
+                        })
+                      }
+                    >
+                      {a.is_default ? "★ " : ""}
+                      {a.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           <div className="send-where">
             <AddressFields value={value} onChange={(a) => onChange({ ...value, ...a })} idPrefix="send" />
             <AreaPicker value={value.area} onChange={(area) => onChange({ ...value, area })} />
@@ -397,9 +465,10 @@ export function NewCustomerSheet({
   onClose: () => void;
   onCreated: (c: Cart, address: AddrValue) => void;
 }) {
-  const looksPhone = /^\+?\d[\d\s]*$/.test(initial.trim());
+  const looksPhone = /^[+\d\s٠-٩۰-۹]+$/u.test(initial.trim());
   const [name, setName] = useState(looksPhone ? "" : initial);
   const [phone, setPhone] = useState(looksPhone ? initial : "");
+  const [sameWhatsApp, setSameWhatsApp] = useState(true);
   const [addr, setAddr] = useState<AddrValue>(emptyAddr);
   const [busy, setBusy] = useState(false);
   const { error, handle, setError } = useErr();
@@ -410,6 +479,7 @@ export function NewCustomerSheet({
       const c = await api.customers.save(null, {
         name,
         phone: phone || null,
+        whatsapp: sameWhatsApp ? phone || null : null,
         ...addrPayload(addr),
         active: true,
       });
@@ -454,6 +524,7 @@ export function NewCustomerSheet({
             onChange={(e) => setPhone(e.target.value)}
           />
         </div>
+        <Checkbox label={t("WhatsApp is the same as phone")} checked={sameWhatsApp} onChange={setSameWhatsApp} />
         <AddressFields value={addr} onChange={setAddr} idPrefix="nc" />
         <AreaPicker value={addr.area} onChange={(area) => setAddr({ ...addr, area })} />
         {error ? <Banner tone="danger">{error}</Banner> : null}
