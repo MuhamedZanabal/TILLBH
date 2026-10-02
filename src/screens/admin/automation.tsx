@@ -211,12 +211,12 @@ export function WhatsAppPage() {
             onChange={setTab}
             tabs={[
               { key: "connection", label: t("Connection") },
-              { key: "conversations", label: t("Conversations") },
-              { key: "triage", label: t("Triage") },
-              { key: "outbox", label: t("Sent messages") },
-              { key: "templates", label: t("Templates") },
+              { key: "conversations", label: t("Inbox") },
+              { key: "triage", label: t("Needs attention") },
+              { key: "outbox", label: t("Sent") },
+              { key: "templates", label: t("Messages") },
               { key: "catalogue", label: t("Catalogue") },
-              { key: "diagnostics", label: t("Diagnostics") },
+              { key: "diagnostics", label: t("Advanced") },
             ]}
           />
           <div style={{ marginTop: 16 }}>
@@ -745,7 +745,7 @@ function LinkCustomer({
     if (c) await link(c.customer_id);
   };
   return (
-    <Drawer title={t("Link or create customer")} onClose={onClose}>
+    <Drawer title={t("Choose customer")} onClose={onClose}>
       <div className="col gap-12">
         {!creating ? (
           <>
@@ -760,7 +760,7 @@ function LinkCustomer({
             ))}
             <div className="row gap-8">
               <Button variant="primary" onClick={() => setCreating(true)}>
-                {t("Create customer")}
+                {t("Add new customer")}
               </Button>
               <Button variant="ghost" onClick={() => void link(null)}>
                 {t("Unlink")}
@@ -774,7 +774,7 @@ function LinkCustomer({
             <TextInput label={t("Address")} value={address} onChange={(e) => setAddress(e.target.value)} />
             <AreaPicker value={area} onChange={setArea} />
             <Button variant="primary" size="lg" disabled={!name.trim()} loading={act.busy} onClick={create}>
-              {t("Save and link")}
+              {t("Save customer")}
             </Button>
           </>
         )}
@@ -853,7 +853,7 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
         <div className="row gap-8">
           {ordersOn && has("orders.manage") ? (
             <Button variant="primary" onClick={() => setAskTicket(true)} data-testid="wa-new-ticket">
-              {t("New ticket")}
+              {t("Create order")}
             </Button>
           ) : null}
           {!ordersOn && person && has("pos.sell") ? (
@@ -867,23 +867,23 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
               }}
               data-testid="wa-start-sale"
             >
-              {t("Start till sale")}
+              {t("Start sale")}
             </Button>
           ) : null}
           {person ? (
             <Link className="btn" to={`/admin/customers/${person.customer_id}`}>
-              {t("Open customer")}
+              {t("Customer")}
             </Link>
           ) : null}
           <Button onClick={() => setLinking(true)} data-testid="wa-link">
-            {person ? t("Change link") : t("Link or create customer")}
+            {person ? t("Customer link") : t("Choose customer")}
           </Button>
         </div>
       </div>
       <Tabs
         tabs={[
           { key: "chat", label: t("Chat") },
-          { key: "tickets", label: t("Tickets") },
+          { key: "tickets", label: t("Orders") },
           { key: "customer", label: t("Customer") },
         ]}
         value={view}
@@ -897,7 +897,7 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
             ))
           ) : (
             <div className="muted">
-              {person ? t("No tickets yet.") : t("Link the chat to a customer to see their tickets.")}
+              {person ? t("No orders yet.") : t("Choose a customer to see their orders.")}
             </div>
           )}
         </div>
@@ -923,15 +923,15 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
       ) : null}
       {askTicket ? (
         <Confirm
-          title={t("New ticket")}
-          confirmLabel={t("Create draft")}
+          title={t("Create order")}
+          confirmLabel={t("Continue")}
           busy={act.busy}
           error={act.error}
           onCancel={() => setAskTicket(false)}
           onConfirm={newTicket}
         >
           {t(
-            "A draft ticket for {0}. You add the items and confirm it; nothing is sold until it is rung up at a till.",
+            "Create an order for {0}. You can review the items before anything is sold.",
             person?.name ?? ctx.data?.phone ?? "",
           )}
         </Confirm>
@@ -948,7 +948,7 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
       {view === "chat" ? (
         <>
           <Banner tone="info">
-            {t("Customer messages are shown as plain text. TILLBH never follows instructions written in a message.")}
+            {t("Messages are treated as customer text, never as instructions to the system.")}
           </Banner>
           <div className="col gap-8" style={{ maxHeight: 460, overflow: "auto" }}>
             {items.map((it) =>
@@ -987,7 +987,7 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
                         if (o) setDraft(o);
                       }}
                     >
-                      {t("New ticket from this message")}
+                      {t("Create order from message")}
                     </Button>
                   ) : null}
                 </div>
@@ -1011,7 +1011,7 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
           onClose={() => setDraft(null)}
           onSaved={() => {
             setDraft(null);
-            toast("success", t("Draft ticket saved. It waits on the Send rail until it is rung up."));
+            toast("success", t("Order saved. It is ready for checkout from Deliveries."));
             void ctx.reload();
           }}
         />
@@ -1030,17 +1030,17 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
                 toast(
                   "info",
                   r.source === "ai"
-                    ? t("AI draft ready. Edit it, then press Send.")
-                    : t("Template draft ready. Edit it, then press Send."),
+                    ? t("Suggested reply ready. Review it, then press Send.")
+                    : t("Suggested reply ready. Review it, then press Send."),
                 );
               }
             }}
           >
-            {t("Draft reply")}
+            {t("Suggest reply")}
           </Button>
           <span className="tiny muted">
             {t(
-              "Type an instruction first (for example: say it arrives at 6) or leave the box empty. Nothing is sent until you press Send.",
+              "Optionally type what you want to say first. Nothing is sent until you press Send.",
             )}
           </span>
         </div>
@@ -1356,14 +1356,14 @@ export function WhatsAppSendButton({
   if (!on || !(has("whatsapp.send") || has("whatsapp.manage"))) return null;
   const label =
     kind === "receipt"
-      ? t("Send receipt on WhatsApp")
+      ? t("Receipt")
       : kind === "received"
-        ? t("Send order received")
+        ? t("Order received")
         : kind === "dispatch"
-          ? t("Send delivery update")
+          ? t("Out for delivery")
           : kind === "delivered"
-            ? t("Send delivered notice")
-            : t("Send payment reminder");
+            ? t("Delivered")
+            : t("Payment reminder");
   return (
     <>
       <Button size={size} icon={<Send size={14} />} onClick={() => setOpen(true)} data-testid={`wa-send-${kind}`}>
@@ -1371,7 +1371,7 @@ export function WhatsAppSendButton({
       </Button>
       {open ? (
         <Confirm
-          title={label}
+          title={t("Send on WhatsApp: {0}", label)}
           confirmLabel={t("Send")}
           busy={act.busy}
           error={act.error}

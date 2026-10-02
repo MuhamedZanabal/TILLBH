@@ -32,6 +32,11 @@ export function DeliveryDesk() {
     return () => clearInterval(id);
   }, []);
   const next: Record<string, string> = { pending: "preparing", preparing: "dispatched", dispatched: "delivered" };
+  const nextLabel: Record<string, string> = {
+    preparing: t("Start preparing"),
+    dispatched: t("Send with rider"),
+    delivered: t("Mark delivered"),
+  };
   return (
     <div className="pos-root">
       <header className="pos-header">
@@ -54,23 +59,23 @@ export function DeliveryDesk() {
               className={`filter-chip ${tab === "deliveries" ? "active" : ""}`}
               onClick={() => setTab("deliveries")}
             >
-              {t("Deliveries")}
+              {t("My deliveries")}
             </button>
             <button className={`filter-chip ${tab === "orders" ? "active" : ""}`} onClick={() => setTab("orders")}>
-              {t("Digital orders")}
+              {t("New orders")}
             </button>
           </div>
         ) : null}
         {tab === "orders" && ordersOn ? <OrdersList /> : null}
         {tab === "deliveries" && error ? <Banner tone="danger">{error}</Banner> : null}
         {tab !== "deliveries" ? null : rows.length === 0 ? (
-          <Empty title={t("No deliveries assigned")}>
-            {t("New deliveries appear here when a manager assigns them to you.")}
+          <Empty title={t("No deliveries right now")}>
+            {t("Assigned deliveries will appear here automatically.")}
           </Empty>
         ) : null}
         <div className="col" hidden={tab !== "deliveries"}>
           {rows.map((d) => (
-            <div key={d.delivery_id} className="card card-pad row">
+            <div key={d.delivery_id} className="card card-pad row delivery-card">
               <div className="grow">
                 <div style={{ fontWeight: 650 }}>
                   {d.delivery_number} · {d.customer_name ?? t("Customer")}
@@ -82,7 +87,7 @@ export function DeliveryDesk() {
               </div>
               <Chip tone={d.payment_status === "paid" ? "success" : "warning"}>
                 {d.payment_status === "cod"
-                  ? t("Cash on delivery")
+                  ? t("Collect on delivery")
                   : d.payment_status === "paid"
                     ? t("Paid")
                     : t("Payment pending")}
@@ -101,7 +106,7 @@ export function DeliveryDesk() {
                     }
                   }}
                 >
-                  {t("Mark {0}", codeLabel(next[d.status]))}
+                  {nextLabel[next[d.status]] ?? t("Update delivery")}
                 </Button>
               ) : null}
             </div>

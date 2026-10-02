@@ -74,11 +74,11 @@ const payTone: Record<PayState, "warning" | "success" | "info"> = {
 export function payLabel(p: PayState): string {
   switch (p) {
     case "unpaid":
-      return t("Unpaid");
+      return t("Payment due");
     case "recorded":
       return t("Payment recorded");
     case "screenshot_pending":
-      return t("Screenshot to check");
+      return t("Payment to review");
     default:
       return t("Paid");
   }
@@ -99,13 +99,13 @@ export function statusLabel(s: string): string {
     case "draft":
       return t("Draft");
     case "confirmed":
-      return t("Confirmed");
+      return t("Ready for checkout");
     case "pending":
       return t("New");
     case "preparing":
-      return t("Prep");
+      return t("Preparing");
     case "dispatched":
-      return t("Out");
+      return t("Out for delivery");
     case "delivered":
       return t("Delivered");
     case "cancelled":
@@ -119,13 +119,13 @@ export function statusLabel(s: string): string {
 function stepLabel(s: string): string {
   switch (s) {
     case "preparing":
-      return t("Prep");
+      return t("Start preparing");
     case "dispatched":
-      return t("Out");
+      return t("Send with rider");
     case "delivered":
-      return t("Delivered");
+      return t("Mark delivered");
     case "cancelled":
-      return t("Cancel");
+      return t("Cancel delivery");
     default:
       return statusLabel(s);
   }
@@ -281,7 +281,7 @@ export function SendPanel({
           onClick={() => onChange({ ...value, mode: "here", pod: false })}
           data-testid="fulfil-here"
         >
-          <Store size={20} aria-hidden /> {t("Here")}
+          <Store size={20} aria-hidden /> {t("In store")}
         </button>
         <button
           type="button"
@@ -291,7 +291,7 @@ export function SendPanel({
           onClick={() => onChange({ ...value, ...(hasAddr(value) ? {} : fromCustomer(customer)), mode: "send" })}
           data-testid="fulfil-send"
         >
-          <Truck size={20} aria-hidden /> {t("Send")}
+          <Truck size={20} aria-hidden /> {t("Delivery")}
         </button>
       </div>
       {value.mode === "send" ? (
@@ -315,15 +315,15 @@ export function SendPanel({
                   <Search size={20} className="scan-icon" aria-hidden />
                   <input
                     className="input"
-                    placeholder={t("Customer phone or name")}
+                    placeholder={t("Search customer by name or phone")}
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    aria-label={t("Find customer")}
+                    aria-label={t("Search customers")}
                     data-testid="send-customer-search"
                   />
                 </div>
                 <Button icon={<UserPlus size={18} />} onClick={() => setCreating(true)} data-testid="send-new-customer">
-                  {t("New customer")}
+                  {t("Add customer")}
                 </Button>
               </div>
               {rows.map((c) => (
@@ -340,7 +340,7 @@ export function SendPanel({
                   <span className="tiny muted">{[c.area, c.phone].filter(Boolean).join(" · ")}</span>
                 </button>
               ))}
-              {!rows.length ? <div className="hint">{t("A sent sale needs the customer.")}</div> : null}
+              {!rows.length ? <div className="hint">{t("Choose or add a customer for delivery.")}</div> : null}
             </div>
           )}
           <div className="send-where">
@@ -349,7 +349,7 @@ export function SendPanel({
           </div>
           <div className="send-opts">
             <Checkbox
-              label={t("Save on customer")}
+              label={t("Save this address to customer")}
               checked={value.save}
               onChange={(save) => onChange({ ...value, save })}
             />
@@ -360,13 +360,13 @@ export function SendPanel({
                   checked={value.pod}
                   onChange={(e) => onChange({ ...value, pod: e.target.checked })}
                 />
-                <span>{t("Pay on delivery")}</span>
+                <span>{t("Collect payment on delivery")}</span>
               </label>
             ) : null}
           </div>
           {value.pod ? (
             <div className="hint">
-              {t("Nothing goes in the drawer now. The ticket stays unpaid until the money is recorded.")}
+              {t("Payment stays due until it is collected and recorded.")}
             </div>
           ) : null}
         </div>
@@ -422,7 +422,7 @@ export function NewCustomerSheet({
   };
   return (
     <Modal
-      title={t("New customer")}
+      title={t("Add customer")}
       size="md"
       onClose={busy ? undefined : onClose}
       footer={
@@ -435,7 +435,7 @@ export function NewCustomerSheet({
           disabled={!name.trim()}
           data-testid="new-customer-save"
         >
-          {t("Save customer")}
+          {t("Add customer")}
         </Button>
       }
     >
@@ -534,15 +534,15 @@ export function SendRail({
     void load();
   }, [load, reloadKey]);
   const tabs: { key: RailTab; label: string; n?: number }[] = [
-    { key: "now", label: t("Now"), n: counts?.now },
-    { key: "out", label: t("Out"), n: counts?.out },
-    { key: "done", label: t("Done today"), n: counts?.done },
+    { key: "now", label: t("To prepare"), n: counts?.now },
+    { key: "out", label: t("With rider"), n: counts?.out },
+    { key: "done", label: t("Completed"), n: counts?.done },
   ];
   return (
-    <aside className="till-ai send-rail" role="complementary" aria-label={t("Send")} data-testid="send-rail">
+    <aside className="till-ai send-rail" role="complementary" aria-label={t("Deliveries")} data-testid="send-rail">
       <div className="till-ai-head">
         <Truck size={20} aria-hidden />
-        <h2 className="grow">{t("Send")}</h2>
+        <h2 className="grow">{t("Deliveries")}</h2>
         {has("pos.sell") ? (
           <Button
             variant="ghost"
@@ -550,7 +550,7 @@ export function SendRail({
             onClick={() => setHandover(null)}
             data-testid="rider-handover-open"
           >
-            {t("Rider hand-over")}
+            {t("Rider cash")}
           </Button>
         ) : null}
         <Button
@@ -618,10 +618,10 @@ export function SendRail({
         {rows && rows.length === 0 ? (
           <div className="rail-empty" data-testid="rail-empty">
             {tab === "now"
-              ? t("No sends. On PAY, tap Send.")
+              ? t("No deliveries waiting.")
               : tab === "out"
-                ? t("Nothing is out.")
-                : t("Nothing closed today.")}
+                ? t("No deliveries are with a rider.")
+                : t("Nothing completed today.")}
           </div>
         ) : null}
         {rows?.map((r) => (
@@ -682,7 +682,7 @@ export function TicketSheet({
   };
   if (!sheet) {
     return (
-      <Modal title={t("Ticket")} size="sheet" onClose={onClose}>
+      <Modal title={t("Delivery")} size="sheet" onClose={onClose}>
         {error ? <Banner tone="danger">{error}</Banner> : <div className="muted">{t("Loading…")}</div>}
       </Modal>
     );
@@ -758,7 +758,7 @@ export function TicketSheet({
         <section className="ticket-who">
           <div className="grow">
             <div className="strong" dir="auto">
-              {tk.customer_name || t("No customer")}
+              {tk.customer_name || t("Customer not set")}
             </div>
             <div className="tiny muted">
               {[channelLabel(tk.channel), tk.delivery_number, relative(tk.created_at)].filter(Boolean).join(" · ")}
@@ -884,11 +884,14 @@ export function TicketSheet({
           <div className="small muted">{t("Rider: {0}", tk.assigned_name)}</div>
         ) : null}
         {sheet.can.message && did ? (
-          <section className="row gap-8 wrap">
-            <WhatsAppSendButton kind="received" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
-            <WhatsAppSendButton kind="dispatch" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
-            <WhatsAppSendButton kind="delivered" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
-          </section>
+          <details className="progressive">
+            <summary>{t("Message customer")}</summary>
+            <div className="row gap-8 wrap progressive-body">
+              <WhatsAppSendButton kind="received" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+              <WhatsAppSendButton kind="dispatch" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+              <WhatsAppSendButton kind="delivered" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            </div>
+          </details>
         ) : null}
         <section className="ticket-lines">
           {sheet.lines.map((l, i) => (
@@ -967,7 +970,7 @@ export function TicketSheet({
       ) : null}
       {deliverAsk && did ? (
         <Modal
-          title={t("Paid?")}
+          title={t("Payment still due")}
           size="sm"
           onClose={() => setDeliverAsk(false)}
           footer={
@@ -980,7 +983,7 @@ export function TicketSheet({
                 }}
                 data-testid="deliver-unpaid"
               >
-                {t("Still unpaid")}
+                {t("Deliver anyway")}
               </Button>
               {sheet.can.record_payment ? (
                 <Button
@@ -989,7 +992,7 @@ export function TicketSheet({
                   onClick={() => (setDeliverAsk(false), setThenDeliver(true), setPaying(true))}
                   data-testid="deliver-take-payment"
                 >
-                  {t("Take payment")}
+                  {t("Record payment")}
                 </Button>
               ) : null}
             </>
@@ -997,7 +1000,7 @@ export function TicketSheet({
         >
           <p>
             {t(
-              "{0} is still to collect. Take the payment now, or mark it delivered and collect later.",
+              "{0} is still due. Record the payment now, or mark the delivery complete and collect it later.",
               formatMoney(tk.outstanding_minor),
             )}
           </p>
@@ -1188,7 +1191,7 @@ function RiderHandoverSheet({
   }
   return (
     <Modal
-      title={t("Rider hand-over")}
+      title={t("Rider cash")}
       size="md"
       testId="rider-handover"
       onClose={busy ? undefined : onClose}

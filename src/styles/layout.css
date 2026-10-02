@@ -3174,6 +3174,52 @@ table.diff tr.changed {
   flex-wrap: wrap;
   gap: 12px;
 }
+
+.progressive {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.progressive > summary {
+  min-height: 48px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--text);
+  list-style: none;
+  user-select: none;
+}
+.progressive > summary::-webkit-details-marker {
+  display: none;
+}
+.progressive > summary::after {
+  content: "›";
+  margin-inline-start: auto;
+  color: var(--text-2);
+  font-size: 20px;
+  transition: transform var(--dur);
+}
+.progressive[open] > summary::after {
+  transform: rotate(90deg);
+}
+.progressive-body {
+  padding: 0 14px 14px;
+}
+.delivery-card {
+  gap: 14px;
+  border-radius: 16px;
+  transition:
+    transform var(--dur),
+    box-shadow var(--dur),
+    border-color var(--dur);
+}
+.delivery-card:active {
+  transform: scale(0.995);
+}
 .wa-last {
   display: inline-flex;
   align-items: center;

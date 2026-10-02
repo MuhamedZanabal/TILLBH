@@ -64,7 +64,12 @@ function CustomerForm({
           onChange={(e) => set("phone", e.target.value)}
           hint={t("8-digit Bahrain numbers get +973.")}
         />
-        <TextInput label={t("WhatsApp")} value={f.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} />
+        <TextInput
+          label={t("WhatsApp (if different)")}
+          value={f.whatsapp ?? ""}
+          onChange={(e) => set("whatsapp", e.target.value)}
+          hint={t("Leave blank to use the phone number.")}
+        />
         <TextInput label={t("Email")} value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
         <div className="span-2">
           <AddressFields value={addr} onChange={setAddr} idPrefix="cf" />

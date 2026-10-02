@@ -126,19 +126,19 @@ export function OrderEditor({
         <>
           <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" loading={busy} onClick={save}>
-            {t("Save draft")}
+            {t("Save order")}
           </Button>
         </>
       }
     >
       <div className="col gap-16">
         {order?.inbox_seq ? (
-          <Banner tone="info" title={t("Suggested from a WhatsApp message")}>
-            {t("Check every line against the message before confirming. Unmatched text stays as a note on the line.")}
+          <Banner tone="info" title={t("Created from a WhatsApp message")}>
+            {t("Review the items before saving. Anything we could not match stays highlighted.")}
           </Banner>
         ) : null}
         <div className="grid-2">
-          <Field label={t("Channel")}>
+          <Field label={t("Order source")}>
             <select className="select" value={channel} onChange={(e) => setChannel(e.target.value as OrderChannel)}>
               {CHANNELS.map((c) => (
                 <option key={c} value={c}>
@@ -148,10 +148,10 @@ export function OrderEditor({
             </select>
           </Field>
           <TextInput
-            label={t("External reference")}
+            label={t("Reference (optional)")}
             value={ref}
             onChange={(e) => setRef(e.target.value)}
-            hint={t("Order number from the website or app, if any.")}
+            hint={t("Use the website or marketplace order number, if there is one.")}
           />
         </div>
         <div className="grid-2">
@@ -167,7 +167,7 @@ export function OrderEditor({
               ) : (
                 <input
                   className="input"
-                  placeholder={t("Search by phone or name…")}
+                  placeholder={t("Search customer by name or phone…")}
                   value={cq}
                   onChange={(e) => setCq(e.target.value)}
                 />
@@ -196,7 +196,7 @@ export function OrderEditor({
           <TextInput label={t("Phone")} value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div className="grid-2">
-          <Field label={t("Payment")}>
+          <Field label={t("Payment status")}>
             <select className="select" value={pay} onChange={(e) => setPay(e.target.value as OrderPaymentState)}>
               {PAY.map((p) => (
                 <option key={p} value={p}>
@@ -206,15 +206,15 @@ export function OrderEditor({
             </select>
           </Field>
           <div className="col gap-8">
-            <Checkbox label={t("Deliver this order")} checked={delivery} onChange={setDelivery} />
+            <Checkbox label={t("Delivery")} checked={delivery} onChange={setDelivery} />
             {delivery ? (
-              <TextInput label={t("Delivery address")} value={address} onChange={(e) => setAddress(e.target.value)} />
+              <TextInput label={t("Delivery address")} value={address} onChange={(e) => setAddress(e.target.value)} hint={t("Use the customer’s saved address or enter a different one.")} />
             ) : null}
           </div>
         </div>
         <div className="col gap-8">
           <h3>{t("Items")}</h3>
-          {lines.length === 0 ? <div className="muted small">{t("No items yet.")}</div> : null}
+          {lines.length === 0 ? <div className="muted small">{t("Add the products the customer wants.")}</div> : null}
           {lines.map((l, i) => (
             <div key={i} className="row" data-testid="order-line">
               <div className="grow">
@@ -245,7 +245,7 @@ export function OrderEditor({
           ))}
           <input
             className="input"
-            placeholder={t("Add a product: type a name, SKU or barcode…")}
+            placeholder={t("Search products by name, barcode or SKU…")}
             value={pq}
             onChange={(e) => setPq(e.target.value)}
           />
@@ -273,7 +273,7 @@ export function OrderEditor({
             </div>
           ) : null}
         </div>
-        <Field label={t("Note")}>
+        <Field label={t("Order note (optional)")}>
           <textarea className="textarea" value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
         {error ? <Banner tone="danger">{error}</Banner> : null}
@@ -324,7 +324,7 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
     <div className="col gap-16">
       <div className="row wrap">
         {[
-          ["", t("Open")],
+          ["", t("Active")],
           ["converted", codeLabel("converted")],
           ["cancelled", codeLabel("cancelled")],
         ].map(([k, l]) => (
@@ -375,7 +375,7 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
                   {t("Edit")}
                 </Button>
                 <Button size="sm" variant="primary" onClick={() => act(() => api.orders.confirm(o.order_id))}>
-                  {t("Confirm")}
+                  {t("Ready for checkout")}
                 </Button>
               </>
             ) : null}
@@ -401,7 +401,7 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
             ) : null}
             {onConverted && o.status === "confirmed" ? (
               <Button size="sm" variant="primary" icon={<ShoppingCart size={14} />} onClick={() => void convert(o)}>
-                {t("Sell on this till")}
+                {t("Open in checkout")}
               </Button>
             ) : null}
           </div>
