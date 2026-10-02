@@ -1,43 +1,49 @@
 # Completion status
 
-**Overall: feature-complete for the Windows soak, not release-complete.** A row is **Complete**
-only when it is implemented, tested automatically in this repository, and needs no Windows
-hardware or third-party account. Everything that needs the store's hardware stays **Partially
-complete** until the owner signs off the hardware pass in [OPERATIONS.md](OPERATIONS.md).
+**Overall: repository-internal implementation is feature-complete for the pre-soak gate, but the active repository is not release-verified.** A row is **Complete**
+only when the implementation and its automated tests are present in this repository and it needs no Windows
+hardware or third-party account. Everything that needs store hardware, vendor credentials, or a live external service stays **Partially complete**, **Blocked**, or **Deferred** until the corresponding acceptance evidence exists.
 
 Classes:
-- **Complete:** implemented and tested here; no hardware or vendor dependency.
-- **Partially complete:** implemented and tested off-target; hardware verification is pending.
+- **Complete:** implementation and automated tests are present; no hardware or vendor dependency remains.
+- **Partially complete:** implementation exists, but target-hardware, current-CI, or live-service verification is still pending.
 - **Blocked:** needs something outside the repository before work can continue.
 - **Deferred:** deliberately not built yet. The admin page says **Not enabled**. Each needs an
   owner, a key and a rollback plan.
 
-## Soak installer (CI)
+## Current evidence gate — active repository
+
+| | |
+| --- | --- |
+| Repository | `MuhamedZanabal/TILLBH` |
+| Current audited main | `629e6b02fe1314a60d479344980665d64166a58a` |
+| Current GitHub Actions evidence | **Not verified.** The GitHub API reports zero workflow runs in the active repository as of 2026-10-02. |
+| Current installer evidence | **Not verified.** No installer artifact from the active repository has been proven by a fresh successful run. |
+| Release gate | **Open.** Require a fresh green CI run on the active repository, then the Windows hardware checklist in [OPERATIONS.md](OPERATIONS.md). |
+
+The workflow files are present and configured, but configuration is not execution evidence. Until a fresh run succeeds, do not describe CI, the Windows installer, or the release pipeline as currently green.
+
+## Historical soak installer record — pre-migration, not current release evidence
+
+The previous version of this document recorded the following evidence from `ZanaNowshad/TILLBH`. It is retained only as historical implementation evidence and must not be used as the current release artifact or current-CI proof.
 
 | | |
 | --- | --- |
 | File | `TILLBH_0.1.0_x64-setup.exe` (artifact `tillbh-windows-unsigned`) |
 | SHA-256 | `d6c0e260be719cd05a3755601bc7c70ea95153e535695173934ab371ee94f452` |
-| Built by | GitHub Actions CI run #12 (`36024872450`) on `windows-2022`, commit `ad7e650` |
-| WebView2 | Bootstrapper **embedded** (`webviewInstallMode: embedBootstrapper`); the CI job fails if the configuration changes to an install-time download |
-| Signing | **Unsigned.** For internal soak only (SmartScreen will warn). |
-| Download | https://github.com/ZanaNowshad/TILLBH/actions/runs/36024872450 (artifact `tillbh-windows-unsigned`, id 10819612747, kept for 90 days) |
+| Recorded run | GitHub Actions CI run #12 (`36024872450`) on `windows-2022`, commit `ad7e650` |
+| WebView2 | Recorded as embedded bootstrapper |
+| Signing | Recorded as unsigned |
+| Historical URL | `https://github.com/ZanaNowshad/TILLBH/actions/runs/36024872450` |
 
-Evidence was re-run on 2026-09-24:
-- **Rust** (`cargo test --workspace`, Linux and Windows CI), 77 tests:
-  - 38 core unit tests;
-  - 7 back-office, 15 flow, 6 printing and 6 sync tests;
-  - 4 encrypted-channel tests and 1 HTTP sync test.
-- **Lint:** `cargo fmt` and `clippy -D warnings` are clean; `tsc` and `eslint` are clean.
-- **Frontend unit tests** (vitest): 20.
-- **End-to-end** (Playwright): 3 flows.
-  - Owner: setup → sale → split pay → refund → shift close, with the backup banner.
-  - Cashier: Admin blocked, manager PIN, wrong PIN, audit row, and a scanner burst.
-  - Arabic: right-to-left sale, admin, dark/compact theme.
-- **Proxy test:** no product name, barcode, receipt number, pairing code, device key or PIN hash
-  crosses the LAN in clear.
-- **Performance** (100k products, release build, Linux sandbox): P95 scan 0.73 ms, search
-  23.6 ms, cart 0.78 ms, sale commit 9.9 ms.
+Historical test record dated 2026-09-24:
+- Rust workspace tests on Linux and Windows;
+- `cargo fmt`, clippy, TypeScript and ESLint checks;
+- frontend unit tests and Playwright flows;
+- encrypted-protocol/proxy tests;
+- 100k-product performance measurements.
+
+Those records do not replace a fresh run from the active repository.
 
 ## Known limits
 
@@ -46,7 +52,7 @@ Evidence was re-run on 2026-09-24:
 | 1 | Arabic receipt glyphs print as `?` (image-fallback not built). | **Fixed in code** (commit `eda19ef`). Arabic lines are shaped and rasterized (`GS v 0`), and tests prove no `?` reaches the printer. Still open until Arabic is seen on the store's 80 mm printer (hardware pass). |
 | 2 | No RTL shell. | **Fixed** (commit `39652d4`). Cashier and admin work fully in Arabic right-to-left. |
 | 3 | DB file unencrypted (BitLocker-dependent). | **Open.** See SECURITY.md: stolen-database paragraph and residual risks. |
-| 4 | Unsigned installer; not run on Windows. | **Open.** The installer is now built and tested by Windows CI (above), but it is unsigned and has not been installed on a store Windows 10/11 machine. |
+| 4 | Unsigned installer; active-repository Windows evidence is missing. | **Open.** Historical Windows-CI evidence exists, but the active repository has no fresh successful Actions run or current installer artifact. It also still needs installation on store Windows 10/11 hardware. |
 
 ## Matrix
 
@@ -66,7 +72,7 @@ Evidence was re-run on 2026-09-24:
 | Reports (14) + CSV export (formula-injection safe) | Complete | Report tests; CSV escape round-trip test | — |
 | CSV product import | Complete | Preview/apply tests, duplicate isolation, scientific-notation guard, 100k import | — |
 | Backup / verified restore / safety backup | Partially complete | Round-trip and tamper tests; E2E backup | USB / network-share folder checked in the soak (OPERATIONS checklist) |
-| Backup-while-closed | Complete (operational rule) | OPERATIONS "Backup rule" (the hub keeps TILLBH running). Red banner on every Admin page and a till header pill, with one-click Backup Now. `backup.health` reports ok / overdue / failed. | A Windows scheduled task was deliberately not built (reasons in OPERATIONS) |
+| Backup-while-closed | Complete (operational rule) | OPERATIONS "Backup rule" (the hub keeps TILLBH running). Red banner on every Admin page and a till header pill, with one-click Backup Now. `backup.health` reports ok / overdue / failed. Windows Task Scheduler is an explicit non-goal; reasons are documented in OPERATIONS. | — |
 | Diagnostics | Complete | Readable details; last backup shown in local time with age; sync errors classified | — |
 | Sync protocol v2 (encrypted, SPAKE2 pairing, one live code, burn after 5, pairing-id reuse rejected, versioned) | Complete | Encrypted-channel tests: proxy test, protocol 1 refused, burn, version mismatch shown as "Update needed", not offline | — |
 | Lost hub credential | Complete | Reported, never silently replaced; owner reset + re-pair (sync test) | — |
@@ -79,8 +85,8 @@ Evidence was re-run on 2026-09-24:
 | Performance targets (100k products) | Partially complete | Numbers above (Linux sandbox) | Re-measure on the till hardware during the soak |
 | Windows desktop shell (single instance, Credential Manager, ProgramData ACLs, 30-day rotating logs) | Partially complete | Built and unit-tested on Windows CI; launched under Xvfb on Linux | First launch on a Windows 10/11 till |
 | NSIS installer (per-machine, firewall rules, ACLs, data kept on uninstall, embedded WebView2) | Partially complete | Built by Windows CI (above); embedded WebView2 enforced by CI | Install / upgrade / uninstall on Windows 10 and 11 |
-| CI (lint, types, unit, E2E, Windows build + installer) | Complete | GitHub Actions green on this branch | — |
-| Release workflow (tag → draft release, SBOMs, SHA-256 sums, optional signing) | Partially complete | Workflow lint-clean; SBOM generation run locally | First tag run |
+| CI (lint, types, unit, E2E, Windows build + installer) | Partially complete | Workflow definition is present in `.github/workflows/ci.yml` for pull requests and pushes to `main` / `claude/**`. | Fresh successful run on the active repository; current GitHub API evidence shows zero runs. |
+| Release workflow (tag → draft release, SBOMs, SHA-256 sums, optional signing) | Partially complete | Workflow definition is present in `.github/workflows/release.yml`. | First successful tag run on the active repository, with draft release assets and hashes inspected. |
 | Code signing | Deferred | Unsigned is accepted for internal soak | Authenticode certificate |
 | Auto-update (flag `updates`) | Partially complete | Ed25519-signed manifest, size + SHA-256 checks, re-verify before install, safety backup; refuses unsigned builds (`tests/updates.rs`) | Signing key (`TILLBH_UPDATE_PUBKEY`), hosting, install run on Windows |
 | WhatsApp (flags `whatsapp.enabled`, `.send_receipts`, `.delivery_notices`) | Partially complete | In-process `whatsapp-rust` =0.7.0 adapter behind a trait; supervisor restart after panic, separate status flags, reconnect after restart, idempotent sends, persist-before-ack inbound, media → review (`tests/whatsapp.rs` with `FakeAdapter`); post-commit receipts/notices, payload-hash idempotency, EN/AR templates (`tests/automation.rs`) | Pairing and soak test with a real phone; the real adapter has never connected to WhatsApp |
@@ -243,7 +249,7 @@ Evidence: `crates/tillbh-hub/tests/ai_hardening.rs` (12 tests), `ai_admin.rs`, `
 | --- | --- | --- | --- |
 | Proposal tools follow permissions, not the role name | Complete | A custom role named like the accountant but holding `prices.manage` can propose prices. A read-only role under any name gets no `propose_*` tool. A buyer gets PO/reorder only. | — |
 | Strict write intent | Complete | "Should I enable loyalty?" records nothing. `/price …`, `/reorder …` and "set price of SKU X to 1.500" record a proposal. | — |
-| WhatsApp connect Confirm card shows the QR image | Complete | The same `WaQr` component as the WhatsApp page (vitest). The QR and pairing code are never stored or sent to the model. | Live pairing with a real phone |
+| WhatsApp connect Confirm card shows the QR image | Partially complete | The same `WaQr` component as the WhatsApp page (vitest). The QR and pairing code are never stored or sent to the model. | Live pairing with a real phone |
 | Undo (compensating command) | Complete | price / bulk price / cost, archive-restore, loyalty ±, credit ± (flag), delivery status, cancel an unsent WhatsApp message, device rename. Restore, role, flag, backup restore and WhatsApp logout stay irreversible and link to their page. | — |
 | Permission upgrade seeds | Complete | New permissions are granted once to built-in roles whose defaults include them. A permission the owner removes is not added back. Cashier never gets `ai.use`, `ai.mutate`, `admin.access` or `orders.manage`. | — |
 | Rider `orders.manage` | Decision | The Delivery role includes `orders.manage` so riders can move digital orders to "out for delivery". The owner can remove it in Users → Roles (OPERATIONS soak list). | Owner review |
@@ -251,13 +257,13 @@ Evidence: `crates/tillbh-hub/tests/ai_hardening.rs` (12 tests), `ai_admin.rs`, `
 | Two-person control (flag `ai.dual_control`, default off) | Complete | Off: one confirm. On: high-risk proposals need a second, different person. The same person, even with DATA saying "approve", is refused. | — |
 | B3 alerts | Complete | Refund spike, discount spike, negative stock, silent tills / dead letters, backup overdue. Checked every 5 minutes while the app is open, with thresholds in AI settings. One inbox alert per check per day. No writes. | — |
 | B4 reorder / B5 margin price | Complete | Suggestions are reads. `propose_reorder` / `propose_margin_price` only record proposals, and confirm runs `po.save` / the price command. | — |
-| B8 branch compare | Complete | `ai.branch_compare` returns `enabled:false` when `org.multi_branch` is off. | Real multi-branch data |
+| B8 branch compare | Partially complete | `ai.branch_compare` returns `enabled:false` when `org.multi_branch` is off. | Real multi-branch data |
 | C6 customer redaction | Complete | Name, phone and address are replaced by ids in tool results before provider HTTP. The loopback stub never sees them. | — |
-| A9 answer language / C1 fast model | Complete | Settings (`ui`/`en`/`ar`, default `ui`). The fast model is used for triage and drafts, and is empty by default. | Real-provider quality |
-| Hub bind | Complete | Listens on the chosen card, else the first LAN address, else 127.0.0.1. Never 0.0.0.0. | Store Wi-Fi soak |
+| A9 answer language / C1 fast model | Partially complete | Settings (`ui`/`en`/`ar`, default `ui`). The fast model is used for triage and drafts, and is empty by default. | Real-provider quality |
+| Hub bind | Partially complete | Listens on the chosen card, else the first LAN address, else 127.0.0.1. Never 0.0.0.0. | Store Wi-Fi soak |
 | Idempotency on new writes | Complete | `loyalty.adjust` takes `operation_id` (same key + different payload is refused). Order convert refuses a key used on another order. Transfers check per step. Proposal confirm is an atomic status change. | — |
 | Export guards | Complete | EOD zip CSVs neutralise formulas (test). The companion token appears only on the Confirm card, never in proposals, conversation, list, audit or diagnostics (test). | — |
-| Print widths | Complete | The test page is 384 dots at 58 mm and 576 dots at 80 mm, with the Arabic line, and also renders to PDF (test). | Physical printer |
+| Print widths | Partially complete | The test page is 384 dots at 58 mm and 576 dots at 80 mm, with the Arabic line, and also renders to PDF (test). | Physical printer |
 
 ## Send loop (customer → WhatsApp → ticket → drop), 2026-09-27
 
@@ -273,7 +279,7 @@ One record chain: person → channel → **ticket** (a sent sale, or a digital o
 | Cashier rights | Complete | With `pos.sell` a cashier can create a Send sale, open the rail, move their branch's drops forward and record payments. They cannot cancel, assign a rider, link chats or preview the phone's address book (tests). | — |
 | Admin board | Complete | Columns Now, Prep, Out, Done and Problem (out or delivered while unpaid, or a failed notice), using the same ticket sheet. Filter chips for pay state, channel, area and rider. The old table view stays. | — |
 | Digital orders (flag off by default) | Complete | Draft and confirmed orders wait in Now. Ring up uses the existing idempotent convert (stock moves once), and PAY prefills Send from the order. | — |
-| WhatsApp header | Complete | Shows the customer's name, area, last ticket and pay chip, never the raw chat id. Tabs Chat, Tickets and Customer. A chat is linked by number first, then by hand (unmatched stays unmatched; test). New ticket needs a confirm and creates a draft only. With digital orders off: link the chat, then Start till sale. "Create order" is now "New ticket", and triage says "New ticket". A payment screenshot attaches by itself only when the person has exactly one open unpaid ticket. | Live WhatsApp soak |
+| WhatsApp header | Partially complete | Shows the customer's name, area, last ticket and pay chip, never the raw chat id. Tabs Chat, Tickets and Customer. A chat is linked by number first, then by hand (unmatched stays unmatched; test). New ticket needs a confirm and creates a draft only. With digital orders off: link the chat, then Start till sale. "Create order" is now "New ticket", and triage says "New ticket". A payment screenshot attaches by itself only when the person has exactly one open unpaid ticket. | Live WhatsApp soak |
 | Area lexicon | Complete | 22 Bahrain places (English and Arabic spellings). Used on WhatsApp import, customer save and drops. "Maryam 1203/45 Riffa" gives address `1203/45` and area Riffa; with no match the area stays empty. | — |
 | Notices | Complete | On-the-way and delivered notices carry the ticket, total, address and area; templates saved without `{address}` get an address line. Sent through the outbox with an idempotency key; a failure shows a banner on the ticket and nothing is rolled back. **Automatic notices are a new WhatsApp setting, off by default**; with it off a person taps Message. | — |
 | AI | Complete | New read tools `list_open_drops` and `ticket_get`. No new mutation tool skips Confirm. | — |

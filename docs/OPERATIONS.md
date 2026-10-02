@@ -122,7 +122,7 @@ Read each line and tick it on the store computer. Nothing here is automatic.
 - ☐ **OpenRouter fallback is off.** It runs only after the owner ticks it and stores an OpenRouter key. It never runs for a wrong key (401) or a refusal.
 - ☐ **Scheduled briefings and AI alerts run only while TILLBH is open** on the hub. There is no Windows service or Task Scheduler job.
 - ☐ **The phone companion page needs the hub running and a live link token.** Revoke links you no longer use. The page is on the store network only (no public HTTPS).
-- ☐ **The installer is unsigned** until a code-signing certificate is bought. Windows SmartScreen will warn. Check the SHA-256 from STATUS/CI before running it.
+- ☐ **The installer is unsigned** until a code-signing certificate is bought. Windows SmartScreen will warn. Use only the SHA-256 from a fresh successful CI run on the active `MuhamedZanabal/TILLBH` repository; historical hashes are not current release evidence.
 - ☐ **WhatsApp uses an unofficial connection.** WhatsApp can ban the number. Use a spare business number, not the owner's personal one.
 - ☐ **A payment screenshot is not a settlement.** Check the BenefitPay/bank statement before marking an order paid. The review screen is a helper only.
 - ☐ **Credit, loyalty, digital orders, multi-branch and the phone companion (PWA) stay off** until the owner turns each one on and trains staff.
