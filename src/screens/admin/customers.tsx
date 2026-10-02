@@ -77,7 +77,12 @@ function CustomerForm({
         <div className="span-2">
           <AddressFields value={addr} onChange={setAddr} idPrefix="cf" />
         </div>
-        <TextInput label={t("Area")} value={addr.area} onChange={(e) => setAddr({ ...addr, area: e.target.value })} />
+        <TextInput
+          label={t("Area")}
+          value={addr.area}
+          onChange={(e) => setAddr({ ...addr, area: e.target.value })}
+          hint={t("Area can fill automatically from the Bahrain block number.")}
+        />
         <Checkbox label={t("Active")} checked={f.active} onChange={(v) => set("active", v)} />
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
