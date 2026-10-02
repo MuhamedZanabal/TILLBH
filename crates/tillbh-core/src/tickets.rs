@@ -830,11 +830,20 @@ impl AppCore {
                 }
                 None => {
                     tx.execute("DELETE FROM wa_chat_links WHERE chat=?1", [chat])?;
-                    tx.execute(
-                        "UPDATE wa_inbox SET customer_id=(SELECT cu.customer_id FROM customers cu WHERE wa_inbox.phone IS NOT NULL
-                            AND (cu.whatsapp=wa_inbox.phone OR cu.phone=wa_inbox.phone) ORDER BY cu.active DESC LIMIT 1) WHERE chat=?1",
-                        [chat],
-                    )?;
+                    let phone: Option<String> = tx
+                        .query_row(
+                            "SELECT phone FROM wa_inbox WHERE chat=?1 AND phone IS NOT NULL ORDER BY seq DESC LIMIT 1",
+                            [chat],
+                            |r| r.get(0),
+                        )
+                        .optional()?;
+                    let rematch = match crate::messaging::resolve_chat_customer(tx, chat, phone.as_deref())? {
+                        crate::messaging::ChatCustomerMatch::Linked(id) | crate::messaging::ChatCustomerMatch::Number(id) => Some(id),
+                        crate::messaging::ChatCustomerMatch::None | crate::messaging::ChatCustomerMatch::Ambiguous => None,
+                    };
+                    // An ambiguous legacy number deliberately becomes unlinked;
+                    // the operator must choose the person instead of TILLBH guessing.
+                    tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1", params![chat, rematch])?;
                     audit::record(tx, &actor, "whatsapp.chat_unlinked", "whatsapp_chat", None, None, Some(&json!({ "chat": chat })))?;
                 }
             }
@@ -843,8 +852,9 @@ impl AppCore {
         self.wa_thread_context(token, chat)
     }
 
-    /// The person behind a WhatsApp chat: the linked or number-matched
+    /// The person behind a WhatsApp chat: the linked or uniquely number-matched
     /// customer (never the raw chat id), their last ticket and open ones.
+    /// Duplicate legacy numbers are reported as ambiguous and require a manual link.
     pub fn wa_thread_context(&self, token: &str, chat: &str) -> AppResult<Value> {
         let s = self.session(token)?;
         s.require("whatsapp.manage")?;
@@ -858,23 +868,11 @@ impl AppCore {
                 .query_row("SELECT phone FROM wa_inbox WHERE chat=?1 AND phone IS NOT NULL ORDER BY seq DESC LIMIT 1", [&chat], |r| r.get(0))
                 .optional()?
                 .or_else(|| crate::wa_contacts::phone_of(&chat));
-            let linked: Option<String> = c.query_row("SELECT customer_id FROM wa_chat_links WHERE chat=?1", [&chat], |r| r.get(0)).optional()?;
-            let (cid, how) = match linked {
-                Some(l) => (Some(l), Some("linked")),
-                None => match &phone {
-                    Some(p) => {
-                        let m: Option<String> = c
-                            .query_row(
-                                "SELECT customer_id FROM customers WHERE whatsapp=?1 OR phone=?1 ORDER BY active DESC, updated_at DESC LIMIT 1",
-                                [p],
-                                |r| r.get(0),
-                            )
-                            .optional()?;
-                        let how = m.as_ref().map(|_| "number");
-                        (m, how)
-                    }
-                    None => (None, None),
-                },
+            let (cid, how) = match crate::messaging::resolve_chat_customer(c, &chat, phone.as_deref())? {
+                crate::messaging::ChatCustomerMatch::Linked(id) => (Some(id), Some("linked")),
+                crate::messaging::ChatCustomerMatch::Number(id) => (Some(id), Some("number")),
+                crate::messaging::ChatCustomerMatch::Ambiguous => (None, Some("ambiguous")),
+                crate::messaging::ChatCustomerMatch::None => (None, None),
             };
             let customer: Option<Value> = match &cid {
                 Some(id) => c

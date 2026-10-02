@@ -1,7 +1,7 @@
 // The Send loop on the till and the board: Person → Channel → Ticket → Drop → Close.
 // A ticket is an order the shop must fulfil (a sent sale or a digital order);
 // its drop is the delivery job. One pay state everywhere.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Banknote,
   Check,
@@ -243,6 +243,10 @@ export function SendPanel({
 }) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<CustomerRow[]>([]);
+  const [savedAddresses, setSavedAddresses] = useState<{ address_id: string; label: string; area: string | null; address: string; is_default: boolean }[]>([]);
+  // An order-specific or cashier-edited address must never be overwritten by
+  // an async saved-address lookup.
+  const addressChosen = useRef(!!cart.order?.address);
   const [creating, setCreating] = useState(false);
   const { error, handle } = useErr();
   const customer = cart.customer;
@@ -257,13 +261,52 @@ export function SendPanel({
     return () => clearTimeout(tv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, value.mode, customer]);
+  useEffect(() => {
+    let live = true;
+    if (value.mode !== "send" || !customer) {
+      setSavedAddresses([]);
+      return () => {
+        live = false;
+      };
+    }
+    api.customers.account(customer.customer_id).then(
+      (v) => {
+        if (!live) return;
+        setSavedAddresses(v.addresses);
+        const preferred = v.addresses.find((a) => a.is_default) ?? v.addresses[0];
+        if (preferred && !addressChosen.current) {
+          onChange({
+            ...value,
+            ...emptyAddr,
+            address: preferred.address,
+            area: preferred.area ?? "",
+          });
+        }
+      },
+      () => live && setSavedAddresses([]),
+    );
+    return () => {
+      live = false;
+    };
+    // The selected customer is the trigger; value/onChange are current payment-sheet state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.customer_id, value.mode]);
   const attach = async (id: string | null) => {
     try {
       const c = await api.pos.setCustomer(id);
       onCartChanged(c);
-      if (c.customer && !hasAddr(value)) {
-        // Prefill from the customer, editable for this drop only.
-        onChange({ ...value, ...fromCustomer(c.customer) });
+      setSavedAddresses([]);
+      if (!c.customer) {
+        // Never leave the previous customer's address behind when changing
+        // who the sale belongs to.
+        addressChosen.current = false;
+        onChange({ ...value, ...emptyAddr, save: false });
+      } else {
+        // Customer selection is authoritative. Start from this person's main
+        // address while their saved-address lookup loads; a saved default may
+        // then replace it unless the cashier edits first.
+        addressChosen.current = false;
+        onChange({ ...value, ...emptyAddr, ...fromCustomer(c.customer), save: false });
       }
       setQ("");
     } catch (e) {
@@ -343,9 +386,51 @@ export function SendPanel({
               {!rows.length ? <div className="hint">{t("A sent sale needs the customer.")}</div> : null}
             </div>
           )}
+          {customer && savedAddresses.length ? (
+            <div className="col gap-8">
+              <div className="label">{t("Saved addresses")}</div>
+              <div className="area-chips">
+                {savedAddresses.map((a) => {
+                  const active = value.address.trim() === a.address.trim() && (value.area || "") === (a.area || "");
+                  return (
+                    <button
+                      key={a.address_id}
+                      type="button"
+                      className={`filter-chip ${active ? "active" : ""}`}
+                      onClick={() => {
+                        addressChosen.current = true;
+                        onChange({
+                          ...value,
+                          ...emptyAddr,
+                          address: a.address,
+                          area: a.area ?? "",
+                        });
+                      }}
+                    >
+                      {a.is_default ? "★ " : ""}
+                      {a.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           <div className="send-where">
-            <AddressFields value={value} onChange={(a) => onChange({ ...value, ...a })} idPrefix="send" />
-            <AreaPicker value={value.area} onChange={(area) => onChange({ ...value, area })} />
+            <AddressFields
+              value={value}
+              onChange={(a) => {
+                addressChosen.current = true;
+                onChange({ ...value, ...a });
+              }}
+              idPrefix="send"
+            />
+            <AreaPicker
+              value={value.area}
+              onChange={(area) => {
+                addressChosen.current = true;
+                onChange({ ...value, area });
+              }}
+            />
           </div>
           <div className="send-opts">
             <Checkbox
@@ -378,6 +463,7 @@ export function SendPanel({
           onClose={() => setCreating(false)}
           onCreated={(c, addr) => {
             setCreating(false);
+            addressChosen.current = hasAddr(addr);
             onCartChanged(c);
             onChange({ ...value, ...(hasAddr(addr) ? addr : {}), mode: "send" });
           }}
@@ -397,9 +483,10 @@ export function NewCustomerSheet({
   onClose: () => void;
   onCreated: (c: Cart, address: AddrValue) => void;
 }) {
-  const looksPhone = /^\+?\d[\d\s]*$/.test(initial.trim());
+  const looksPhone = /^[+\d\s٠-٩۰-۹]+$/u.test(initial.trim());
   const [name, setName] = useState(looksPhone ? "" : initial);
   const [phone, setPhone] = useState(looksPhone ? initial : "");
+  const [sameWhatsApp, setSameWhatsApp] = useState(true);
   const [addr, setAddr] = useState<AddrValue>(emptyAddr);
   const [busy, setBusy] = useState(false);
   const { error, handle, setError } = useErr();
@@ -410,6 +497,7 @@ export function NewCustomerSheet({
       const c = await api.customers.save(null, {
         name,
         phone: phone || null,
+        whatsapp: sameWhatsApp ? phone || null : null,
         ...addrPayload(addr),
         active: true,
       });
@@ -454,6 +542,7 @@ export function NewCustomerSheet({
             onChange={(e) => setPhone(e.target.value)}
           />
         </div>
+        <Checkbox label={t("WhatsApp is the same as phone")} checked={sameWhatsApp} onChange={setSameWhatsApp} />
         <AddressFields value={addr} onChange={setAddr} idPrefix="nc" />
         <AreaPicker value={addr.area} onChange={(area) => setAddr({ ...addr, area })} />
         {error ? <Banner tone="danger">{error}</Banner> : null}
@@ -885,9 +974,18 @@ export function TicketSheet({
         ) : null}
         {sheet.can.message && did ? (
           <section className="row gap-8 wrap">
-            <WhatsAppSendButton kind="received" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
-            <WhatsAppSendButton kind="dispatch" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
-            <WhatsAppSendButton kind="delivered" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            {tk.status === "pending" || tk.status === "preparing" ? (
+              <WhatsAppSendButton kind="received" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            ) : null}
+            {tk.status === "dispatched" ? (
+              <WhatsAppSendButton kind="dispatch" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            ) : null}
+            {tk.status === "delivered" ? (
+              <WhatsAppSendButton kind="delivered" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            ) : null}
+            {!settled && tk.status !== "cancelled" ? (
+              <WhatsAppSendButton kind="reminder" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            ) : null}
           </section>
         ) : null}
         <section className="ticket-lines">

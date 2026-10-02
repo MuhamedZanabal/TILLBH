@@ -190,62 +190,156 @@ fn in_scope(c: &Connection, s: &Session, branch_id: &str) -> AppResult<()> {
     crate::branches::require_branch(c, s, branch_id)
 }
 
-/// Deterministic suggestion from a message: one item per line, with an
-/// optional quantity before or after ("2 x milk", "milk 2", "3 bread").
-/// Matched by barcode, SKU, then a unique name match. Unmatched text stays
-/// as a description for a person to resolve.
+/// Find one active product from a phrase. Exact barcode / SKU / name wins;
+/// otherwise a unique name substring is accepted. Ambiguous text is left for
+/// a person to resolve.
+fn suggest_product(c: &Connection, query: &str) -> AppResult<Option<String>> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Ok(None);
+    }
+    let q = query.to_lowercase();
+    let mut pid: Option<String> = c
+        .query_row(
+            "SELECT p.product_id FROM product_barcodes b JOIN products p ON p.product_id=b.product_id WHERE b.barcode=?1 AND p.active=1",
+            [query],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if pid.is_none() {
+        pid = c
+            .query_row("SELECT product_id FROM products WHERE lower(sku)=?1 AND active=1", [&q], |r| r.get(0))
+            .optional()?;
+    }
+    if pid.is_none() {
+        pid = c
+            .query_row(
+                "SELECT product_id FROM products WHERE active=1 AND (lower(name)=?1 OR name_ar=?2) LIMIT 1",
+                params![q, query],
+                |r| r.get(0),
+            )
+            .optional()?;
+    }
+    if pid.is_none() {
+        let like = format!("%{}%", q.replace(['%', '_'], ""));
+        let mut st = c.prepare("SELECT product_id FROM products WHERE active=1 AND (lower(name) LIKE ?1 OR name_ar LIKE ?1) LIMIT 2")?;
+        let hits: Vec<String> = st.query_map([&like], |r| r.get(0))?.collect::<Result<_, _>>()?;
+        if hits.len() == 1 {
+            pid = hits.into_iter().next();
+        }
+    }
+    Ok(pid)
+}
+
+fn ascii_number_token(w: &str) -> Option<i64> {
+    let normalized: String = w
+        .chars()
+        .map(|c| match c {
+            '٠' | '۰' => '0',
+            '١' | '۱' => '1',
+            '٢' | '۲' => '2',
+            '٣' | '۳' => '3',
+            '٤' | '۴' => '4',
+            '٥' | '۵' => '5',
+            '٦' | '۶' => '6',
+            '٧' | '۷' => '7',
+            '٨' | '۸' => '8',
+            '٩' | '۹' => '9',
+            x => x,
+        })
+        .collect();
+    let n = normalized
+        .trim_end_matches(['x', 'X', '×'])
+        .trim_start_matches(['x', 'X', '×']);
+    if n.is_empty() || n.len() > 4 {
+        None
+    } else {
+        n.parse::<i64>().ok().filter(|n| (1..=999).contains(n))
+    }
+}
+
+fn strip_order_prefix(line: &str) -> &str {
+    let lower = line.to_lowercase();
+    for prefix in [
+        "i want ",
+        "i need ",
+        "send me ",
+        "please bring ",
+        "أبغى ",
+        "ابغى ",
+        "ابي ",
+        "أريد ",
+        "اريد ",
+        "أرسل ",
+        "ارسل ",
+    ] {
+        if lower.starts_with(prefix) {
+            return line[prefix.len()..].trim_start();
+        }
+    }
+    line
+}
+
+/// Deterministic suggestion from a message. Newlines, commas (including Arabic
+/// comma) and semicolons can separate products. A full product phrase is tried
+/// before quantity parsing so names/sizes such as "Coke 330" or "7 Up" are not
+/// accidentally interpreted as 330 or 7 units. Arabic-Indic quantities are
+/// understood. Unmatched text stays as a description for a person to resolve.
 pub fn suggest_lines(c: &Connection, text: &str) -> AppResult<Vec<OrderLineInput>> {
     let mut out = vec![];
-    for raw in text.lines().take(50) {
+    let segments = text
+        .lines()
+        .flat_map(|line| line.split(|c| matches!(c, ',' | '،' | ';' | '؛')))
+        .take(50);
+    for raw in segments {
         let line = raw.trim().trim_start_matches(['-', '*', '•']).trim();
         if line.is_empty() {
             continue;
         }
+        let line = strip_order_prefix(line);
+        if line.is_empty() {
+            continue;
+        }
+
+        // Protect product names that contain numbers from the quantity
+        // heuristic. If the whole phrase names exactly one product, it is one.
+        if let Some(pid) = suggest_product(c, line)? {
+            out.push(OrderLineInput {
+                product_id: Some(pid),
+                description: Some(line.chars().take(200).collect()),
+                qty_milli: 1000,
+            });
+            continue;
+        }
+
         let mut words: Vec<&str> = line.split_whitespace().collect();
         let mut qty = 1i64;
-        let is_qty = |w: &str| {
-            let w = w.trim_end_matches(['x', 'X', '×']).trim_start_matches(['x', 'X', '×']);
-            if w.is_empty() || w.len() > 4 {
-                None
-            } else {
-                w.parse::<i64>().ok().filter(|n| (1..=999).contains(n))
-            }
-        };
-        if let Some(n) = words.first().and_then(|w| is_qty(w)) {
+        if let Some(n) = words.first().and_then(|w| ascii_number_token(w)) {
             qty = n;
             words.remove(0);
-        } else if let Some(n) = words.last().and_then(|w| is_qty(w)) {
+        } else if let Some(n) = words.last().and_then(|w| ascii_number_token(w)) {
             qty = n;
             words.pop();
         }
         if words.first().is_some_and(|w| matches!(*w, "x" | "X" | "×")) {
             words.remove(0);
         }
+        if words.last().is_some_and(|w| matches!(w.to_lowercase().as_str(), "please" | "pls")) {
+            words.pop();
+        }
+        if words.len() >= 2 && words[words.len() - 2..] == ["لو", "سمحت"] {
+            words.truncate(words.len() - 2);
+        }
         let query = words.join(" ");
         if query.is_empty() {
             continue;
         }
-        let q = query.to_lowercase();
-        let mut pid: Option<String> = c
-            .query_row(
-                "SELECT p.product_id FROM product_barcodes b JOIN products p ON p.product_id=b.product_id WHERE b.barcode=?1 AND p.active=1",
-                [&query],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if pid.is_none() {
-            pid = c.query_row("SELECT product_id FROM products WHERE lower(sku)=?1 AND active=1", [&q], |r| r.get(0)).optional()?;
-        }
-        if pid.is_none() {
-            let like = format!("%{}%", q.replace(['%', '_'], ""));
-            let mut st =
-                c.prepare("SELECT product_id FROM products WHERE active=1 AND (lower(name) LIKE ?1 OR name_ar LIKE ?1) LIMIT 2")?;
-            let hits: Vec<String> = st.query_map([&like], |r| r.get(0))?.collect::<Result<_, _>>()?;
-            if hits.len() == 1 {
-                pid = hits.into_iter().next();
-            }
-        }
-        out.push(OrderLineInput { product_id: pid, description: Some(query.chars().take(200).collect()), qty_milli: qty * 1000 });
+        let pid = suggest_product(c, &query)?;
+        out.push(OrderLineInput {
+            product_id: pid,
+            description: Some(query.chars().take(200).collect()),
+            qty_milli: qty * 1000,
+        });
     }
     Ok(out)
 }
@@ -489,12 +583,16 @@ impl AppCore {
         let s = self.order_session(token, "orders.manage")?;
         let actor = self.actor(&s, None);
         let id = self.db.write(|tx| {
-            let (body, phone, customer): (Option<String>, Option<String>, Option<String>) = tx
-                .query_row("SELECT COALESCE(body, caption), phone, customer_id FROM wa_inbox WHERE seq=?1", [seq], |r| {
+            let (body, phone, chat): (Option<String>, Option<String>, String) = tx
+                .query_row("SELECT COALESCE(body, caption), phone, chat FROM wa_inbox WHERE seq=?1", [seq], |r| {
                     Ok((r.get(0)?, r.get(1)?, r.get(2)?))
                 })
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Message"))?;
+            let customer = match crate::messaging::resolve_chat_customer(tx, &chat, phone.as_deref())? {
+                crate::messaging::ChatCustomerMatch::Linked(id) | crate::messaging::ChatCustomerMatch::Number(id) => Some(id),
+                crate::messaging::ChatCustomerMatch::None | crate::messaging::ChatCustomerMatch::Ambiguous => None,
+            };
             if let Some(existing) = tx
                 .query_row("SELECT order_id FROM digital_orders WHERE inbox_seq=?1 AND status<>'cancelled'", [seq], |r| r.get::<_, String>(0))
                 .optional()?

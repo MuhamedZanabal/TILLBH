@@ -168,7 +168,7 @@ pub const TOOLS: &[ToolSpec] = &[
     read("search_customers", "customers.search", CUST, "q:s,include_inactive:b,limit:i", "Customers by name or phone."),
     read("customer_get", "customers.get", CUST, "customer_id:s!", "One customer with notes (DATA), purchases and deliveries.").data(),
     read("customer_history", "virtual.customer_history", CUST, "customer_id:s!", "A customer's purchases and totals."),
-    read("customer_account", "customers.account", CUST, "customer_id:s!", "A customer's credit account and addresses.").flag("customers.credit"),
+    read("customer_account", "customers.account", CUST, "customer_id:s!", "A customer's saved delivery addresses and credit account (credit fields are unavailable when customer credit is disabled).").data(),
     read("list_deliveries", "deliveries.list", DELIV, "status:s,include_closed:b", "Deliveries."),
     read("delivery_get", "deliveries.get", DELIV, "delivery_id:s!", "One delivery with its history."),
     read("list_open_drops", "tickets.list", &["deliveries.view", "deliveries.manage", "pos.sell"], "tab:s,area:s,rider:s,pay_state:s,channel:s",
@@ -311,7 +311,8 @@ pub const TOOLS: &[ToolSpec] = &[
         .flag("orders.digital"),
     write("propose_order_convert", "orders.convert", "medium", &["pos.sell"], "order_id:s!",
         "Load a confirmed order into this till's sale. The cashier still takes payment; the AI never finalizes a sale.").flag("orders.digital").op(),
-    write("propose_order_from_message", "orders.from_inbox", "medium", &["orders.manage"], "seq:i!", "Draft an order from a WhatsApp message (a person reviews it).")
+    write("propose_order_from_message", "orders.from_inbox", "medium", &["orders.manage"], "seq:i!",
+        "Draft an order from one WhatsApp message using deterministic product matching. Ambiguous customer numbers stay unlinked and unmatched products stay for a person to review; this never confirms or sells the order.")
         .flag("orders.digital"),
     write("propose_payment_review_expected", "payreviews.set_expected", "low", &["payments.review"], "review_id:s!,expected_minor:i,delivery_id:s",
         "Set the amount a payment screenshot should show.").flag("ocr.payment_screenshots"),

@@ -6,7 +6,7 @@ import { AccountTab, AddressesTab } from "./customerAccount";
 import { useFeature } from "../../components/FeatureGate";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, MessageCircle, Plus } from "lucide-react";
+import { ArrowLeft, MessageCircle, Plus, ShoppingCart } from "lucide-react";
 import { api } from "../../api";
 import type { CustomerInput, CustomerRow, DeliveryRow, PayState, TicketRow } from "../../api/types";
 import { useSession } from "../../state/session";
@@ -45,6 +45,7 @@ function CustomerForm({
     initial ?? { name: "", phone: "", whatsapp: "", email: "", area: "", address: "", active: true },
   );
   const [addr, setAddr] = useState<AddrValue>(() => addrFrom(initial));
+  const [sameWhatsApp, setSameWhatsApp] = useState(() => (initial ? !!initial.whatsapp && initial.whatsapp === initial.phone : true));
   const act = useAction();
   const set = (k: keyof CustomerInput, v: string | boolean) => setF({ ...f, [k]: v });
   return (
@@ -64,12 +65,24 @@ function CustomerForm({
           onChange={(e) => set("phone", e.target.value)}
           hint={t("8-digit Bahrain numbers get +973.")}
         />
-        <TextInput label={t("WhatsApp")} value={f.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} />
+        <div className="col gap-8">
+          <Checkbox label={t("WhatsApp is the same as phone")} checked={sameWhatsApp} onChange={setSameWhatsApp} />
+          {!sameWhatsApp ? (
+            <TextInput label={t("WhatsApp")} value={f.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} />
+          ) : (
+            <div className="hint" dir="ltr">{f.phone || t("Add a phone number first.")}</div>
+          )}
+        </div>
         <TextInput label={t("Email")} value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
         <div className="span-2">
           <AddressFields value={addr} onChange={setAddr} idPrefix="cf" />
         </div>
-        <TextInput label={t("Area")} value={addr.area} onChange={(e) => setAddr({ ...addr, area: e.target.value })} />
+        <TextInput
+          label={t("Area")}
+          value={addr.area}
+          onChange={(e) => setAddr({ ...addr, area: e.target.value })}
+          hint={t("Area can fill automatically from the Bahrain block number.")}
+        />
         <Checkbox label={t("Active")} checked={f.active} onChange={(v) => set("active", v)} />
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
@@ -85,7 +98,7 @@ function CustomerForm({
               api.customers.save(initial?.customer_id ?? null, {
                 ...f,
                 phone: f.phone || null,
-                whatsapp: f.whatsapp || null,
+                whatsapp: sameWhatsApp ? f.phone || null : f.whatsapp || null,
                 email: f.email || null,
                 ...addrPayload(addr),
               }),
@@ -187,7 +200,7 @@ export function CustomerDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { has } = useSession();
+  const { has, setMode } = useSession();
   const [tab, setTab] = useState<"overview" | "purchases" | "deliveries" | "notes" | "addresses" | "account">(
     "overview",
   );
@@ -215,6 +228,22 @@ export function CustomerDetailPage() {
           <h1>{c.name}</h1>
           <div className="muted">{c.phone ?? t("No phone")}</div>
         </div>
+        {has("pos.sell") ? (
+          <Button
+            variant="primary"
+            icon={<ShoppingCart size={16} />}
+            loading={act.busy}
+            onClick={async () => {
+              const cart = await act.run(() => api.pos.setCustomer(c.customer_id));
+              if (cart) {
+                toast("success", t("Customer added to the sale."));
+                setMode("cashier");
+              }
+            }}
+          >
+            {t("Start sale")}
+          </Button>
+        ) : null}
         {wa ? (
           <a className="btn" href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer">
             <MessageCircle size={16} /> {t("WhatsApp")}

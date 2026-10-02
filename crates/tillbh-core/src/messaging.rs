@@ -9,6 +9,7 @@
 //! interpreted as an instruction. WhatsApp's own session keys are not in this
 //! database (see the hub's `whatsapp::session`).
 
+use std::collections::{hash_map::Entry, HashMap};
 use std::path::PathBuf;
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -17,7 +18,7 @@ use serde_json::{json, Value};
 
 use crate::audit;
 use crate::auth::Session;
-use crate::customers::normalize_phone;
+use crate::customers::{match_customer_by_phone, normalize_phone, ContactMatch};
 use crate::error::ErrorCode;
 use crate::error::{AppError, AppResult};
 use crate::idempotency;
@@ -264,13 +265,36 @@ fn customer_phone(c: &Connection, customer_id: &str) -> AppResult<Option<String>
         .flatten())
 }
 
-fn find_customer_by_phone(c: &Connection, phone: &str) -> AppResult<Option<(String, String)>> {
-    Ok(c.query_row(
-        "SELECT customer_id, name FROM customers WHERE whatsapp=?1 OR phone=?1 ORDER BY active DESC, updated_at DESC LIMIT 1",
-        [phone],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    )
-    .optional()?)
+fn find_customer_by_phone(c: &Connection, phone: &str) -> AppResult<ContactMatch> {
+    match_customer_by_phone(c, phone)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ChatCustomerMatch {
+    None,
+    Linked(String),
+    Number(String),
+    Ambiguous,
+}
+
+/// Resolve the person behind a chat from today's source of truth. A manual
+/// link always wins. Otherwise a phone number is accepted only when exactly
+/// one customer owns it.
+pub(crate) fn resolve_chat_customer(c: &Connection, chat: &str, phone: Option<&str>) -> AppResult<ChatCustomerMatch> {
+    let linked: Option<String> = c
+        .query_row("SELECT customer_id FROM wa_chat_links WHERE chat=?1", [chat], |r| r.get(0))
+        .optional()?;
+    if let Some(id) = linked {
+        return Ok(ChatCustomerMatch::Linked(id));
+    }
+    Ok(match phone {
+        Some(p) => match find_customer_by_phone(c, p)? {
+            ContactMatch::Unique { customer_id, .. } => ChatCustomerMatch::Number(customer_id),
+            ContactMatch::Ambiguous => ChatCustomerMatch::Ambiguous,
+            ContactMatch::None => ChatCustomerMatch::None,
+        },
+        None => ChatCustomerMatch::None,
+    })
 }
 
 impl AppCore {
@@ -847,17 +871,10 @@ impl AppCore {
                 };
                 let phone = m.sender_pn.as_deref().and_then(phone_from_jid).or_else(|| phone_from_jid(&m.chat));
                 // A chat a person linked by hand wins over the number match.
-                let linked: Option<(String, String)> = tx
-                    .query_row(
-                        "SELECT l.customer_id, cu.name FROM wa_chat_links l JOIN customers cu ON cu.customer_id=l.customer_id WHERE l.chat=?1",
-                        [&m.chat],
-                        |r| Ok((r.get(0)?, r.get(1)?)),
-                    )
-                    .optional()?;
-                let customer = match (linked, &phone) {
-                    (Some(l), _) => Some(l),
-                    (None, Some(p)) => find_customer_by_phone(tx, p)?,
-                    (None, None) => None,
+                // Legacy duplicate numbers are deliberately left unlinked.
+                let customer = match resolve_chat_customer(tx, &m.chat, phone.as_deref())? {
+                    ChatCustomerMatch::Linked(id) | ChatCustomerMatch::Number(id) => Some(id),
+                    ChatCustomerMatch::None | ChatCustomerMatch::Ambiguous => None,
                 };
                 let received = chrono::DateTime::from_timestamp(m.ts, 0).map(time::fmt).unwrap_or_else(time::now_str);
                 let clip = |v: &Option<String>| v.as_ref().map(|t| t.chars().take(8000).collect::<String>());
@@ -877,7 +894,7 @@ impl AppCore {
                         m.media_mime,
                         m.media_ref,
                         media_state,
-                        customer.map(|c| c.0)
+                        customer
                     ],
                 )?;
             }
@@ -978,26 +995,80 @@ impl AppCore {
         let s = self.session(token)?;
         s.require("whatsapp.manage")?;
         self.db.read(|c| {
+            // Build the current identity index once. Conversation rows may
+            // contain an old auto-matched customer_id from before duplicate
+            // numbers were detected; the list must not keep showing that stale
+            // person. Manual chat links win, otherwise only a unique number does.
+            let mut links: HashMap<String, (String, String)> = HashMap::new();
+            {
+                let mut st = c.prepare(
+                    "SELECT l.chat, l.customer_id, cu.name FROM wa_chat_links l JOIN customers cu ON cu.customer_id=l.customer_id",
+                )?;
+                for row in st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))? {
+                    let (chat, id, name) = row?;
+                    links.insert(chat, (id, name));
+                }
+            }
+            let mut numbers: HashMap<String, Option<(String, String)>> = HashMap::new();
+            {
+                let mut st = c.prepare("SELECT customer_id, name, phone, whatsapp FROM customers")?;
+                for row in st.query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                    ))
+                })? {
+                    let (id, name, phone, whatsapp) = row?;
+                    for number in [phone, whatsapp].into_iter().flatten() {
+                        match numbers.entry(number) {
+                            Entry::Vacant(v) => {
+                                v.insert(Some((id.clone(), name.clone())));
+                            }
+                            Entry::Occupied(mut o) => {
+                                let same_customer = o.get().as_ref().is_some_and(|(existing, _)| existing == &id);
+                                if !same_customer {
+                                    o.insert(None);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             let mut st = c.prepare(
-                "SELECT i.chat, MAX(i.phone), MAX(COALESCE(cu.name, i.push_name)), MAX(i.customer_id), MAX(i.received_at),
+                "SELECT i.chat, MAX(i.phone), MAX(i.push_name), MAX(i.received_at),
                         (SELECT COALESCE(body, caption, '[' || kind || ']') FROM wa_inbox x WHERE x.chat=i.chat ORDER BY seq DESC LIMIT 1),
                         SUM(CASE WHEN i.read_at IS NULL THEN 1 ELSE 0 END)
-                 FROM wa_inbox i LEFT JOIN customers cu ON cu.customer_id=i.customer_id
+                 FROM wa_inbox i
                  GROUP BY i.chat ORDER BY MAX(i.seq) DESC LIMIT 300",
             )?;
-            let rows = st
+            let mut rows = st
                 .query_map([], |r| {
                     Ok(Conversation {
                         chat: r.get(0)?,
                         phone: r.get(1)?,
                         name: r.get(2)?,
-                        customer_id: r.get(3)?,
-                        last_at: r.get(4)?,
-                        last_text: r.get(5)?,
-                        unread: r.get(6)?,
+                        customer_id: None,
+                        last_at: r.get(3)?,
+                        last_text: r.get(4)?,
+                        unread: r.get(5)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
+
+            for row in &mut rows {
+                if let Some((id, name)) = links.get(&row.chat) {
+                    row.customer_id = Some(id.clone());
+                    row.name = Some(name.clone());
+                    continue;
+                }
+                if let Some((id, name)) = row.phone.as_ref().and_then(|p| numbers.get(p)).and_then(|m| m.as_ref()) {
+                    row.customer_id = Some(id.clone());
+                    row.name = Some(name.clone());
+                }
+            }
             Ok(rows)
         })
     }
@@ -1008,30 +1079,43 @@ impl AppCore {
         s.require("whatsapp.manage")?;
         self.db.read(|c| {
             let mut st = c.prepare(
-                "SELECT i.seq, i.chat, i.phone, i.push_name, i.customer_id, cu.name, i.received_at, i.kind, i.body, i.caption,
+                "SELECT i.seq, i.chat, i.phone, i.push_name, i.received_at, i.kind, i.body, i.caption,
                         i.media_path IS NOT NULL, i.media_mime, i.read_at
-                 FROM wa_inbox i LEFT JOIN customers cu ON cu.customer_id=i.customer_id WHERE i.chat=?1 ORDER BY i.seq DESC LIMIT 200",
+                 FROM wa_inbox i WHERE i.chat=?1 ORDER BY i.seq DESC LIMIT 200",
             )?;
-            let inbound = st
+            let mut inbound = st
                 .query_map([chat], |r| {
                     Ok(InboxRow {
                         seq: r.get(0)?,
                         chat: r.get(1)?,
                         phone: r.get(2)?,
                         push_name: r.get(3)?,
-                        customer_id: r.get(4)?,
-                        customer_name: r.get(5)?,
-                        received_at: r.get(6)?,
-                        kind: r.get(7)?,
-                        body: r.get(8)?,
-                        caption: r.get(9)?,
-                        has_media: r.get(10)?,
-                        media_mime: r.get(11)?,
-                        read_at: r.get(12)?,
+                        customer_id: None,
+                        customer_name: None,
+                        received_at: r.get(4)?,
+                        kind: r.get(5)?,
+                        body: r.get(6)?,
+                        caption: r.get(7)?,
+                        has_media: r.get(8)?,
+                        media_mime: r.get(9)?,
+                        read_at: r.get(10)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             let phone = inbound.iter().find_map(|m| m.phone.clone()).or_else(|| phone_from_jid(chat));
+            let current_customer = match resolve_chat_customer(c, chat, phone.as_deref())? {
+                ChatCustomerMatch::Linked(id) | ChatCustomerMatch::Number(id) => {
+                    let name: Option<String> = c.query_row("SELECT name FROM customers WHERE customer_id=?1", [&id], |r| r.get(0)).optional()?;
+                    name.map(|name| (id, name))
+                }
+                ChatCustomerMatch::None | ChatCustomerMatch::Ambiguous => None,
+            };
+            if let Some((id, name)) = current_customer {
+                for row in &mut inbound {
+                    row.customer_id = Some(id.clone());
+                    row.customer_name = Some(name.clone());
+                }
+            }
             let mut outbound = vec![];
             if let Some(p) = &phone {
                 let mut st = c.prepare("SELECT message_id FROM wa_outbox WHERE to_phone=?1 ORDER BY created_at DESC LIMIT 200")?;
@@ -1088,9 +1172,14 @@ impl AppCore {
         s.require("whatsapp.manage")?;
         s.require("customers.manage")?;
         self.require_feature("whatsapp.enabled")?;
+        // Enumerate chats, not rows whose cached customer_id happens to be
+        // null. Older versions may have stored a stale auto-match in every
+        // row of a chat; the current manual-link/unique-number rule is the
+        // source of truth.
         let candidates: Vec<(String, String, Option<String>)> = self.db.read(|c| {
             let mut st = c.prepare(
-                "SELECT chat, MAX(phone), MAX(push_name) FROM wa_inbox WHERE customer_id IS NULL AND phone IS NOT NULL GROUP BY chat ORDER BY MAX(seq) DESC LIMIT 500",
+                "SELECT chat, MAX(phone), MAX(push_name) FROM wa_inbox
+                 WHERE phone IS NOT NULL GROUP BY chat ORDER BY MAX(seq) DESC LIMIT 500",
             )?;
             let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
@@ -1102,13 +1191,22 @@ impl AppCore {
                     continue;
                 }
             }
-            let existing = self.db.read(|c| find_customer_by_phone(c, &phone))?;
-            let cid = match existing {
-                Some((id, _)) => {
-                    linked += 1;
-                    id
+            let current = self.db.read(|c| resolve_chat_customer(c, &chat, Some(&phone)))?;
+            let cid = match current {
+                ChatCustomerMatch::Linked(customer_id) => {
+                    // Already explicitly resolved by a person. Repair any old
+                    // cached rows, but don't report it as a newly linked sender.
+                    customer_id
                 }
-                None => {
+                ChatCustomerMatch::Number(customer_id) => {
+                    linked += 1;
+                    customer_id
+                }
+                ChatCustomerMatch::Ambiguous => {
+                    skipped += 1;
+                    continue;
+                }
+                ChatCustomerMatch::None => {
                     let name = name
                         .clone()
                         .map(|n| n.trim().chars().take(100).collect::<String>())
@@ -1129,9 +1227,7 @@ impl AppCore {
                     }
                 }
             };
-            self.db.write(|tx| {
-                Ok(tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1 AND customer_id IS NULL", params![chat, cid])?)
-            })?;
+            self.db.write(|tx| Ok(tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1", params![chat, cid])?))?;
         }
         Ok(json!({ "created": created, "linked": linked, "skipped": skipped }))
     }
