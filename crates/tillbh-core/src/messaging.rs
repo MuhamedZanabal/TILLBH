@@ -1079,30 +1079,43 @@ impl AppCore {
         s.require("whatsapp.manage")?;
         self.db.read(|c| {
             let mut st = c.prepare(
-                "SELECT i.seq, i.chat, i.phone, i.push_name, i.customer_id, cu.name, i.received_at, i.kind, i.body, i.caption,
+                "SELECT i.seq, i.chat, i.phone, i.push_name, i.received_at, i.kind, i.body, i.caption,
                         i.media_path IS NOT NULL, i.media_mime, i.read_at
-                 FROM wa_inbox i LEFT JOIN customers cu ON cu.customer_id=i.customer_id WHERE i.chat=?1 ORDER BY i.seq DESC LIMIT 200",
+                 FROM wa_inbox i WHERE i.chat=?1 ORDER BY i.seq DESC LIMIT 200",
             )?;
-            let inbound = st
+            let mut inbound = st
                 .query_map([chat], |r| {
                     Ok(InboxRow {
                         seq: r.get(0)?,
                         chat: r.get(1)?,
                         phone: r.get(2)?,
                         push_name: r.get(3)?,
-                        customer_id: r.get(4)?,
-                        customer_name: r.get(5)?,
-                        received_at: r.get(6)?,
-                        kind: r.get(7)?,
-                        body: r.get(8)?,
-                        caption: r.get(9)?,
-                        has_media: r.get(10)?,
-                        media_mime: r.get(11)?,
-                        read_at: r.get(12)?,
+                        customer_id: None,
+                        customer_name: None,
+                        received_at: r.get(4)?,
+                        kind: r.get(5)?,
+                        body: r.get(6)?,
+                        caption: r.get(7)?,
+                        has_media: r.get(8)?,
+                        media_mime: r.get(9)?,
+                        read_at: r.get(10)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             let phone = inbound.iter().find_map(|m| m.phone.clone()).or_else(|| phone_from_jid(chat));
+            let current_customer = match resolve_chat_customer(c, chat, phone.as_deref())? {
+                ChatCustomerMatch::Linked(id) | ChatCustomerMatch::Number(id) => {
+                    let name: Option<String> = c.query_row("SELECT name FROM customers WHERE customer_id=?1", [&id], |r| r.get(0)).optional()?;
+                    name.map(|name| (id, name))
+                }
+                ChatCustomerMatch::None | ChatCustomerMatch::Ambiguous => None,
+            };
+            if let Some((id, name)) = current_customer {
+                for row in &mut inbound {
+                    row.customer_id = Some(id.clone());
+                    row.customer_name = Some(name.clone());
+                }
+            }
             let mut outbound = vec![];
             if let Some(p) = &phone {
                 let mut st = c.prepare("SELECT message_id FROM wa_outbox WHERE to_phone=?1 ORDER BY created_at DESC LIMIT 200")?;
