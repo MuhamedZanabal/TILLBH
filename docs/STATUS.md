@@ -72,7 +72,7 @@ Those records do not replace a fresh run from the active repository.
 | Reports (14) + CSV export (formula-injection safe) | Complete | Report tests; CSV escape round-trip test | — |
 | CSV product import | Complete | Preview/apply tests, duplicate isolation, scientific-notation guard, 100k import | — |
 | Backup / verified restore / safety backup | Partially complete | Round-trip and tamper tests; E2E backup | USB / network-share folder checked in the soak (OPERATIONS checklist) |
-| Backup-while-closed | Complete (operational rule) | OPERATIONS "Backup rule" (the hub keeps TILLBH running). Red banner on every Admin page and a till header pill, with one-click Backup Now. `backup.health` reports ok / overdue / failed. | A Windows scheduled task was deliberately not built (reasons in OPERATIONS) |
+| Backup-while-closed | Complete (operational rule) | OPERATIONS "Backup rule" (the hub keeps TILLBH running). Red banner on every Admin page and a till header pill, with one-click Backup Now. `backup.health` reports ok / overdue / failed. Windows Task Scheduler is an explicit non-goal; reasons are documented in OPERATIONS. | — |
 | Diagnostics | Complete | Readable details; last backup shown in local time with age; sync errors classified | — |
 | Sync protocol v2 (encrypted, SPAKE2 pairing, one live code, burn after 5, pairing-id reuse rejected, versioned) | Complete | Encrypted-channel tests: proxy test, protocol 1 refused, burn, version mismatch shown as "Update needed", not offline | — |
 | Lost hub credential | Complete | Reported, never silently replaced; owner reset + re-pair (sync test) | — |
