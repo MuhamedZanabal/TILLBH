@@ -1,9 +1,9 @@
 {
-  "name": "tillbh",
+  "name": "tillbahrain",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
-  "description": "TILLBH — offline-first retail POS and operations platform",
+  "description": "Tillbahrain — offline-first retail POS and store operating system for Bahrain",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
