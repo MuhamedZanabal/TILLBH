@@ -3,10 +3,10 @@ resolver = "2"
 members = ["crates/tillbh-core", "crates/tillbh-hub", "crates/tillbh-devserver", "src-tauri"]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
-license = "LicenseRef-TILLBH-Proprietary"
-rust-version = "1.80"
+license = "LicenseRef-Tillbahrain-Proprietary"
+rust-version = "1.82"
 
 [workspace.dependencies]
 rusqlite = { version = "0.39", features = ["bundled", "backup", "functions"] }
