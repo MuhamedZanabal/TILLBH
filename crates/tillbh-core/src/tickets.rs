@@ -837,12 +837,9 @@ impl AppCore {
                             |r| r.get(0),
                         )
                         .optional()?;
-                    let rematch = match phone.as_deref() {
-                        Some(p) => match crate::customers::match_customer_by_phone(tx, p)? {
-                            crate::customers::ContactMatch::Unique { customer_id, .. } => Some(customer_id),
-                            crate::customers::ContactMatch::None | crate::customers::ContactMatch::Ambiguous => None,
-                        },
-                        None => None,
+                    let rematch = match crate::messaging::resolve_chat_customer(tx, chat, phone.as_deref())? {
+                        crate::messaging::ChatCustomerMatch::Linked(id) | crate::messaging::ChatCustomerMatch::Number(id) => Some(id),
+                        crate::messaging::ChatCustomerMatch::None | crate::messaging::ChatCustomerMatch::Ambiguous => None,
                     };
                     // An ambiguous legacy number deliberately becomes unlinked;
                     // the operator must choose the person instead of TILLBH guessing.
@@ -871,17 +868,11 @@ impl AppCore {
                 .query_row("SELECT phone FROM wa_inbox WHERE chat=?1 AND phone IS NOT NULL ORDER BY seq DESC LIMIT 1", [&chat], |r| r.get(0))
                 .optional()?
                 .or_else(|| crate::wa_contacts::phone_of(&chat));
-            let linked: Option<String> = c.query_row("SELECT customer_id FROM wa_chat_links WHERE chat=?1", [&chat], |r| r.get(0)).optional()?;
-            let (cid, how) = match linked {
-                Some(l) => (Some(l), Some("linked")),
-                None => match &phone {
-                    Some(p) => match crate::customers::match_customer_by_phone(c, p)? {
-                        crate::customers::ContactMatch::Unique { customer_id, .. } => (Some(customer_id), Some("number")),
-                        crate::customers::ContactMatch::Ambiguous => (None, Some("ambiguous")),
-                        crate::customers::ContactMatch::None => (None, None),
-                    },
-                    None => (None, None),
-                },
+            let (cid, how) = match crate::messaging::resolve_chat_customer(c, &chat, phone.as_deref())? {
+                crate::messaging::ChatCustomerMatch::Linked(id) => (Some(id), Some("linked")),
+                crate::messaging::ChatCustomerMatch::Number(id) => (Some(id), Some("number")),
+                crate::messaging::ChatCustomerMatch::Ambiguous => (None, Some("ambiguous")),
+                crate::messaging::ChatCustomerMatch::None => (None, None),
             };
             let customer: Option<Value> = match &cid {
                 Some(id) => c
