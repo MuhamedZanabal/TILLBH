@@ -1451,7 +1451,7 @@ export function WhatsAppSendButton({
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState(phone ?? "");
   const [lang, setLang] = useState<"en" | "ar" | "">("");
-  const [opId] = useState(newOperationId);
+  const [opId, setOpId] = useState(newOperationId);
   const act = useAction();
   if (!on || !(has("whatsapp.send") || has("whatsapp.manage"))) return null;
   const label =
@@ -1489,6 +1489,9 @@ export function WhatsAppSendButton({
               }),
             );
             if (r) {
+              // A later deliberate send is a new operation. Keeping the same
+              // id after success would replay the first queue request.
+              setOpId(newOperationId());
               setOpen(false);
               toast("success", t("Queued for WhatsApp. It is sent as soon as the link is ready."));
             }
