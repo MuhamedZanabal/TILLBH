@@ -249,7 +249,7 @@ Evidence: `crates/tillbh-hub/tests/ai_hardening.rs` (12 tests), `ai_admin.rs`, `
 | --- | --- | --- | --- |
 | Proposal tools follow permissions, not the role name | Complete | A custom role named like the accountant but holding `prices.manage` can propose prices. A read-only role under any name gets no `propose_*` tool. A buyer gets PO/reorder only. | — |
 | Strict write intent | Complete | "Should I enable loyalty?" records nothing. `/price …`, `/reorder …` and "set price of SKU X to 1.500" record a proposal. | — |
-| WhatsApp connect Confirm card shows the QR image | Complete | The same `WaQr` component as the WhatsApp page (vitest). The QR and pairing code are never stored or sent to the model. | Live pairing with a real phone |
+| WhatsApp connect Confirm card shows the QR image | Partially complete | The same `WaQr` component as the WhatsApp page (vitest). The QR and pairing code are never stored or sent to the model. | Live pairing with a real phone |
 | Undo (compensating command) | Complete | price / bulk price / cost, archive-restore, loyalty ±, credit ± (flag), delivery status, cancel an unsent WhatsApp message, device rename. Restore, role, flag, backup restore and WhatsApp logout stay irreversible and link to their page. | — |
 | Permission upgrade seeds | Complete | New permissions are granted once to built-in roles whose defaults include them. A permission the owner removes is not added back. Cashier never gets `ai.use`, `ai.mutate`, `admin.access` or `orders.manage`. | — |
 | Rider `orders.manage` | Decision | The Delivery role includes `orders.manage` so riders can move digital orders to "out for delivery". The owner can remove it in Users → Roles (OPERATIONS soak list). | Owner review |
@@ -257,13 +257,13 @@ Evidence: `crates/tillbh-hub/tests/ai_hardening.rs` (12 tests), `ai_admin.rs`, `
 | Two-person control (flag `ai.dual_control`, default off) | Complete | Off: one confirm. On: high-risk proposals need a second, different person. The same person, even with DATA saying "approve", is refused. | — |
 | B3 alerts | Complete | Refund spike, discount spike, negative stock, silent tills / dead letters, backup overdue. Checked every 5 minutes while the app is open, with thresholds in AI settings. One inbox alert per check per day. No writes. | — |
 | B4 reorder / B5 margin price | Complete | Suggestions are reads. `propose_reorder` / `propose_margin_price` only record proposals, and confirm runs `po.save` / the price command. | — |
-| B8 branch compare | Complete | `ai.branch_compare` returns `enabled:false` when `org.multi_branch` is off. | Real multi-branch data |
+| B8 branch compare | Partially complete | `ai.branch_compare` returns `enabled:false` when `org.multi_branch` is off. | Real multi-branch data |
 | C6 customer redaction | Complete | Name, phone and address are replaced by ids in tool results before provider HTTP. The loopback stub never sees them. | — |
-| A9 answer language / C1 fast model | Complete | Settings (`ui`/`en`/`ar`, default `ui`). The fast model is used for triage and drafts, and is empty by default. | Real-provider quality |
-| Hub bind | Complete | Listens on the chosen card, else the first LAN address, else 127.0.0.1. Never 0.0.0.0. | Store Wi-Fi soak |
+| A9 answer language / C1 fast model | Partially complete | Settings (`ui`/`en`/`ar`, default `ui`). The fast model is used for triage and drafts, and is empty by default. | Real-provider quality |
+| Hub bind | Partially complete | Listens on the chosen card, else the first LAN address, else 127.0.0.1. Never 0.0.0.0. | Store Wi-Fi soak |
 | Idempotency on new writes | Complete | `loyalty.adjust` takes `operation_id` (same key + different payload is refused). Order convert refuses a key used on another order. Transfers check per step. Proposal confirm is an atomic status change. | — |
 | Export guards | Complete | EOD zip CSVs neutralise formulas (test). The companion token appears only on the Confirm card, never in proposals, conversation, list, audit or diagnostics (test). | — |
-| Print widths | Complete | The test page is 384 dots at 58 mm and 576 dots at 80 mm, with the Arabic line, and also renders to PDF (test). | Physical printer |
+| Print widths | Partially complete | The test page is 384 dots at 58 mm and 576 dots at 80 mm, with the Arabic line, and also renders to PDF (test). | Physical printer |
 
 ## Send loop (customer → WhatsApp → ticket → drop), 2026-09-27
 
@@ -279,7 +279,7 @@ One record chain: person → channel → **ticket** (a sent sale, or a digital o
 | Cashier rights | Complete | With `pos.sell` a cashier can create a Send sale, open the rail, move their branch's drops forward and record payments. They cannot cancel, assign a rider, link chats or preview the phone's address book (tests). | — |
 | Admin board | Complete | Columns Now, Prep, Out, Done and Problem (out or delivered while unpaid, or a failed notice), using the same ticket sheet. Filter chips for pay state, channel, area and rider. The old table view stays. | — |
 | Digital orders (flag off by default) | Complete | Draft and confirmed orders wait in Now. Ring up uses the existing idempotent convert (stock moves once), and PAY prefills Send from the order. | — |
-| WhatsApp header | Complete | Shows the customer's name, area, last ticket and pay chip, never the raw chat id. Tabs Chat, Tickets and Customer. A chat is linked by number first, then by hand (unmatched stays unmatched; test). New ticket needs a confirm and creates a draft only. With digital orders off: link the chat, then Start till sale. "Create order" is now "New ticket", and triage says "New ticket". A payment screenshot attaches by itself only when the person has exactly one open unpaid ticket. | Live WhatsApp soak |
+| WhatsApp header | Partially complete | Shows the customer's name, area, last ticket and pay chip, never the raw chat id. Tabs Chat, Tickets and Customer. A chat is linked by number first, then by hand (unmatched stays unmatched; test). New ticket needs a confirm and creates a draft only. With digital orders off: link the chat, then Start till sale. "Create order" is now "New ticket", and triage says "New ticket". A payment screenshot attaches by itself only when the person has exactly one open unpaid ticket. | Live WhatsApp soak |
 | Area lexicon | Complete | 22 Bahrain places (English and Arabic spellings). Used on WhatsApp import, customer save and drops. "Maryam 1203/45 Riffa" gives address `1203/45` and area Riffa; with no match the area stays empty. | — |
 | Notices | Complete | On-the-way and delivered notices carry the ticket, total, address and area; templates saved without `{address}` get an address line. Sent through the outbox with an idempotency key; a failure shows a banner on the ticket and nothing is rolled back. **Automatic notices are a new WhatsApp setting, off by default**; with it off a person taps Message. | — |
 | AI | Complete | New read tools `list_open_drops` and `ticket_get`. No new mutation tool skips Confirm. | — |
