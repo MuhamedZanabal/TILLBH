@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 
 use crate::audit;
 use crate::auth::Session;
-use crate::customers::normalize_phone;
+use crate::customers::{match_customer_by_phone, normalize_phone, ContactMatch};
 use crate::error::ErrorCode;
 use crate::error::{AppError, AppResult};
 use crate::idempotency;
@@ -264,13 +264,8 @@ fn customer_phone(c: &Connection, customer_id: &str) -> AppResult<Option<String>
         .flatten())
 }
 
-fn find_customer_by_phone(c: &Connection, phone: &str) -> AppResult<Option<(String, String)>> {
-    Ok(c.query_row(
-        "SELECT customer_id, name FROM customers WHERE whatsapp=?1 OR phone=?1 ORDER BY active DESC, updated_at DESC LIMIT 1",
-        [phone],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    )
-    .optional()?)
+fn find_customer_by_phone(c: &Connection, phone: &str) -> AppResult<ContactMatch> {
+    match_customer_by_phone(c, phone)
 }
 
 impl AppCore {
@@ -856,7 +851,10 @@ impl AppCore {
                     .optional()?;
                 let customer = match (linked, &phone) {
                     (Some(l), _) => Some(l),
-                    (None, Some(p)) => find_customer_by_phone(tx, p)?,
+                    (None, Some(p)) => match find_customer_by_phone(tx, p)? {
+                        ContactMatch::Unique { customer_id, name } => Some((customer_id, name)),
+                        ContactMatch::None | ContactMatch::Ambiguous => None,
+                    },
                     (None, None) => None,
                 };
                 let received = chrono::DateTime::from_timestamp(m.ts, 0).map(time::fmt).unwrap_or_else(time::now_str);
@@ -1104,11 +1102,17 @@ impl AppCore {
             }
             let existing = self.db.read(|c| find_customer_by_phone(c, &phone))?;
             let cid = match existing {
-                Some((id, _)) => {
+                ContactMatch::Unique { customer_id, .. } => {
                     linked += 1;
-                    id
+                    customer_id
                 }
-                None => {
+                ContactMatch::Ambiguous => {
+                    // Legacy duplicate numbers require a person to choose the
+                    // customer from the conversation header. Never guess here.
+                    skipped += 1;
+                    continue;
+                }
+                ContactMatch::None => {
                     let name = name
                         .clone()
                         .map(|n| n.trim().chars().take(100).collect::<String>())
