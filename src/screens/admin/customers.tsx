@@ -45,7 +45,7 @@ function CustomerForm({
     initial ?? { name: "", phone: "", whatsapp: "", email: "", area: "", address: "", active: true },
   );
   const [addr, setAddr] = useState<AddrValue>(() => addrFrom(initial));
-  const [sameWhatsApp, setSameWhatsApp] = useState(() => !initial?.whatsapp || initial.whatsapp === initial.phone);
+  const [sameWhatsApp, setSameWhatsApp] = useState(() => (initial ? !!initial.whatsapp && initial.whatsapp === initial.phone : true));
   const act = useAction();
   const set = (k: keyof CustomerInput, v: string | boolean) => setF({ ...f, [k]: v });
   return (
