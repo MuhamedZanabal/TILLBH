@@ -2,8 +2,8 @@
 
 ## Install
 
-1. Run `AMWAPOS_<ver>_x64-setup.exe` as an administrator. It is a per-machine install, adds
-   firewall rules and creates `%ProgramData%\AMWAPOS\data`.
+1. Run `TILLBH_<ver>_x64-setup.exe` as an administrator. It is a per-machine install, adds
+   firewall rules and creates `%ProgramData%\TILLBH\data`.
 2. First launch opens the setup wizard with three choices:
    - **New store:** enter the business (name, VAT, CR), branch, VAT rate, owner PIN, till code,
      receipt text, printer and backup folder.
@@ -16,10 +16,10 @@
 
 | Path | Content |
 | --- | --- |
-| `%ProgramData%\AMWAPOS\data\amwapos.db` (+ `-wal`, `-shm`) | The store database |
-| `%ProgramData%\AMWAPOS\data\backups\` | Scheduled and manual backups (`*.amwbak` + `.amwbak.json` manifest) |
-| `%ProgramData%\AMWAPOS\data\backups\safety\` | Automatic backups before restore/migration |
-| `%ProgramData%\AMWAPOS\logs\amwapos.YYYY-MM-DD.log` | JSON logs, one file per day, last 30 kept (level via `AMWAPOS_LOG`) |
+| `%ProgramData%\TILLBH\data\amwapos.db` (+ `-wal`, `-shm`) | The store database |
+| `%ProgramData%\TILLBH\data\backups\` | Scheduled and manual backups (`*.amwbak` + `.amwbak.json` manifest) |
+| `%ProgramData%\TILLBH\data\backups\safety\` | Automatic backups before restore/migration |
+| `%ProgramData%\TILLBH\logs\amwapos.YYYY-MM-DD.log` | JSON logs, one file per day, last 30 kept (level via `TILLBH_LOG`) |
 
 ## Daily routine
 
@@ -45,13 +45,13 @@
 
 ## Backup rule (operational requirement)
 
-**AMWAPOS takes automatic backups only while it is running. There is no Windows service or
+**TILLBH takes automatic backups only while it is running. There is no Windows service or
 scheduled task.** So:
 
-1. **The hub PC must keep AMWAPOS running during trading hours, and must be opened at least
+1. **The hub PC must keep TILLBH running during trading hours, and must be opened at least
    once in every backup interval (24 h by default).** Leaving it running overnight is recommended. Locking the
    screen is fine; signing out of Windows or shutting down stops backups.
-2. When AMWAPOS starts and a backup is overdue, it takes one within about 60 seconds. A PC that
+2. When TILLBH starts and a backup is overdue, it takes one within about 60 seconds. A PC that
    was off overnight therefore catches up soon after opening.
 3. Default schedule: every 24 h, keeping the last 14. Set an external/USB or network folder in
    Admin → Backups. A backup kept only on the same disk does not survive a disk failure.
@@ -81,13 +81,13 @@ owner accepts the new hub. Unsynced terminal sales are kept and upload after tha
 
 | Symptom | Check |
 | --- | --- |
-| "This hub requires AMWAPOS sync protocol 2" / "needs protocol 2" | The hub and the terminal run different AMWAPOS versions. Install the same version on both. |
+| "This hub requires TILLBH sync protocol 2" / "needs protocol 2" | The hub and the terminal run different TILLBH versions. Install the same version on both. |
 | Pairing: "No pairing code is active" or "no longer valid" | Only the newest code works, for 15 minutes, and five wrong entries cancel it. Generate a new code and pair one terminal at a time. |
-| Till pill says **Update needed** | The hub and this till run different AMWAPOS versions (the hub answered HTTP 426 / another sync protocol). Install the same version on both; selling continues meanwhile. |
+| Till pill says **Update needed** | The hub and this till run different TILLBH versions (the hub answered HTTP 426 / another sync protocol). Install the same version on both; selling continues meanwhile. |
 | Till pill says **Hub unreachable** | Network: see the next row. |
 | Till pill says **Pair again** | The till was revoked, or its hub credential is missing. Pair it again from the hub. |
 | Terminal shows "Offline" | Is the hub PC on? Can the terminal reach `http://<hub>:47800/health`? Is the network profile *Private*? |
-| "Hub credential is missing" on the hub | AMWAPOS was started under a different Windows account. Sign in with the original account, or reset hub credentials and pair all terminals again. |
+| "Hub credential is missing" on the hub | TILLBH was started under a different Windows account. Sign in with the original account, or reset hub credentials and pair all terminals again. |
 | "This hub is not the one this terminal paired with" | The hub was rebuilt or restored. Decide in Admin → Sync / Hub on the terminal. |
 | Items in "Changes that could not be applied" | Read the problem column. Fix the cause (e.g. a missing product on the hub), then Retry. |
 
@@ -111,7 +111,7 @@ Automated coverage exists for everything marked ✅. The ☐ items need a person
 - ☐ Arabic on paper: Test Print, then a sale of a product with an Arabic name and a bilingual receipt. Arabic is joined, right-to-left, not `?`.
 - ☐ Two physical tills plus a hub over store Wi-Fi. Unplug the hub mid-sale and re-plug it.
 - ☐ Power loss during a sale (pull the plug), then restart. The database is intact and the sale is either fully present or absent.
-- ☐ Hub left running overnight: next morning the Dashboard shows a backup from the last 24 h. Hub shut down overnight: a backup appears within about 1 minute of opening AMWAPOS.
+- ☐ Hub left running overnight: next morning the Dashboard shows a backup from the last 24 h. Hub shut down overnight: a backup appears within about 1 minute of opening TILLBH.
 
 ## Soak checklist (owner, before going live)
 
@@ -120,7 +120,7 @@ Read each line and tick it on the store computer. Nothing here is automatic.
 - ☐ **Optional modules are off by default.** Settings → Features lists every module with "Default: off". Turn on only what the store uses.
 - ☐ **AI on the till needs `ai.use`.** Cashiers do not get it from the upgrade. Grant it in Users → Roles before expecting the till Assistant to appear.
 - ☐ **OpenRouter fallback is off.** It runs only after the owner ticks it and stores an OpenRouter key. It never runs for a wrong key (401) or a refusal.
-- ☐ **Scheduled briefings and AI alerts run only while AMWAPOS is open** on the hub. There is no Windows service or Task Scheduler job.
+- ☐ **Scheduled briefings and AI alerts run only while TILLBH is open** on the hub. There is no Windows service or Task Scheduler job.
 - ☐ **The phone companion page needs the hub running and a live link token.** Revoke links you no longer use. The page is on the store network only (no public HTTPS).
 - ☐ **The installer is unsigned** until a code-signing certificate is bought. Windows SmartScreen will warn. Check the SHA-256 from STATUS/CI before running it.
 - ☐ **WhatsApp uses an unofficial connection.** WhatsApp can ban the number. Use a spare business number, not the owner's personal one.

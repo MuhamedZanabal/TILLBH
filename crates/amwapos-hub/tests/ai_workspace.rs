@@ -383,7 +383,7 @@ async fn the_till_cart_is_context_as_data_not_the_persons_words() {
     let first = &turn.messages[0]["content"];
     assert_eq!(first[0]["text"], "is this cart ok?");
     let ctx = first[1]["text"].as_str().unwrap();
-    assert!(ctx.starts_with("[AMWAPOS context]") && ctx.contains("<<<DATA"), "{ctx}");
+    assert!(ctx.starts_with("[TILLBH context]") && ctx.contains("<<<DATA"), "{ctx}");
     let conv = e.core.ai_conversation(&e.t, &turn.conversation_id).unwrap();
     assert_eq!(conv["messages"][0]["text"], "is this cart ok?");
     assert_eq!(conv["messages"][0]["has_context"], true);

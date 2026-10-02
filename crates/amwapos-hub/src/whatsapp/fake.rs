@@ -1,5 +1,5 @@
 //! In-memory adapter for tests (and for running with the flag on but no
-//! network). It behaves like WhatsApp where AMWAPOS depends on it: QR pairing,
+//! network). It behaves like WhatsApp where TILLBH depends on it: QR pairing,
 //! a persistent session file, de-duplication by message id, inbound batches
 //! that must be committed before they are acknowledged, and media downloads.
 
@@ -373,7 +373,7 @@ impl AdapterSession for FakeSession {
         self.state.connected.store(false, Ordering::SeqCst);
         let sink = self.state.sink.lock().unwrap().clone();
         if let Some(s) = sink {
-            s.event(AdapterEvent::LoggedOut("logged out from AMWAPOS".into()));
+            s.event(AdapterEvent::LoggedOut("logged out from TILLBH".into()));
         }
         self.state.stop.notify_one();
     }

@@ -1,4 +1,4 @@
-//! AMWAPOS desktop shell.
+//! TILLBH desktop shell.
 //!
 //! The shell is deliberately thin: it resolves the data folder, opens the
 //! core, starts background services and exposes ONE typed IPC command
@@ -32,16 +32,16 @@ async fn rpc(state: tauri::State<'_, AppState>, cmd: String, token: Option<Strin
 }
 
 /// Store data outside the install folder so upgrades and uninstalls never
-/// touch business records. Windows: %ProgramData%\AMWAPOS\data (shared by all
-/// Windows users of the POS computer). Override with AMWAPOS_DATA_DIR.
+/// touch business records. Windows: %ProgramData%\TILLBH\data (shared by all
+/// Windows users of the POS computer). Override with TILLBH_DATA_DIR.
 fn data_dir(app: &tauri::App) -> PathBuf {
-    if let Ok(d) = std::env::var("AMWAPOS_DATA_DIR") {
+    if let Ok(d) = std::env::var("TILLBH_DATA_DIR") {
         return PathBuf::from(d);
     }
     #[cfg(windows)]
     {
         if let Ok(pd) = std::env::var("PROGRAMDATA") {
-            return PathBuf::from(pd).join("AMWAPOS").join("data");
+            return PathBuf::from(pd).join("TILLBH").join("data");
         }
     }
     app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("amwapos-data")).join("data")
@@ -62,7 +62,7 @@ fn init_logging(dir: &std::path::Path) -> Option<tracing_appender::non_blocking:
     tracing_subscriber::fmt()
         .json()
         .with_writer(writer)
-        .with_env_filter(std::env::var("AMWAPOS_LOG").unwrap_or_else(|_| "info".into()))
+        .with_env_filter(std::env::var("TILLBH_LOG").unwrap_or_else(|_| "info".into()))
         .with_current_span(false)
         .init();
     Some(guard)
@@ -82,7 +82,7 @@ pub fn run() {
             let guard = init_logging(&dir);
             // Keep the log writer alive for the process lifetime.
             app.manage(LogGuard(guard));
-            tracing::info!(version = amwapos_core::audit::APP_VERSION, build = env!("AMWAPOS_BUILD_SHA"), data_dir = %dir.display(), "AMWAPOS starting");
+            tracing::info!(version = amwapos_core::audit::APP_VERSION, build = env!("TILLBH_BUILD_SHA"), data_dir = %dir.display(), "TILLBH starting");
             let state = match AppCore::open(&dir, Arc::new(secrets::OsSecretStore)) {
                 Ok(core) => {
                     let rt = Runtime::new(Arc::new(core));
@@ -102,7 +102,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![rpc])
         .run(tauri::generate_context!())
-        .expect("error while running AMWAPOS");
+        .expect("error while running TILLBH");
 }
 
 struct LogGuard(#[allow(dead_code)] Option<tracing_appender::non_blocking::WorkerGuard>);

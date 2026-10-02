@@ -2,7 +2,7 @@
 //! host again, so the fetcher's address check would no longer bind the real
 //! destination. Policy: downloads never use the system proxy
 //! (`HTTP(S)_PROXY`); they connect directly to the checked, pinned address.
-//! Only a proxy an administrator names in `AMWAPOS_IMAGE_FETCH_PROXY` is used,
+//! Only a proxy an administrator names in `TILLBH_IMAGE_FETCH_PROXY` is used,
 //! and the local destination check still runs first.
 //! (One test in this binary: it sets process-wide proxy variables.)
 
@@ -50,7 +50,7 @@ async fn downloads_ignore_the_system_proxy_and_use_only_an_explicitly_trusted_on
     }
     std::env::remove_var("NO_PROXY");
     std::env::remove_var("no_proxy");
-    std::env::remove_var("AMWAPOS_IMAGE_FETCH_PROXY");
+    std::env::remove_var("TILLBH_IMAGE_FETCH_PROXY");
 
     // Default policy: direct. The system proxy is never contacted.
     assert_eq!(SafeFetcher::default().proxy_policy(), &ProxyPolicy::Direct);
@@ -70,7 +70,7 @@ async fn downloads_ignore_the_system_proxy_and_use_only_an_explicitly_trusted_on
     assert_eq!((host_hits.load(Ordering::SeqCst), proxy_hits.load(Ordering::SeqCst)), (1, 0), "nothing was contacted");
 
     // Explicitly trusted proxy: named by the administrator, then used.
-    std::env::set_var("AMWAPOS_IMAGE_FETCH_PROXY", &proxy);
+    std::env::set_var("TILLBH_IMAGE_FETCH_PROXY", &proxy);
     assert_eq!(SafeFetcher::default().proxy_policy(), &ProxyPolicy::Trusted(proxy.clone()));
     let trusted = SafeFetcher::allowing_private_for_tests().with_proxy(ProxyPolicy::Trusted(proxy.clone()));
     assert!(!trusted.fetch(&format!("{host}/b.png")).await.unwrap().is_empty());

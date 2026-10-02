@@ -44,7 +44,7 @@ async fn update_protocol_refuses_anything_unverified() {
     let feed = Feed { doc: Arc::new(std::sync::Mutex::new(Value::Null)), bin: Arc::new(installer.clone()) };
     let app = Router::new()
         .route("/latest.json", get(|State(f): State<Feed>| async move { Json(f.doc.lock().unwrap().clone()) }))
-        .route("/AMWAPOS_9.9.9_x64-setup.exe", get(|State(f): State<Feed>| async move { (*f.bin).clone() }))
+        .route("/TILLBH_9.9.9_x64-setup.exe", get(|State(f): State<Feed>| async move { (*f.bin).clone() }))
         .with_state(feed.clone());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -53,7 +53,7 @@ async fn update_protocol_refuses_anything_unverified() {
         |k: &SigningKey, payload: &str| json!({ "payload": payload, "signature": b64.encode(k.sign(payload.as_bytes()).to_bytes()) });
     let payload = |sha: &str| {
         json!({ "version": "9.9.9", "notes": "Test", "published_at": "2026-09-24",
-                "installer": { "url": format!("http://127.0.0.1:{port}/AMWAPOS_9.9.9_x64-setup.exe"), "sha256": sha, "size": installer.len(), "file_name": "AMWAPOS_9.9.9_x64-setup.exe" } })
+                "installer": { "url": format!("http://127.0.0.1:{port}/TILLBH_9.9.9_x64-setup.exe"), "sha256": sha, "size": installer.len(), "file_name": "TILLBH_9.9.9_x64-setup.exe" } })
         .to_string()
     };
 
@@ -97,7 +97,7 @@ async fn update_protocol_refuses_anything_unverified() {
     let c = call(&rt, "updates.check", Some(&t), json!({})).await;
     assert_eq!(c["newer"], true);
     assert_eq!(kind(&rt, "updates.download", &t).await, "update_hash_mismatch");
-    assert!(!dir.path().join("updates/AMWAPOS_9.9.9_x64-setup.exe").exists());
+    assert!(!dir.path().join("updates/TILLBH_9.9.9_x64-setup.exe").exists());
     assert_eq!(kind(&rt, "updates.install", &t).await, "update_none");
 
     // Everything correct: verified download is ready.
@@ -106,6 +106,6 @@ async fn update_protocol_refuses_anything_unverified() {
     let st = call(&rt, "updates.download", Some(&t), json!({})).await;
     assert_eq!(st["downloaded"]["version"], "9.9.9");
     // Tampering with the file on disk is caught at install time.
-    std::fs::write(dir.path().join("updates/AMWAPOS_9.9.9_x64-setup.exe"), b"evil").unwrap();
+    std::fs::write(dir.path().join("updates/TILLBH_9.9.9_x64-setup.exe"), b"evil").unwrap();
     assert_eq!(kind(&rt, "updates.install", &t).await, "update_hash_mismatch");
 }

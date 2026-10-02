@@ -429,7 +429,7 @@ async fn figures_without_a_tool_are_nudged_then_marked_unverified() {
     flags(&e, json!({})).await;
     let conv = ask_as(&e, &e.t, "guess today's sales").await.unwrap();
     let msgs = conv["messages"].as_array().unwrap();
-    assert!(msgs.iter().all(|m| !m["text"].as_str().unwrap_or("").starts_with("[AMWAPOS check]")), "nudges are hidden");
+    assert!(msgs.iter().all(|m| !m["text"].as_str().unwrap_or("").starts_with("[TILLBH check]")), "nudges are hidden");
     assert_eq!(msgs.last().unwrap()["unverified"], true, "{conv}");
     let conv = ask_as(&e, &e.t, "estimate today's sales").await.unwrap();
     let last = conv["messages"].as_array().unwrap().last().unwrap().clone();

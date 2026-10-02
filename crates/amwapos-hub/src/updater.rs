@@ -1,7 +1,7 @@
 //! Signed updates.
 //!
 //! The publisher signs a manifest with an Ed25519 key; the matching public key
-//! is compiled into the app (`AMWAPOS_UPDATE_PUBKEY`, base64). The feed is
+//! is compiled into the app (`TILLBH_UPDATE_PUBKEY`, base64). The feed is
 //! `{"payload": "<JSON text>", "signature": "<base64 Ed25519 over payload bytes>"}`
 //! and the payload is
 //! `{"version","notes","published_at","installer":{"url","sha256","size","file_name"}}`.
@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-pub const BUILT_IN_PUBKEY: Option<&str> = option_env!("AMWAPOS_UPDATE_PUBKEY");
+pub const BUILT_IN_PUBKEY: Option<&str> = option_env!("TILLBH_UPDATE_PUBKEY");
 const MAX_INSTALLER: u64 = 500 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -601,7 +601,7 @@ export function PosScreen({
         <div className="brand" title={config?.business_name ?? undefined}>
           <Logo size={28} />
           <span className="brand-name ellipsis" dir="auto">
-            {config?.business_name || t("AMWAPOS")}
+            {config?.business_name || t("TILLBH")}
           </span>
         </div>
         <span className="shift-chip">

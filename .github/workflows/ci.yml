@@ -53,7 +53,7 @@ jobs:
       # The OCR worker test runs the real Tesseract with the bundled models.
       - run: cargo test --workspace
         env:
-          AMWAPOS_REQUIRE_OCR: "1"
+          TILLBH_REQUIRE_OCR: "1"
 
   audit:
     name: Dependency audit
@@ -107,7 +107,7 @@ jobs:
         run: ./scripts/bundle-tesseract.ps1
       - run: cargo test --workspace
         env:
-          AMWAPOS_REQUIRE_OCR: "1"
+          TILLBH_REQUIRE_OCR: "1"
       - name: Require embedded WebView2 bootstrapper (offline tills)
         shell: pwsh
         run: |

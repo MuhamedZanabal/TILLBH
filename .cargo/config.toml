@@ -4,4 +4,4 @@
 # started by cargo, so this does not change the product default (on).
 # Tests that exercise discovery clear or set the variable themselves.
 [env]
-AMWAPOS_IMAGE_SEARCH = "off"
+TILLBH_IMAGE_SEARCH = "off"

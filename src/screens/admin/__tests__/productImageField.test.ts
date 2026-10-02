@@ -27,7 +27,7 @@ describe("product picture upload checks", () => {
   it("explains every reason automatic pictures are not running, and nothing when they are", () => {
     expect(discoveryNote("active")).toBeNull();
     expect(discoveryNote("switched_off")).toContain("switched off");
-    expect(discoveryNote("disabled_by_administrator")).toContain("AMWAPOS_IMAGE_SEARCH=off");
+    expect(discoveryNote("disabled_by_administrator")).toContain("TILLBH_IMAGE_SEARCH=off");
     expect(discoveryNote("no_sources")).toContain("no source");
   });
 });

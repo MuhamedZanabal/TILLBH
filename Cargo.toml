@@ -5,7 +5,7 @@ members = ["crates/amwapos-core", "crates/amwapos-hub", "crates/amwapos-devserve
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "LicenseRef-AMWAPOS-Proprietary"
+license = "LicenseRef-TILLBH-Proprietary"
 rust-version = "1.80"
 
 [workspace.dependencies]

@@ -8,6 +8,6 @@ fn main() {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "unknown".into());
-    println!("cargo:rustc-env=AMWAPOS_BUILD_SHA={sha}");
+    println!("cargo:rustc-env=TILLBH_BUILD_SHA={sha}");
     tauri_build::build()
 }

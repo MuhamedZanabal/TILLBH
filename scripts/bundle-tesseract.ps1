@@ -12,4 +12,4 @@ Copy-Item "$src\tesseract.exe" $dst
 Copy-Item "$src\*.dll" $dst
 Copy-Item "$src\*.txt" $dst -ErrorAction SilentlyContinue   # licence texts
 & "$dst\tesseract.exe" --version
-"AMWAPOS_TESSERACT=$((Resolve-Path "$dst\tesseract.exe").Path)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+"TILLBH_TESSERACT=$((Resolve-Path "$dst\tesseract.exe").Path)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8

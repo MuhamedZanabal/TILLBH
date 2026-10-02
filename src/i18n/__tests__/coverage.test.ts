@@ -29,7 +29,7 @@ describe("Arabic translations", () => {
   it("are Arabic, not copies of the English", () => {
     const same = Object.entries(AR).filter(([en, ar]) => en === ar && /[a-z]{3}/.test(en));
     // Brand, printer model and file paths legitimately stay Latin.
-    expect(same.map(([en]) => en).filter((en) => !/AMWAPOS|EPSON|\\/.test(en))).toEqual([]);
+    expect(same.map(([en]) => en).filter((en) => !/TILLBH|EPSON|\\/.test(en))).toEqual([]);
   });
 });
 

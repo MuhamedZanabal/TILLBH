@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::net::UdpSocket;
 
 pub const DISCOVERY_PORT: u16 = 47801;
-const PROBE: &[u8] = b"AMWAPOS_DISCOVER_V1";
+const PROBE: &[u8] = b"TILLBH_DISCOVER_V1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Found {

@@ -4,7 +4,7 @@
 //! hook), not against older samples.
 //!
 //! The session store is the crate's own SQLite backend on the file the
-//! service passes in (`<data>/whatsapp/session.db`); AMWAPOS' ledger
+//! service passes in (`<data>/whatsapp/session.db`); TILLBH' ledger
 //! connections never open it.
 
 use std::sync::Arc;

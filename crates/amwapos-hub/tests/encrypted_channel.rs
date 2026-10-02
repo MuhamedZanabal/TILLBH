@@ -223,7 +223,7 @@ async fn version_mismatch_is_reported_distinctly_from_offline() {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
     let fake = listener.local_addr().unwrap().port();
     let app = axum::Router::new().fallback(|| async {
-        let body = json!({ "code": "conflict", "message": "This hub requires AMWAPOS sync protocol 3 (encrypted). Install the same AMWAPOS version on the hub and this terminal." });
+        let body = json!({ "code": "conflict", "message": "This hub requires TILLBH sync protocol 3 (encrypted). Install the same TILLBH version on the hub and this terminal." });
         (axum::http::StatusCode::UPGRADE_REQUIRED, axum::Json(body))
     });
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

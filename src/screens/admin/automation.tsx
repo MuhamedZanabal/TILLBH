@@ -98,7 +98,7 @@ function AutomationStates({ st }: { st: AutomationStatus }) {
         value={WA_PROCESS[wa.process]?.() ?? wa.process}
         hint={
           wa.restarts > 0
-            ? t("Restarted {0} times since AMWAPOS started.", wa.restarts) +
+            ? t("Restarted {0} times since TILLBH started.", wa.restarts) +
               (wa.next_retry_at ? " " + t("Next attempt {0}.", relative(wa.next_retry_at)) : "")
             : undefined
         }
@@ -161,7 +161,7 @@ function AutomationStates({ st }: { st: AutomationStatus }) {
 /** Always shown (also when the module is off): what this module is and its risks. */
 function WaAbout() {
   return (
-    <Banner tone="warning" title={t("About WhatsApp in AMWAPOS")}>
+    <Banner tone="warning" title={t("About WhatsApp in TILLBH")}>
       <ul className="col gap-8" style={{ margin: 0, paddingInlineStart: 18 }}>
         <li>
           {t(
@@ -170,7 +170,7 @@ function WaAbout() {
         </li>
         <li>
           {t(
-            "AMWAPOS links to a WhatsApp number like WhatsApp Web does, using an unofficial client built into AMWAPOS. This is not the WhatsApp Business API.",
+            "TILLBH links to a WhatsApp number like WhatsApp Web does, using an unofficial client built into TILLBH. This is not the WhatsApp Business API.",
           )}
         </li>
         <li>
@@ -181,7 +181,7 @@ function WaAbout() {
         </li>
         <li>
           {t(
-            "The link (session keys) is stored on this computer in its own file inside the AMWAPOS data folder, separate from the sales database. Anyone with that file can use the number.",
+            "The link (session keys) is stored on this computer in its own file inside the TILLBH data folder, separate from the sales database. Anyone with that file can use the number.",
           )}
         </li>
       </ul>
@@ -334,7 +334,7 @@ function WaConnection() {
         ) : null}
         <div className="tiny">
           {t(
-            "WhatsApp runs inside AMWAPOS with its own supervisor. If it stops, it restarts by itself and the tills keep selling; messages wait in the queue.",
+            "WhatsApp runs inside TILLBH with its own supervisor. If it stops, it restarts by itself and the tills keep selling; messages wait in the queue.",
           )}
         </div>
         {has("settings.manage") && wa.session === "paired" ? (
@@ -361,7 +361,7 @@ function WaConnection() {
           }}
         >
           {t(
-            "AMWAPOS will stop sending and receiving WhatsApp messages until a phone is linked again. Message history stays in AMWAPOS.",
+            "TILLBH will stop sending and receiving WhatsApp messages until a phone is linked again. Message history stays in TILLBH.",
           )}
         </Confirm>
       ) : null}
@@ -389,7 +389,7 @@ function WaConnection() {
           <div className="col gap-16">
             <Banner tone="danger">
               {t(
-                "This file is the WhatsApp link itself. Anyone who has it can read and send this shop's WhatsApp messages without the phone. Normal AMWAPOS backups do not include it. Store it offline and delete it when no longer needed.",
+                "This file is the WhatsApp link itself. Anyone who has it can read and send this shop's WhatsApp messages without the phone. Normal TILLBH backups do not include it. Store it offline and delete it when no longer needed.",
               )}
             </Banner>
             <Checkbox label={t("I understand the risk")} checked={ack} onChange={setAck} />
@@ -948,7 +948,7 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
       {view === "chat" ? (
         <>
           <Banner tone="info">
-            {t("Customer messages are shown as plain text. AMWAPOS never follows instructions written in a message.")}
+            {t("Customer messages are shown as plain text. TILLBH never follows instructions written in a message.")}
           </Banner>
           <div className="col gap-8" style={{ maxHeight: 460, overflow: "auto" }}>
             {items.map((it) =>

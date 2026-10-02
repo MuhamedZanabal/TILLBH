@@ -289,7 +289,7 @@ export function SyncPage() {
       </div>
       {mode === "terminal" && s.last_error ? (
         s.last_error_kind === "version_mismatch" ? (
-          <Banner tone="danger" title={t("This till and the hub run different AMWAPOS versions")}>
+          <Banner tone="danger" title={t("This till and the hub run different TILLBH versions")}>
             {tb(String(s.last_error))} ({relative(s.last_error_at as string)})
           </Banner>
         ) : (
@@ -353,7 +353,7 @@ export function SyncPage() {
               <div className="card-body">
                 <Banner tone="danger">
                   {t(
-                    "A terminal runs a different AMWAPOS version than the hub (hub {0}). It will not synchronize until both run the same version.",
+                    "A terminal runs a different TILLBH version than the hub (hub {0}). It will not synchronize until both run the same version.",
                     String(s.app_version),
                   )}
                 </Banner>
@@ -398,7 +398,7 @@ export function SyncPage() {
               ) : null}
               {addr.data && !addr.data.running ? (
                 <Banner tone="warning">
-                  {t("The hub service is not running. Restart AMWAPOS or check that port {0} is free.", addr.data.port)}
+                  {t("The hub service is not running. Restart TILLBH or check that port {0} is free.", addr.data.port)}
                 </Banner>
               ) : null}
             </div>
@@ -532,7 +532,7 @@ export function SyncPage() {
           }}
         >
           {t(
-            "This computer will accept connections from paired terminals on the store network (TCP port {0}). Make sure the Windows firewall allows AMWAPOS on private networks.",
+            "This computer will accept connections from paired terminals on the store network (TCP port {0}). Make sure the Windows firewall allows TILLBH on private networks.",
             String(s.port),
           )}
           {!hubFeature ? (
@@ -955,7 +955,7 @@ export function BackupsPage() {
             value={custom}
             onChange={(e) => setCustom(e.target.value)}
             fieldClass="grow"
-            placeholder={t("E:\\\\AMWAPOS backups\\\\AMWAPOS-MAIN-manual-20260924-190000.amwbak")}
+            placeholder={t("E:\\\\TILLBH backups\\\\TILLBH-MAIN-manual-20260924-190000.amwbak")}
           />
           <Button disabled={!custom.trim()} onClick={() => void inspect(custom.trim())}>
             {t("Inspect")}
@@ -1640,7 +1640,7 @@ function PaymentSettings() {
     <div className="card card-pad col gap-16">
       <Banner tone="info">
         {t(
-          "Card, BenefitPay and bank transfers are recorded as tenders. AMWAPOS does not verify settlement until an authorised payment-provider integration is added.",
+          "Card, BenefitPay and bank transfers are recorded as tenders. TILLBH does not verify settlement until an authorised payment-provider integration is added.",
         )}
       </Banner>
       <table className="table">
@@ -1910,7 +1910,7 @@ function PrinterSettings() {
             label={data.mode === "network" ? t("Printer address") : t("Output file")}
             value={data.target}
             onChange={(e) => setData({ ...data, target: e.target.value })}
-            placeholder={data.mode === "network" ? "192.168.1.50:9100" : t("C:\\AMWAPOS\\printer.txt")}
+            placeholder={data.mode === "network" ? "192.168.1.50:9100" : t("C:\\TILLBH\\printer.txt")}
           />
         ) : (
           <div />
@@ -2095,7 +2095,7 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
     ),
   "whatsapp.enabled": () =>
     t(
-      "Links a WhatsApp number to this computer through an unofficial WhatsApp Web client inside AMWAPOS. WhatsApp may ban numbers that use unofficial clients. Selling never waits for WhatsApp.",
+      "Links a WhatsApp number to this computer through an unofficial WhatsApp Web client inside TILLBH. WhatsApp may ban numbers that use unofficial clients. Selling never waits for WhatsApp.",
     ),
   "whatsapp.send_receipts": () =>
     t(
@@ -2148,7 +2148,7 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
     ),
   "org.multi_branch": () =>
     t(
-      "Several branches on one hub: shared catalogue with optional branch prices, stock per branch, staff assigned to branches, transfers between branches and reports per branch. With it off, AMWAPOS works as one branch.",
+      "Several branches on one hub: shared catalogue with optional branch prices, stock per branch, staff assigned to branches, transfers between branches and reports per branch. With it off, TILLBH works as one branch.",
     ),
   "pwa.companion": () =>
     t(
@@ -2216,7 +2216,7 @@ function AboutSettings() {
     <div className="card card-pad">
       <dl className="kv">
         <dt>{t("Product")}</dt>
-        <dd>{t("AMWAPOS — Retail Operations System")}</dd>
+        <dd>{t("TILLBH — Retail Operations System")}</dd>
         <dt>{t("Version")}</dt>
         <dd>{status.app_version}</dd>
         <dt>{t("Schema")}</dt>
@@ -2353,7 +2353,7 @@ export function UpdatesPage() {
           {u && !u.signing_key_built_in ? (
             <Banner tone="info" title={t("Updates are installed from signed installers")}>
               {t(
-                "This build has no update-signing key, so it never downloads or installs updates by itself. Install new versions with the AMWAPOS installer; your data is kept and a safety backup is taken before any database upgrade.",
+                "This build has no update-signing key, so it never downloads or installs updates by itself. Install new versions with the TILLBH installer; your data is kept and a safety backup is taken before any database upgrade.",
               )}
             </Banner>
           ) : null}
@@ -2397,7 +2397,7 @@ export function UpdatesPage() {
                   if (r) {
                     toast(
                       r.newer ? "success" : "info",
-                      r.newer ? t("Version {0} is available", r.manifest.version) : t("AMWAPOS is up to date"),
+                      r.newer ? t("Version {0} is available", r.manifest.version) : t("TILLBH is up to date"),
                     );
                     void st.reload();
                   }
@@ -2434,7 +2434,7 @@ export function UpdatesPage() {
             ) : null}
             <div className="tiny">
               {t(
-                "An update is used only if its signature matches the key built into AMWAPOS and the downloaded installer matches the signed checksum. Anything else is refused and deleted.",
+                "An update is used only if its signature matches the key built into TILLBH and the downloaded installer matches the signed checksum. Anything else is refused and deleted.",
               )}
             </div>
           </div>
@@ -2457,14 +2457,14 @@ export function UpdatesPage() {
               toast(
                 "info",
                 t(
-                  "Safety backup taken. The installer window is open: follow it to finish; AMWAPOS restarts afterwards.",
+                  "Safety backup taken. The installer window is open: follow it to finish; TILLBH restarts afterwards.",
                 ),
               );
             }
           }}
         >
           {t(
-            "AMWAPOS verifies the installer again, takes a safety backup, then closes and runs the installer. Finish open sales first. Business data is kept.",
+            "TILLBH verifies the installer again, takes a safety backup, then closes and runs the installer. Finish open sales first. Business data is kept.",
           )}
         </Confirm>
       ) : null}

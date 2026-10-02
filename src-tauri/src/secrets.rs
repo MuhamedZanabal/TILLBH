@@ -4,7 +4,7 @@
 use amwapos_core::service::SecretStore;
 use amwapos_core::{AppError, AppResult, ErrorCode};
 
-const SERVICE: &str = "AMWAPOS";
+const SERVICE: &str = "TILLBH";
 
 pub struct OsSecretStore;
 

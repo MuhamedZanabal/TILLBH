@@ -143,7 +143,7 @@ impl Runtime {
             return Ok(());
         }
         let hook = self.step_up.lock().unwrap().clone();
-        let msg = format!("AMWAPOS: confirm {}", cmd.replace(['.', '_'], " "));
+        let msg = format!("TILLBH: confirm {}", cmd.replace(['.', '_'], " "));
         let result = match hook {
             Some(h) => tokio::task::spawn_blocking(move || h(&msg)).await.unwrap_or_else(|e| StepUp::Refused(e.to_string())),
             None => StepUp::Unavailable("Windows Hello is not available in this build.".into()),
@@ -628,7 +628,7 @@ impl Runtime {
                         if info.capability != "supported" || !checked_for_linked {
                             return Err(AppError::conflict(match info.capability.as_str() {
                                 "personal" => "The linked WhatsApp number is a personal account. Catalogues need WhatsApp Business.",
-                                "business_no_catalog" => "This WhatsApp Business account has no catalogue that AMWAPOS can read. Create the catalogue once in the WhatsApp Business app, then check again.",
+                                "business_no_catalog" => "This WhatsApp Business account has no catalogue that TILLBH can read. Create the catalogue once in the WhatsApp Business app, then check again.",
                                 "disconnected" => "WhatsApp is not connected.",
                                 _ => "The WhatsApp catalogue is not available right now. Check again in a moment.",
                             })

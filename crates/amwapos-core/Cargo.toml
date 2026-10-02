@@ -3,7 +3,7 @@ name = "amwapos-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "AMWAPOS domain, persistence and application services"
+description = "TILLBH domain, persistence and application services"
 
 [dependencies]
 rusqlite.workspace = true

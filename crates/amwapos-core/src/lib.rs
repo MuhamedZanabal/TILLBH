@@ -1,4 +1,4 @@
-//! AMWAPOS core: domain rules, persistence and application services.
+//! TILLBH core: domain rules, persistence and application services.
 //!
 //! Layering: `commands` (transport-neutral dispatch) → `service`/feature
 //! modules (auth, validation, transactions) → pure domain (`money`,

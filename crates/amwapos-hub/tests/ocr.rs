@@ -1,7 +1,7 @@
 //! OCR worker with the real bundled models and a real Tesseract: payment
 //! screenshots and invoices are read on the worker task, and missing models
 //! keep OCR off with `ocr_model_missing`. Skips when Tesseract is not
-//! installed unless AMWAPOS_REQUIRE_OCR=1 (CI sets it).
+//! installed unless TILLBH_REQUIRE_OCR=1 (CI sets it).
 
 use std::net::Ipv4Addr;
 use std::sync::Arc;
@@ -29,7 +29,7 @@ async fn ocr_worker_reads_screenshots_and_invoices() {
     let exe = OcrPaths::discover(None).tesseract.unwrap();
     let have = std::process::Command::new(&exe).arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
     if !have {
-        assert!(std::env::var("AMWAPOS_REQUIRE_OCR").is_err(), "Tesseract is required in CI");
+        assert!(std::env::var("TILLBH_REQUIRE_OCR").is_err(), "Tesseract is required in CI");
         eprintln!("skipped: tesseract not installed");
         return;
     }

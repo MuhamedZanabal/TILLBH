@@ -11,7 +11,7 @@
 //! * Sales, refunds and shifts never call into this module; they only insert
 //!   outbox rows. If WhatsApp is down, the tills keep selling and the status
 //!   shows WhatsApp as down or reconnecting.
-//! * Inbound messages are committed to AMWAPOS tables (in the sink) before
+//! * Inbound messages are committed to TILLBH tables (in the sink) before
 //!   WhatsApp is acknowledged and before anything else can observe them.
 
 use std::path::PathBuf;
@@ -374,7 +374,7 @@ impl AdapterSink for Sink {
                 s.last_error = Some("WhatsApp was opened for this number on another computer.".into());
             }
             AdapterEvent::ClientOutdated => {
-                s.last_error = Some("WhatsApp rejected this client version. An AMWAPOS update is needed.".into());
+                s.last_error = Some("WhatsApp rejected this client version. An TILLBH update is needed.".into());
             }
         });
     }

@@ -107,7 +107,7 @@ pub fn render_job(c: &Connection, kind: &str, ref_id: &str, copy: Option<&str>) 
             let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
             let mut d = ReceiptDoc { width_chars: receipt::width_for(printer.paper_width_mm.min(cfg.paper_width_mm)), blocks: vec![] };
             d.blocks.push(receipt::Block::Text {
-                text: "AMWAPOS TEST PRINT".into(),
+                text: "TILLBH TEST PRINT".into(),
                 align: receipt::Align::Center,
                 bold: true,
                 large: true,
@@ -190,7 +190,7 @@ mod windows_raw {
             if OpenPrinterW(name.as_ptr(), &mut h, std::ptr::null()) == 0 {
                 return Err(format!("Windows printer '{printer}' could not be opened."));
             }
-            let mut doc_name = wide("AMWAPOS Receipt");
+            let mut doc_name = wide("TILLBH Receipt");
             let mut datatype = wide("RAW");
             let di = DOC_INFO_1W { pDocName: doc_name.as_mut_ptr(), pOutputFile: std::ptr::null_mut(), pDatatype: datatype.as_mut_ptr() };
             let job = StartDocPrinterW(h, 1, &di as *const DOC_INFO_1W as *const _);

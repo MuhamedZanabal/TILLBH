@@ -49,7 +49,7 @@ function useBackupNow(onDone: () => Promise<void>) {
 
 /**
  * Admin: a full-width banner on every page while backups are overdue or failing,
- * with one-click Backup Now. Automatic backups only run while AMWAPOS is open
+ * with one-click Backup Now. Automatic backups only run while TILLBH is open
  * (see docs/OPERATIONS.md), so this must be impossible to miss.
  */
 export function BackupAlert() {
@@ -64,11 +64,11 @@ export function BackupAlert() {
       <div
         className="ba-text"
         title={t(
-          "Automatic backups run only while AMWAPOS is open on this computer. Keep the hub running, or back up now.",
+          "Automatic backups run only while TILLBH is open on this computer. Keep the hub running, or back up now.",
         )}
       >
         <strong>{err ? t("Backup failed") : t("Backup overdue")}</strong> — {tb(health.summary)}.{" "}
-        <span className="muted">{t("Automatic backups run only while AMWAPOS is open.")}</span>
+        <span className="muted">{t("Automatic backups run only while TILLBH is open.")}</span>
       </div>
       {has("backup.manage") ? (
         <Button variant="primary" icon={<DatabaseBackup size={18} />} loading={now.busy} onClick={() => void now.run()}>

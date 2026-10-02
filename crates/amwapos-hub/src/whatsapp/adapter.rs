@@ -1,9 +1,9 @@
-//! The boundary between AMWAPOS and a WhatsApp client library.
+//! The boundary between TILLBH and a WhatsApp client library.
 //!
 //! Nothing outside this module family knows which library is behind it:
 //! `RustWhatsAppAdapter` wraps the unofficial `whatsapp-rust` crate and
 //! `FakeAdapter` stands in for tests. The UI never sees adapter types; it
-//! reads AMWAPOS tables and the service status through commands.
+//! reads TILLBH tables and the service status through commands.
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -101,7 +101,7 @@ pub enum CatalogCapability {
     Unsupported,
 }
 
-/// A product as sent to WhatsApp (built from AMWAPOS' `CatalogItem`).
+/// A product as sent to WhatsApp (built from TILLBH' `CatalogItem`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogProduct {
     pub name: String,
@@ -136,7 +136,7 @@ pub struct StartOptions {
 pub trait AdapterSink: Send + Sync {
     /// Status only; must return quickly.
     fn event(&self, e: AdapterEvent);
-    /// Commit inbound messages to AMWAPOS tables. The adapter acknowledges the
+    /// Commit inbound messages to TILLBH tables. The adapter acknowledges the
     /// messages to WhatsApp only after this returns `Ok`; on `Err` WhatsApp
     /// delivers them again.
     async fn inbound(&self, batch: Vec<Inbound>) -> Result<(), String>;
@@ -159,7 +159,7 @@ pub trait WhatsAppAdapter: Send + Sync {
 pub trait AdapterSession: Send + Sync {
     fn connected(&self) -> bool;
     fn logged_in(&self) -> bool;
-    /// `send_id` is AMWAPOS' outbox id; the adapter derives the WhatsApp
+    /// `send_id` is TILLBH' outbox id; the adapter derives the WhatsApp
     /// message id from it, so a retry of the same message is the same message.
     async fn send_text(&self, send_id: &str, to_phone: &str, text: &str) -> Result<String, AdapterError>;
     async fn send_document(

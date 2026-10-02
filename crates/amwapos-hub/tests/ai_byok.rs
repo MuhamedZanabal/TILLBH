@@ -190,7 +190,7 @@ async fn todays_sales_come_from_a_tool_call_under_the_constitution() {
     assert_eq!(reqs.len(), 2, "tool round trip");
     let first = &reqs[0].1;
     let system = first["messages"][0]["content"].as_str().unwrap();
-    assert!(system.starts_with("You are the AMWAPOS in-store operations assistant for this organization only."));
+    assert!(system.starts_with("You are the TILLBH in-store operations assistant for this organization only."));
     assert!(system.contains("Playbooks for this question") && system.contains("EOD Call the end-of-day pack"));
     assert!(!system.contains("4500"), "no figures in the prompt: numbers come from tools");
     // The model's second request carries the tool result with the recorded total.

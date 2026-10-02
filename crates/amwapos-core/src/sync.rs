@@ -633,7 +633,7 @@ impl AppCore {
             }
             (None, Some(_)) => Err(AppError::new(
                 ErrorCode::Sync,
-                "The hub credential is missing from this computer's secure storage (was AMWAPOS started under a different Windows account?). \
+                "The hub credential is missing from this computer's secure storage (was TILLBH started under a different Windows account?). \
                  Sign in with the original account, or reset hub credentials and pair the terminals again.",
             )),
             (None, None) => {
@@ -719,7 +719,7 @@ impl AppCore {
             let (bid, bname): (String, String) =
                 c.query_row("SELECT business_id, name FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))?;
             Ok(HubInfo {
-                product: "AMWAPOS".into(),
+                product: "TILLBH".into(),
                 protocol: PROTOCOL_VERSION,
                 app_version: audit::APP_VERSION.into(),
                 schema_version: crate::db::latest_schema_version(),
@@ -844,7 +844,7 @@ impl AppCore {
         let hub = self.require_hub()?;
         if req.schema_version != crate::db::latest_schema_version() {
             return Err(AppError::conflict(format!(
-                "Version mismatch: the hub uses schema {}, this terminal uses {}. Install the same AMWAPOS version on both.",
+                "Version mismatch: the hub uses schema {}, this terminal uses {}. Install the same TILLBH version on both.",
                 crate::db::latest_schema_version(),
                 req.schema_version
             )));

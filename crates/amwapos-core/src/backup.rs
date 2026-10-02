@@ -128,18 +128,18 @@ pub fn inspect_file(path: &Path, current_business: Option<&str>) -> AppResult<In
     let manifest: Option<BackupManifest> = std::fs::read_to_string(manifest_path(path)).ok().and_then(|s| serde_json::from_str(&s).ok());
     let mut problems = vec![];
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
-        .map_err(|e| AppError::validation(format!("This file is not a readable AMWAPOS backup: {e}")))?;
+        .map_err(|e| AppError::validation(format!("This file is not a readable TILLBH backup: {e}")))?;
     let integrity: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap_or_else(|e| format!("unreadable: {e}"));
     if integrity != "ok" {
         problems.push(format!("Integrity check failed: {integrity}"));
     }
     let schema: i64 = conn.query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0)).unwrap_or(0);
     if schema == 0 {
-        problems.push("This file does not contain an AMWAPOS database.".into());
+        problems.push("This file does not contain an TILLBH database.".into());
     }
     let latest = crate::db::latest_schema_version();
     if schema > latest {
-        problems.push(format!("The backup was made by a newer AMWAPOS (schema {schema}); this version supports up to {latest}."));
+        problems.push(format!("The backup was made by a newer TILLBH (schema {schema}); this version supports up to {latest}."));
     }
     let (bname, bid): (Option<String>, Option<String>) = conn
         .query_row("SELECT name, business_id FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))
@@ -212,7 +212,7 @@ impl AppCore {
             Ok((code, b.as_ref().map(|x| x.0.clone()), b.map(|x| x.1)))
         })?;
         let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-        let file = dir.join(format!("AMWAPOS-{}-{}-{}.{EXT}", code.unwrap_or_else(|| "STORE".into()), kind, ts));
+        let file = dir.join(format!("TILLBH-{}-{}-{}.{EXT}", code.unwrap_or_else(|| "STORE".into()), kind, ts));
         let tmp = file.with_extension("partial");
         let res: AppResult<BackupManifest> = (|| {
             {

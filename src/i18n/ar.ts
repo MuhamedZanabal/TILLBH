@@ -57,8 +57,8 @@ export const AR: Record<string, string> = {
   "A stocktake in {0} cannot move to {1}.": "لا يمكن نقل جرد في حالة {0} إلى {1}.",
   "A supplier named {0} already exists.": "يوجد مورّد باسم {0} مسبقاً.",
   "A terminal cannot become a hub.": "لا يمكن لنقطة البيع أن تصبح خادماً.",
-  "A terminal runs a different AMWAPOS version than the hub (hub {0}). It will not synchronize until both run the same version.":
-    "إحدى نقاط البيع تعمل بإصدار AMWAPOS مختلف عن الخادم (الخادم {0}). لن تتم المزامنة حتى يعمل الاثنان بالإصدار نفسه.",
+  "A terminal runs a different TILLBH version than the hub (hub {0}). It will not synchronize until both run the same version.":
+    "إحدى نقاط البيع تعمل بإصدار TILLBH مختلف عن الخادم (الخادم {0}). لن تتم المزامنة حتى يعمل الاثنان بالإصدار نفسه.",
   "A valid operation id (16–64 characters) is required.": "مطلوب معرّف عملية صالح (16–64 حرفاً).",
   "AED — UAE Dirham": "AED — درهم إماراتي",
   AI: "الذكاء الاصطناعي",
@@ -74,28 +74,28 @@ export const AR: Record<string, string> = {
   "AI proposed changes are switched off.": "التغييرات المقترحة من الذكاء الاصطناعي متوقفة.",
   "AI summary": "ملخص الذكاء الاصطناعي",
   "AI: two people confirm high-risk changes": "الذكاء الاصطناعي: شخصان يؤكدان التغييرات عالية المخاطر",
-  AMWAPOS: "AMWAPOS",
-  "AMWAPOS Setup": "إعداد AMWAPOS",
-  "AMWAPOS Terminal": "نقطة بيع AMWAPOS",
-  "AMWAPOS asked the assistant to back its figures with a tool.": "طلب AMWAPOS من المساعد دعم أرقامه بأداة.",
-  "AMWAPOS could not start": "تعذّر تشغيل AMWAPOS",
-  "AMWAPOS is up to date": "AMWAPOS محدّث",
-  "AMWAPOS links to a WhatsApp number like WhatsApp Web does, using an unofficial client built into AMWAPOS. This is not the WhatsApp Business API.":
-    "يرتبط AMWAPOS برقم واتساب كما يفعل واتساب ويب، باستخدام عميل غير رسمي مدمج في AMWAPOS. هذا ليس واجهة واتساب للأعمال (Business API).",
-  "AMWAPOS runs the same command as the admin page, with your permissions. Manager approval or Windows Hello is asked for if that command needs it. A wrong PIN changes nothing.":
-    "ينفّذ AMWAPOS الأمر نفسه الذي تنفّذه صفحة الإدارة وبصلاحياتك. تُطلب موافقة المدير أو Windows Hello إذا احتاجها الأمر. رمز PIN الخاطئ لا يغيّر شيئًا.",
-  "AMWAPOS runs this through the normal command with your permissions. It can be undone later with a correcting record; nothing is deleted.":
-    "ينفّذ AMWAPOS هذا عبر الأمر العادي وبصلاحياتك. يمكن التراجع عنه لاحقاً بسجل تصحيحي، ولا يُحذف شيء.",
-  "AMWAPOS verifies the installer again, takes a safety backup, then closes and runs the installer. Finish open sales first. Business data is kept.":
-    "يتحقق AMWAPOS من برنامج التثبيت مجدداً، ويأخذ نسخة احتياطية آمنة، ثم يُغلق ويشغّل برنامج التثبيت. أنهِ المبيعات المفتوحة أولاً. تُحفظ بيانات العمل.",
-  "AMWAPOS will stop sending and receiving WhatsApp messages until a phone is linked again. Message history stays in AMWAPOS.":
-    "سيتوقف AMWAPOS عن إرسال واستقبال رسائل واتساب حتى يُربط هاتف من جديد. يبقى سجل الرسائل في AMWAPOS.",
-  "AMWAPOS · Deliveries": "AMWAPOS · التوصيل",
-  "AMWAPOS — Retail Operations System": "AMWAPOS — نظام تشغيل متاجر التجزئة",
+  TILLBH: "TILLBH",
+  "TILLBH Setup": "إعداد TILLBH",
+  "TILLBH Terminal": "نقطة بيع TILLBH",
+  "TILLBH asked the assistant to back its figures with a tool.": "طلب TILLBH من المساعد دعم أرقامه بأداة.",
+  "TILLBH could not start": "تعذّر تشغيل TILLBH",
+  "TILLBH is up to date": "TILLBH محدّث",
+  "TILLBH links to a WhatsApp number like WhatsApp Web does, using an unofficial client built into TILLBH. This is not the WhatsApp Business API.":
+    "يرتبط TILLBH برقم واتساب كما يفعل واتساب ويب، باستخدام عميل غير رسمي مدمج في TILLBH. هذا ليس واجهة واتساب للأعمال (Business API).",
+  "TILLBH runs the same command as the admin page, with your permissions. Manager approval or Windows Hello is asked for if that command needs it. A wrong PIN changes nothing.":
+    "ينفّذ TILLBH الأمر نفسه الذي تنفّذه صفحة الإدارة وبصلاحياتك. تُطلب موافقة المدير أو Windows Hello إذا احتاجها الأمر. رمز PIN الخاطئ لا يغيّر شيئًا.",
+  "TILLBH runs this through the normal command with your permissions. It can be undone later with a correcting record; nothing is deleted.":
+    "ينفّذ TILLBH هذا عبر الأمر العادي وبصلاحياتك. يمكن التراجع عنه لاحقاً بسجل تصحيحي، ولا يُحذف شيء.",
+  "TILLBH verifies the installer again, takes a safety backup, then closes and runs the installer. Finish open sales first. Business data is kept.":
+    "يتحقق TILLBH من برنامج التثبيت مجدداً، ويأخذ نسخة احتياطية آمنة، ثم يُغلق ويشغّل برنامج التثبيت. أنهِ المبيعات المفتوحة أولاً. تُحفظ بيانات العمل.",
+  "TILLBH will stop sending and receiving WhatsApp messages until a phone is linked again. Message history stays in TILLBH.":
+    "سيتوقف TILLBH عن إرسال واستقبال رسائل واتساب حتى يُربط هاتف من جديد. يبقى سجل الرسائل في TILLBH.",
+  "TILLBH · Deliveries": "TILLBH · التوصيل",
+  "TILLBH — Retail Operations System": "TILLBH — نظام تشغيل متاجر التجزئة",
   "API key": "مفتاح API",
   AUTOMATION: "الأتمتة",
   About: "حول البرنامج",
-  "About WhatsApp in AMWAPOS": "عن واتساب في AMWAPOS",
+  "About WhatsApp in TILLBH": "عن واتساب في TILLBH",
   "Access restricted": "الوصول مقيّد",
   Account: "الحساب",
   "Account saved": "تم حفظ الحساب",
@@ -198,8 +198,8 @@ export const AR: Record<string, string> = {
   "An owner has not agreed to send store data to the provider.": "لم يوافق المالك على إرسال بيانات المتجر إلى المزوّد.",
   "An owner must agree to send store data to the AI provider in Settings → AI before the assistant can be used.":
     "يجب أن يوافق المالك على إرسال بيانات المتجر إلى مزوّد الذكاء الاصطناعي من الإعدادات ← المساعد الذكي قبل استخدام المساعد.",
-  "An update is used only if its signature matches the key built into AMWAPOS and the downloaded installer matches the signed checksum. Anything else is refused and deleted.":
-    "لا يُستخدم التحديث إلا إذا طابق توقيعه المفتاح المضمّن في AMWAPOS وطابق برنامج التثبيت المُنزّل المجموع الاختباري الموقّع. يُرفض أي شيء آخر ويُحذف.",
+  "An update is used only if its signature matches the key built into TILLBH and the downloaded installer matches the signed checksum. Anything else is refused and deleted.":
+    "لا يُستخدم التحديث إلا إذا طابق توقيعه المفتاح المضمّن في TILLBH وطابق برنامج التثبيت المُنزّل المجموع الاختباري الموقّع. يُرفض أي شيء آخر ويُحذف.",
   Analytics: "التحليلات",
   "Answer language": "لغة الإجابة",
   Answering: "يستجيب",
@@ -280,13 +280,13 @@ export const AR: Record<string, string> = {
   "Audited events by type and user": "الأحداث المدقّقة حسب النوع والمستخدم",
   Automatic: "تلقائي",
   "Automatic (first store network card)": "تلقائي (أول بطاقة شبكة للمتجر)",
-  "Automatic backups run only while AMWAPOS is open on this computer. Keep the hub running, or back up now.":
-    "تعمل النسخ الاحتياطية التلقائية فقط أثناء تشغيل AMWAPOS على هذا الجهاز. أبقِ الخادم يعمل، أو انسخ احتياطياً الآن.",
+  "Automatic backups run only while TILLBH is open on this computer. Keep the hub running, or back up now.":
+    "تعمل النسخ الاحتياطية التلقائية فقط أثناء تشغيل TILLBH على هذا الجهاز. أبقِ الخادم يعمل، أو انسخ احتياطياً الآن.",
   "Automatic daily backups are verified after creation. Choose a folder on a different disk or a USB drive if possible.":
     "يتم التحقق من النسخ الاحتياطية اليومية التلقائية بعد إنشائها. اختر مجلداً على قرص آخر أو ذاكرة USB إن أمكن.",
   "Automatic update checks": "التحقق التلقائي من التحديثات",
-  "Automatic update checks require the publisher's update-signing key, which has not been configured for this build. Install new versions with the signed AMWAPOS installer; your data is kept, a safety backup is taken before any database upgrade, and unsigned updates are never installed.":
-    "يتطلب التحقق التلقائي من التحديثات مفتاح توقيع التحديثات الخاص بالناشر، ولم يُهيّأ لهذا الإصدار. ثبّت الإصدارات الجديدة باستخدام مُثبّت AMWAPOS الموقّع؛ تُحفظ بياناتك، وتُؤخذ نسخة احتياطية أمان قبل أي ترقية لقاعدة البيانات، ولا تُثبّت أي تحديثات غير موقّعة أبداً.",
+  "Automatic update checks require the publisher's update-signing key, which has not been configured for this build. Install new versions with the signed TILLBH installer; your data is kept, a safety backup is taken before any database upgrade, and unsigned updates are never installed.":
+    "يتطلب التحقق التلقائي من التحديثات مفتاح توقيع التحديثات الخاص بالناشر، ولم يُهيّأ لهذا الإصدار. ثبّت الإصدارات الجديدة باستخدام مُثبّت TILLBH الموقّع؛ تُحفظ بياناتك، وتُؤخذ نسخة احتياطية أمان قبل أي ترقية لقاعدة البيانات، ولا تُثبّت أي تحديثات غير موقّعة أبداً.",
   Automation: "الأتمتة",
   Available: "متاح",
   "Average Basket": "متوسط السلة",
@@ -380,7 +380,7 @@ export const AR: Record<string, string> = {
   "By hour": "حسب الساعة",
   "By terminal": "حسب نقطة البيع",
   "By weekday": "حسب يوم الأسبوع",
-  "C:\\AMWAPOS\\printer.txt": "C:\\AMWAPOS\\printer.txt",
+  "C:\\TILLBH\\printer.txt": "C:\\TILLBH\\printer.txt",
   CATALOG: "الكتالوج",
   CHANGE: "الباقي",
   "CR / VAT": "السجل التجاري / الضريبة",
@@ -408,8 +408,8 @@ export const AR: Record<string, string> = {
     "البطاقة وبنفت باي مدفوعات مسجّلة، وليست تسويات مُتحقَّق منها.",
   "Card and other non-cash payments cannot exceed the amount due.":
     "لا يمكن أن تتجاوز مدفوعات البطاقة وغيرها من المدفوعات غير النقدية المبلغ المستحق.",
-  "Card, BenefitPay and bank transfers are recorded as tenders. AMWAPOS does not verify settlement until an authorised payment-provider integration is added.":
-    "تُسجَّل البطاقة وبنفت باي والتحويلات البنكية كمدفوعات. لا يتحقق AMWAPOS من التسوية حتى تُضاف تكاملات معتمدة مع مزوّد دفع.",
+  "Card, BenefitPay and bank transfers are recorded as tenders. TILLBH does not verify settlement until an authorised payment-provider integration is added.":
+    "تُسجَّل البطاقة وبنفت باي والتحويلات البنكية كمدفوعات. لا يتحقق TILLBH من التسوية حتى تُضاف تكاملات معتمدة مع مزوّد دفع.",
   Cart: "السلة",
   Cash: "نقداً",
   "Cash & shifts": "النقد والورديات",
@@ -481,8 +481,8 @@ export const AR: Record<string, string> = {
     "البيع والنقد والمرتجعات والمخزون والتقارير لا تعتمد على هذه الوحدات. إيقاف وحدة يخفيها مجدداً مع الاحتفاظ ببياناتها.",
   "Checks for new versions. Only updates signed with the publisher key are installed.":
     "يتحقق من الإصدارات الجديدة. لا تُثبَّت إلا التحديثات الموقّعة بمفتاح الناشر.",
-  "Checks that the local service answering is the one AMWAPOS started.":
-    "يتحقق من أن الخدمة المحلية المستجيبة هي التي شغّلها AMWAPOS.",
+  "Checks that the local service answering is the one TILLBH started.":
+    "يتحقق من أن الخدمة المحلية المستجيبة هي التي شغّلها TILLBH.",
   Checksum: "المجموع الاختباري",
   "Choose a Windows printer in Printer Settings.": "اختر طابعة Windows من إعدادات الطابعة.",
   "Choose a conversation.": "اختر محادثة.",
@@ -642,8 +642,8 @@ export const AR: Record<string, string> = {
   "Customer account": "حساب العميل",
   "Customer changed mind": "غيّر العميل رأيه",
   "Customer credit accounts": "حسابات ائتمان العملاء",
-  "Customer messages are shown as plain text. AMWAPOS never follows instructions written in a message.":
-    "تُعرض رسائل العملاء كنص عادي. لا ينفّذ AMWAPOS أبداً تعليمات مكتوبة في رسالة.",
+  "Customer messages are shown as plain text. TILLBH never follows instructions written in a message.":
+    "تُعرض رسائل العملاء كنص عادي. لا ينفّذ TILLBH أبداً تعليمات مكتوبة في رسالة.",
   "Customer name": "اسم العميل",
   "Customer since": "عميل منذ",
   Customers: "العملاء",
@@ -759,8 +759,8 @@ export const AR: Record<string, string> = {
   "Dropped {0}": "أُودع {0}",
   "Duplicate of": "مكرر لـ",
   Duration: "المدة",
-  "E:\\\\AMWAPOS backups\\\\AMWAPOS-MAIN-manual-20260924-190000.amwbak":
-    "E:\\\\AMWAPOS backups\\\\AMWAPOS-MAIN-manual-20260924-190000.amwbak",
+  "E:\\\\TILLBH backups\\\\TILLBH-MAIN-manual-20260924-190000.amwbak":
+    "E:\\\\TILLBH backups\\\\TILLBH-MAIN-manual-20260924-190000.amwbak",
   "EPSON TM-T20III Receipt": "EPSON TM-T20III Receipt",
   "Each payment amount must be greater than zero.": "يجب أن يكون مبلغ كل دفعة أكبر من صفر.",
   "Each product can appear only once on a purchase order.": "يمكن أن يظهر كل منتج مرة واحدة فقط في أمر الشراء.",
@@ -965,7 +965,7 @@ export const AR: Record<string, string> = {
   "Hub mode enabled": "تم تفعيل وضع الخادم",
   "Hub returned HTTP {0}.": "أعاد الخادم HTTP {0}.",
   "Hub unreachable": "تعذّر الوصول إلى الخادم",
-  "Hub {0} · AMWAPOS {1}": "الخادم {0} · AMWAPOS {1}",
+  "Hub {0} · TILLBH {1}": "الخادم {0} · TILLBH {1}",
   "Hub · {0} unresolved change(s)": "الخادم · {0} تغيير(ات) غير محلولة",
   "I agree to send store data to this AI provider": "أوافق على إرسال بيانات المتجر إلى مزوّد الذكاء الاصطناعي هذا",
   "I have checked the hub — resume": "تحققت من الخادم — استئناف",
@@ -976,10 +976,10 @@ export const AR: Record<string, string> = {
   INVENTORY: "المخزون",
   Identity: "الهوية",
   "Idle lock must be between 0 and 240 minutes.": "يجب أن تكون مدة القفل عند الخمول بين 0 و240 دقيقة.",
-  "If the chosen provider times out, is rate-limited, has a server error or does not know the model, AMWAPOS asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key (401) or a refusal. It is off until you tick the box.":
-    "إذا انتهت مهلة المزوّد المختار أو تجاوز حد الطلبات أو حدث خطأ في الخادم أو لم يعرف النموذج، يسأل AMWAPOS خدمة OpenRouter بدلًا منه باستخدام النموذج أدناه (openrouter/free يختار نموذجًا مجانيًا). تُظهر الصفحة متى يحدث ذلك. لا يحدث أبدًا عند مفتاح خاطئ (401) أو رفض. وهو متوقف حتى تضع علامة في المربع.",
-  "If the chosen provider times out, is rate-limited, has a server error or does not know the model, AMWAPOS asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key or a refusal.":
-    "إذا انتهت مهلة المزوّد المختار، أو تجاوزت الطلبات حدّه، أو حدث خطأ في خادمه، أو لم يعرف النموذج، يسأل AMWAPOS خدمة OpenRouter بدلًا منه باستخدام النموذج أدناه (openrouter/free يختار نموذجًا مجانيًا). تُظهر الصفحة ذلك عند حدوثه. لا يحدث هذا أبدًا عند خطأ المفتاح أو الرفض.",
+  "If the chosen provider times out, is rate-limited, has a server error or does not know the model, TILLBH asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key (401) or a refusal. It is off until you tick the box.":
+    "إذا انتهت مهلة المزوّد المختار أو تجاوز حد الطلبات أو حدث خطأ في الخادم أو لم يعرف النموذج، يسأل TILLBH خدمة OpenRouter بدلًا منه باستخدام النموذج أدناه (openrouter/free يختار نموذجًا مجانيًا). تُظهر الصفحة متى يحدث ذلك. لا يحدث أبدًا عند مفتاح خاطئ (401) أو رفض. وهو متوقف حتى تضع علامة في المربع.",
+  "If the chosen provider times out, is rate-limited, has a server error or does not know the model, TILLBH asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key or a refusal.":
+    "إذا انتهت مهلة المزوّد المختار، أو تجاوزت الطلبات حدّه، أو حدث خطأ في خادمه، أو لم يعرف النموذج، يسأل TILLBH خدمة OpenRouter بدلًا منه باستخدام النموذج أدناه (openrouter/free يختار نموذجًا مجانيًا). تُظهر الصفحة ذلك عند حدوثه. لا يحدث هذا أبدًا عند خطأ المفتاح أو الرفض.",
   "Ignore an identical barcode scanned again within this many milliseconds (0 = off).":
     "تجاهل الباركود المطابق إذا مُسح مجدداً خلال هذا العدد من الملّي ثانية (0 = إيقاف).",
   "Ignored (not a table): {0}": "تم تجاهله (ليس جدولاً): {0}",
@@ -1121,8 +1121,8 @@ export const AR: Record<string, string> = {
   "Linked as {0}.": "مرتبط باسم {0}.",
   "Linked phone": "الهاتف المرتبط",
   "Linked sale": "البيع المرتبط",
-  "Links a WhatsApp number to this computer through an unofficial WhatsApp Web client inside AMWAPOS. WhatsApp may ban numbers that use unofficial clients. Selling never waits for WhatsApp.":
-    "يربط رقم واتساب بهذا الحاسوب عبر عميل واتساب ويب غير رسمي داخل AMWAPOS. قد يحظر واتساب الأرقام التي تستخدم عملاء غير رسميين. البيع لا ينتظر واتساب أبداً.",
+  "Links a WhatsApp number to this computer through an unofficial WhatsApp Web client inside TILLBH. WhatsApp may ban numbers that use unofficial clients. Selling never waits for WhatsApp.":
+    "يربط رقم واتساب بهذا الحاسوب عبر عميل واتساب ويب غير رسمي داخل TILLBH. قد يحظر واتساب الأرقام التي تستخدم عملاء غير رسميين. البيع لا ينتظر واتساب أبداً.",
   "List every command": "عرض كل الأوامر",
   "Listed reports": "عرض التقارير",
   "Listen on": "الاستماع على",
@@ -1829,13 +1829,13 @@ export const AR: Record<string, string> = {
   "Record paid-out cash": "تسجيل سحب نقدي",
   "Record payment": "تسجيل الدفعة",
   "Record safe drops": "تسجيل التحويلات إلى الخزنة",
-  "Recorded as a proposal. Nothing has changed. A person must review and confirm it in AMWAPOS.":
-    "سُجّل كاقتراح. لم يتغير شيء. يجب أن يراجعه شخص ويؤكده في AMWAPOS.",
+  "Recorded as a proposal. Nothing has changed. A person must review and confirm it in TILLBH.":
+    "سُجّل كاقتراح. لم يتغير شيء. يجب أن يراجعه شخص ويؤكده في TILLBH.",
   "Recorded in the audit log. A balance can never go below zero.":
     "يُسجَّل في سجل التدقيق. لا يمكن أن يقل الرصيد عن صفر.",
   "Recorded tender — not verified with the bank. Check the customer's BenefitPay confirmation.":
     "دفعة مسجّلة — غير مُتحقَّق منها لدى البنك. تحقّق من تأكيد بنفت باي لدى العميل.",
-  "Recorded tender. AMWAPOS does not verify card settlement.": "دفعة مسجّلة. لا يتحقق AMWAPOS من تسوية البطاقة.",
+  "Recorded tender. TILLBH does not verify card settlement.": "دفعة مسجّلة. لا يتحقق TILLBH من تسوية البطاقة.",
   Records: "السجلات",
   "Records orders taken by phone, WhatsApp or a web form. A person confirms each order, then a cashier loads it into a sale and takes payment as usual.":
     "يسجل الطلبات الواردة بالهاتف أو واتساب أو نموذج ويب. يؤكد شخص كل طلب، ثم يحمّله الكاشير في عملية بيع ويستلم الدفع كالمعتاد.",
@@ -1928,7 +1928,7 @@ export const AR: Record<string, string> = {
   Resolved: "تم الحل",
   "Resolved · {0}": "تم الحل · {0}",
   "Restart sidecar": "إعادة تشغيل الخدمة المساعدة",
-  "Restarted {0} times since AMWAPOS started.": "أُعيد تشغيله {0} مرات منذ بدء AMWAPOS.",
+  "Restarted {0} times since TILLBH started.": "أُعيد تشغيله {0} مرات منذ بدء TILLBH.",
   "Restarting after a failure": "إعادة التشغيل بعد عطل",
   Restock: "إعادة للمخزون",
   Restore: "استعادة",
@@ -1992,8 +1992,8 @@ export const AR: Record<string, string> = {
     "يشغّل التعرّف الضوئي المدمج دون اتصال (Tesseract، بالإنجليزية والعربية) في عامل منفصل. يبقى متوقفاً إذا كانت النماذج المدمجة مفقودة.",
   "Runs the local WhatsApp sidecar on this computer (127.0.0.1 only). Linking is done by QR code.":
     "يشغّل خدمة واتساب المحلية على هذا الحاسوب (127.0.0.1 فقط). يتم الربط برمز QR.",
-  "Runs while AMWAPOS is open on this computer, with the permissions of the person who saves it. It only reads.":
-    "يعمل أثناء فتح AMWAPOS على هذا الجهاز، بصلاحيات من يحفظه. يقرأ فقط.",
+  "Runs while TILLBH is open on this computer, with the permissions of the person who saves it. It only reads.":
+    "يعمل أثناء فتح TILLBH على هذا الجهاز، بصلاحيات من يحفظه. يقرأ فقط.",
   Runtime: "بيئة التشغيل",
   SALES: "المبيعات",
   "SAR — Saudi Riyal": "SAR — ريال سعودي",
@@ -2008,10 +2008,10 @@ export const AR: Record<string, string> = {
   "Safe drops": "تحويلات إلى الخزنة",
   "Safe drops this shift": "الإيداعات في الخزنة هذه الوردية",
   Safety: "أمان",
-  "Safety backup taken. The installer is running; AMWAPOS will restart.":
-    "أُخذت نسخة احتياطية آمنة. برنامج التثبيت يعمل؛ سيُعاد تشغيل AMWAPOS.",
-  "Safety backup taken. The installer window is open: follow it to finish; AMWAPOS restarts afterwards.":
-    "تم أخذ نسخة احتياطية للسلامة. نافذة المثبّت مفتوحة: اتبعها لإكمال التثبيت، ثم يُعاد تشغيل AMWAPOS.",
+  "Safety backup taken. The installer is running; TILLBH will restart.":
+    "أُخذت نسخة احتياطية آمنة. برنامج التثبيت يعمل؛ سيُعاد تشغيل TILLBH.",
+  "Safety backup taken. The installer window is open: follow it to finish; TILLBH restarts afterwards.":
+    "تم أخذ نسخة احتياطية للسلامة. نافذة المثبّت مفتوحة: اتبعها لإكمال التثبيت، ثم يُعاد تشغيل TILLBH.",
   Sale: "البيع",
   "Sale above the customer's credit limit": "بيع يتجاوز حد ائتمان العميل",
   "Sale completed": "اكتمل البيع",
@@ -2158,8 +2158,8 @@ export const AR: Record<string, string> = {
   "Settings sections": "أقسام الإعدادات",
   "Settings → Features": "الإعدادات ← الميزات",
   "Setup steps": "خطوات الإعداد",
-  "Several branches on one hub: shared catalogue with optional branch prices, stock per branch, staff assigned to branches, transfers between branches and reports per branch. With it off, AMWAPOS works as one branch.":
-    "عدة فروع على خادم واحد: كتالوج مشترك مع أسعار اختيارية لكل فرع، ومخزون لكل فرع، وموظفون مخصصون للفروع، وتحويلات بين الفروع، وتقارير لكل فرع. عند إيقافه يعمل AMWAPOS كفرع واحد.",
+  "Several branches on one hub: shared catalogue with optional branch prices, stock per branch, staff assigned to branches, transfers between branches and reports per branch. With it off, TILLBH works as one branch.":
+    "عدة فروع على خادم واحد: كتالوج مشترك مع أسعار اختيارية لكل فرع، ومخزون لكل فرع، وموظفون مخصصون للفروع، وتحويلات بين الفروع، وتقارير لكل فرع. عند إيقافه يعمل TILLBH كفرع واحد.",
   "Share %": "الحصة %",
   "Shared price": "السعر المشترك",
   Shift: "الوردية",
@@ -2366,19 +2366,19 @@ export const AR: Record<string, string> = {
   "The AI provider did not answer in time. Try again, or raise the timeout in Settings → AI.":
     "لم يرد مزود الذكاء الاصطناعي في الوقت المحدد. حاول مجدداً أو ارفع مهلة الانتظار من الإعدادات ← الذكاء الاصطناعي.",
   "The AI provider returned an error": "أعاد مزود الذكاء الاصطناعي خطأ",
-  "The AMWAPOS WhatsApp sidecar (bundled in a later release)": "ملحق واتساب الخاص بـ AMWAPOS (يُضمَّن في إصدار لاحق)",
-  "The Confirm card asks for the value AMWAPOS never sends to the assistant":
-    "تطلب بطاقة التأكيد القيمة التي لا يرسلها AMWAPOS إلى المساعد أبدًا",
-  "The English OCR model is missing or damaged. Reinstall AMWAPOS to restore it.":
-    "نموذج التعرف الضوئي الإنجليزي مفقود أو تالف. أعد تثبيت AMWAPOS لاستعادته.",
+  "The TILLBH WhatsApp sidecar (bundled in a later release)": "ملحق واتساب الخاص بـ TILLBH (يُضمَّن في إصدار لاحق)",
+  "The Confirm card asks for the value TILLBH never sends to the assistant":
+    "تطلب بطاقة التأكيد القيمة التي لا يرسلها TILLBH إلى المساعد أبدًا",
+  "The English OCR model is missing or damaged. Reinstall TILLBH to restore it.":
+    "نموذج التعرف الضوئي الإنجليزي مفقود أو تالف. أعد تثبيت TILLBH لاستعادته.",
   "The Hub module is switched off": "وحدة الخادم المحلي متوقفة",
   "The Owner role always has every permission and cannot be edited.":
     "دور المالك يملك كل الصلاحيات دائماً ولا يمكن تعديله.",
   "The PIN cannot be a single repeated digit.": "لا يمكن أن يتكوّن الرمز السري من رقم واحد مكرر.",
   "The PIN must be 4–8 digits.": "يجب أن يتكوّن الرمز السري من 4 إلى 8 أرقام.",
   "The PIN must be {0}–{1} digits.": "يجب أن يتكوّن الرمز السري من {0}–{1} أرقام.",
-  "The WhatsApp/OCR sidecar is not installed on this computer. Reinstall AMWAPOS to restore it.":
-    "خدمة واتساب/التعرف الضوئي المساعدة غير مثبتة على هذا الحاسوب. أعد تثبيت AMWAPOS لاستعادتها.",
+  "The WhatsApp/OCR sidecar is not installed on this computer. Reinstall TILLBH to restore it.":
+    "خدمة واتساب/التعرف الضوئي المساعدة غير مثبتة على هذا الحاسوب. أعد تثبيت TILLBH لاستعادتها.",
   "The WhatsApp/OCR sidecar is not running.": "خدمة واتساب/التعرف الضوئي المساعدة لا تعمل.",
   "The amount could not be read": "تعذرت قراءة المبلغ",
   "The answer was cut short.": "انقطعت الإجابة قبل اكتمالها.",
@@ -2392,8 +2392,8 @@ export const AR: Record<string, string> = {
   "The assistant may propose price, stock and purchase-order changes. Nothing changes until a person confirms.":
     "يمكن للمساعد اقتراح تغييرات على الأسعار والمخزون وأوامر الشراء. لا يتغير شيء حتى يؤكد شخص.",
   "The audit chain is broken at entry {0}.": "سلسلة التدقيق مكسورة عند الإدخال {0}.",
-  "The backup was made by a newer AMWAPOS (schema {0}); this version supports up to {1}.":
-    "أُنشئت النسخة الاحتياطية بإصدار أحدث من AMWAPOS (البنية {0})؛ يدعم هذا الإصدار حتى {1}.",
+  "The backup was made by a newer TILLBH (schema {0}); this version supports up to {1}.":
+    "أُنشئت النسخة الاحتياطية بإصدار أحدث من TILLBH (البنية {0})؛ يدعم هذا الإصدار حتى {1}.",
   "The barcode contains invalid characters. Barcodes may contain letters, digits and symbols only.":
     "يحتوي الباركود على أحرف غير صالحة. يمكن أن تحتوي الباركودات على حروف وأرقام ورموز فقط.",
   "The barcode is empty.": "الباركود فارغ.",
@@ -2442,21 +2442,21 @@ export const AR: Record<string, string> = {
     "تعذّر الوصول إلى الخادم على {0} ({1}). يستمر البيع المحلي؛ وستتزامن التغييرات عند عودة الخادم.",
   "The hub credential in secure storage does not match this store. Reset hub credentials and pair the terminals again.":
     "بيانات اعتماد الخادم في التخزين الآمن لا تطابق هذا المتجر. أعد تعيين بيانات اعتماد الخادم وأعد اقتران نقاط البيع.",
-  "The hub credential is missing from this computer's secure storage (was AMWAPOS started under a different Windows account?). Sign in with the original account, or reset hub credentials and pair the terminals again.":
-    "بيانات اعتماد الخادم مفقودة من التخزين الآمن لهذا الجهاز (هل شُغّل AMWAPOS بحساب Windows مختلف؟). سجّل الدخول بالحساب الأصلي، أو أعد تعيين بيانات اعتماد الخادم وأعد اقتران نقاط البيع.",
+  "The hub credential is missing from this computer's secure storage (was TILLBH started under a different Windows account?). Sign in with the original account, or reset hub credentials and pair the terminals again.":
+    "بيانات اعتماد الخادم مفقودة من التخزين الآمن لهذا الجهاز (هل شُغّل TILLBH بحساب Windows مختلف؟). سجّل الدخول بالحساب الأصلي، أو أعد تعيين بيانات اعتماد الخادم وأعد اقتران نقاط البيع.",
   "The hub reports fewer changes than this terminal has already received. It may have been restored from an older backup. Synchronization is paused.":
     "يُبلغ الخادم عن تغييرات أقل مما استلمته نقطة البيع هذه. ربما استُعيد من نسخة احتياطية أقدم. المزامنة متوقفة مؤقتاً.",
-  "The hub requires a different AMWAPOS version. Install the same version on the hub and this till.":
-    "يتطلب الخادم إصداراً مختلفاً من AMWAPOS. ثبّت الإصدار نفسه على الخادم ونقطة البيع هذه.",
-  "The hub runs AMWAPOS {0} (sync protocol {1}); this terminal needs protocol {2}. Install the same AMWAPOS version on both.":
-    "يعمل الخادم بإصدار AMWAPOS {0} (بروتوكول المزامنة {1})؛ ونقطة البيع هذه تحتاج البروتوكول {2}. ثبّت إصدار AMWAPOS نفسه على الاثنين.",
+  "The hub requires a different TILLBH version. Install the same version on the hub and this till.":
+    "يتطلب الخادم إصداراً مختلفاً من TILLBH. ثبّت الإصدار نفسه على الخادم ونقطة البيع هذه.",
+  "The hub runs TILLBH {0} (sync protocol {1}); this terminal needs protocol {2}. Install the same TILLBH version on both.":
+    "يعمل الخادم بإصدار TILLBH {0} (بروتوكول المزامنة {1})؛ ونقطة البيع هذه تحتاج البروتوكول {2}. ثبّت إصدار TILLBH نفسه على الاثنين.",
   "The hub sent an invalid pairing message.": "أرسل الخادم رسالة اقتران غير صالحة.",
   "The hub serves the page on the store network only. The link carries a secret that expires within 24 hours; anyone with the link can see the figures until then, so send it only to your own phone. Revoke it here at any time.":
     "يعرض الخادم الصفحة على شبكة المتجر فقط. يحمل الرابط رمزاً سرياً تنتهي صلاحيته خلال 24 ساعة؛ ويمكن لأي شخص لديه الرابط رؤية الأرقام حتى ذلك الحين، لذا أرسله إلى هاتفك فقط. يمكنك إلغاؤه من هنا في أي وقت.",
   "The hub service is not running on this computer. The phone view needs the hub.":
     "خدمة الخادم لا تعمل على هذا الحاسوب. عرض الهاتف يحتاج إلى الخادم.",
-  "The hub service is not running. Restart AMWAPOS or check that port {0} is free.":
-    "خدمة الخادم لا تعمل. أعد تشغيل AMWAPOS أو تأكد من أن المنفذ {0} غير مستخدم.",
+  "The hub service is not running. Restart TILLBH or check that port {0} is free.":
+    "خدمة الخادم لا تعمل. أعد تشغيل TILLBH أو تأكد من أن المنفذ {0} غير مستخدم.",
   "The hub's branch": "فرع الخادم",
   "The hub's database has changed (rebuilt or restored). Synchronization is paused to protect this terminal's records. Check the hub, then confirm in Sync settings.":
     "تغيّرت قاعدة بيانات الخادم (أُعيد بناؤها أو استُعيدت). المزامنة متوقفة مؤقتاً لحماية سجلات نقطة البيع هذه. تحقّق من الخادم ثم أكّد من إعدادات المزامنة.",
@@ -2468,8 +2468,8 @@ export const AR: Record<string, string> = {
     "رد الخادم غير مشفّر. أُوقفت المزامنة للأمان.",
   "The hub's response signature is invalid. Synchronization stopped for safety.":
     "توقيع رد الخادم غير صالح. أُوقفت المزامنة للأمان.",
-  "The link (session keys) is stored on this computer in its own file inside the AMWAPOS data folder, separate from the sales database. Anyone with that file can use the number.":
-    "يُحفظ الربط (مفاتيح الجلسة) على هذا الحاسوب في ملف مستقل داخل مجلد بيانات AMWAPOS، منفصل عن قاعدة بيانات المبيعات. أي شخص يملك هذا الملف يمكنه استخدام الرقم.",
+  "The link (session keys) is stored on this computer in its own file inside the TILLBH data folder, separate from the sales database. Anyone with that file can use the number.":
+    "يُحفظ الربط (مفاتيح الجلسة) على هذا الحاسوب في ملف مستقل داخل مجلد بيانات TILLBH، منفصل عن قاعدة بيانات المبيعات. أي شخص يملك هذا الملف يمكنه استخدام الرقم.",
   "The manager approval has expired or does not cover this action. Please approve again.":
     "انتهت صلاحية موافقة المدير أو لا تغطي هذا الإجراء. يرجى الموافقة مجدداً.",
   "The new backup failed verification: {0}": "فشل التحقق من النسخة الاحتياطية الجديدة: {0}",
@@ -2492,8 +2492,8 @@ export const AR: Record<string, string> = {
     "تغيّر إجمالي البيع. راجع السلة واستلم الدفع مجدداً.",
   "The selected category does not exist.": "الفئة المحددة غير موجودة.",
   "The selected role does not exist.": "الدور المحدد غير موجود.",
-  "The sidecar is not installed on this computer. Reinstall AMWAPOS.":
-    "الخدمة المساعدة غير مثبتة على هذا الحاسوب. أعد تثبيت AMWAPOS.",
+  "The sidecar is not installed on this computer. Reinstall TILLBH.":
+    "الخدمة المساعدة غير مثبتة على هذا الحاسوب. أعد تثبيت TILLBH.",
   "The sidecar runs only on this computer and listens on 127.0.0.1. Checkout never waits for WhatsApp; messages queue and are sent when the link is ready.":
     "تعمل الخدمة المساعدة على هذا الحاسوب فقط وتستمع على ‎127.0.0.1‎. لا ينتظر البيع واتساب أبداً؛ تنتظر الرسائل وتُرسل عند جاهزية الربط.",
   "The stock is already at that quantity.": "المخزون بهذه الكمية بالفعل.",
@@ -2526,8 +2526,8 @@ export const AR: Record<string, string> = {
   "This barcode was recorded for review by management. Search by name to sell the item now.":
     "سُجّل هذا الباركود لمراجعة الإدارة. ابحث بالاسم لبيع الصنف الآن.",
   "This branch": "هذا الفرع",
-  "This build has no update-signing key, so it never downloads or installs updates by itself. Install new versions with the AMWAPOS installer; your data is kept and a safety backup is taken before any database upgrade.":
-    "لا يحتوي هذا الإصدار على مفتاح توقيع التحديثات، لذلك لا يُنزّل أو يثبّت التحديثات بنفسه أبداً. ثبّت الإصدارات الجديدة ببرنامج تثبيت AMWAPOS؛ تُحفظ بياناتك وتؤخذ نسخة احتياطية آمنة قبل أي ترقية لقاعدة البيانات.",
+  "This build has no update-signing key, so it never downloads or installs updates by itself. Install new versions with the TILLBH installer; your data is kept and a safety backup is taken before any database upgrade.":
+    "لا يحتوي هذا الإصدار على مفتاح توقيع التحديثات، لذلك لا يُنزّل أو يثبّت التحديثات بنفسه أبداً. ثبّت الإصدارات الجديدة ببرنامج تثبيت TILLBH؛ تُحفظ بياناتك وتؤخذ نسخة احتياطية آمنة قبل أي ترقية لقاعدة البيانات.",
   "This cash event is recorded against your shift and cannot be edited later.":
     "تُسجَّل حركة النقد هذه على ورديتك ولا يمكن تعديلها لاحقاً.",
   "This change cannot be undone from here. Correct it on the matching admin page.":
@@ -2542,8 +2542,8 @@ export const AR: Record<string, string> = {
     "أُلغي ربط هذا الحاسوب من الهاتف. اتصل مجدداً وامسح رمزاً جديداً.",
   "This computer was unlinked from the phone. Link again to continue.":
     "تم فصل هذا الحاسوب عن الهاتف. اربطه مجدداً للمتابعة.",
-  "This computer will accept connections from paired terminals on the store network (TCP port {0}). Make sure the Windows firewall allows AMWAPOS on private networks.":
-    "سيقبل هذا الجهاز الاتصالات من نقاط البيع المقترنة على شبكة المتجر (منفذ TCP {0}). تأكد من أن جدار حماية Windows يسمح لـ AMWAPOS على الشبكات الخاصة.",
+  "This computer will accept connections from paired terminals on the store network (TCP port {0}). Make sure the Windows firewall allows TILLBH on private networks.":
+    "سيقبل هذا الجهاز الاتصالات من نقاط البيع المقترنة على شبكة المتجر (منفذ TCP {0}). تأكد من أن جدار حماية Windows يسمح لـ TILLBH على الشبكات الخاصة.",
   "This conversation read WhatsApp or OCR text; check that the request came from you":
     "قرأت هذه المحادثة نص واتساب أو تعرف ضوئي؛ تحقق من أن الطلب صادر منك",
   "This conversation read customer messages or scanned text. Check any proposal carefully.":
@@ -2558,15 +2558,15 @@ export const AR: Record<string, string> = {
     "ليس لهذا العميل حساب. فعّله من صفحة العميل أولاً.",
   "This database already contains a store. Terminals must start from an empty installation.":
     "تحتوي قاعدة البيانات هذه على متجر بالفعل. يجب أن تبدأ نقاط البيع من تثبيت فارغ.",
-  "This database was created by a newer AMWAPOS (schema {0}). Install the newer version or restore a compatible backup.":
-    "أُنشئت قاعدة البيانات هذه بإصدار أحدث من AMWAPOS (البنية {0}). ثبّت الإصدار الأحدث أو استعد نسخة احتياطية متوافقة.",
-  "This file does not contain an AMWAPOS database.": "لا يحتوي هذا الملف على قاعدة بيانات AMWAPOS.",
-  "This file is not a readable AMWAPOS backup: {0}": "هذا الملف ليس نسخة احتياطية مقروءة لـ AMWAPOS: {0}",
-  "This file is the WhatsApp link itself. Anyone who has it can read and send this shop's WhatsApp messages without the phone. Normal AMWAPOS backups do not include it. Store it offline and delete it when no longer needed.":
-    "هذا الملف هو ربط واتساب نفسه. أي شخص يملكه يمكنه قراءة رسائل واتساب هذا المتجر وإرسالها دون الهاتف. النسخ الاحتياطية العادية لـ AMWAPOS لا تتضمنه. احفظه دون اتصال واحذفه عند عدم الحاجة إليه.",
+  "This database was created by a newer TILLBH (schema {0}). Install the newer version or restore a compatible backup.":
+    "أُنشئت قاعدة البيانات هذه بإصدار أحدث من TILLBH (البنية {0}). ثبّت الإصدار الأحدث أو استعد نسخة احتياطية متوافقة.",
+  "This file does not contain an TILLBH database.": "لا يحتوي هذا الملف على قاعدة بيانات TILLBH.",
+  "This file is not a readable TILLBH backup: {0}": "هذا الملف ليس نسخة احتياطية مقروءة لـ TILLBH: {0}",
+  "This file is the WhatsApp link itself. Anyone who has it can read and send this shop's WhatsApp messages without the phone. Normal TILLBH backups do not include it. Store it offline and delete it when no longer needed.":
+    "هذا الملف هو ربط واتساب نفسه. أي شخص يملكه يمكنه قراءة رسائل واتساب هذا المتجر وإرسالها دون الهاتف. النسخ الاحتياطية العادية لـ TILLBH لا تتضمنه. احفظه دون اتصال واحذفه عند عدم الحاجة إليه.",
   "This held sale is no longer available.": "هذا البيع المعلّق لم يعد متاحاً.",
-  "This hub requires AMWAPOS sync protocol {0} (encrypted). Install the same AMWAPOS version on the hub and this terminal.":
-    "يتطلب هذا الخادم بروتوكول مزامنة AMWAPOS {0} (مشفّر). ثبّت إصدار AMWAPOS نفسه على الخادم ونقطة البيع هذه.",
+  "This hub requires TILLBH sync protocol {0} (encrypted). Install the same TILLBH version on the hub and this terminal.":
+    "يتطلب هذا الخادم بروتوكول مزامنة TILLBH {0} (مشفّر). ثبّت إصدار TILLBH نفسه على الخادم ونقطة البيع هذه.",
   "This installation is already set up.": "هذا التثبيت مُعدّ بالفعل.",
   "This list": "هذه القائمة",
   "This module is switched off": "هذه الوحدة متوقفة",
@@ -2606,7 +2606,7 @@ export const AR: Record<string, string> = {
     "نقطة البيع هذه متصلة بخادم. أجرِ تغييرات الكتالوج والمكتب الخلفي على جهاز الخادم.",
   "This terminal's hub credential is missing from secure storage. Pair it with the hub again.":
     "بيانات اعتماد الخادم لنقطة البيع هذه مفقودة من التخزين الآمن. أعد اقترانها بالخادم.",
-  "This till and the hub run different AMWAPOS versions": "تعمل نقطة البيع هذه والخادم بإصدارين مختلفين من AMWAPOS",
+  "This till and the hub run different TILLBH versions": "تعمل نقطة البيع هذه والخادم بإصدارين مختلفين من TILLBH",
   Thu: "الخميس",
   Thursday: "الخميس",
   "Ticket number": "رقم التذكرة",
@@ -2661,7 +2661,7 @@ export const AR: Record<string, string> = {
   Triage: "الفرز",
   "Try a different search.": "جرّب بحثاً مختلفاً.",
   "Try again in a moment.": "حاول مجدداً بعد لحظة.",
-  "Try again. If it keeps failing, restart AMWAPOS.": "حاول مجدداً. إذا استمر الفشل، أعد تشغيل AMWAPOS.",
+  "Try again. If it keeps failing, restart TILLBH.": "حاول مجدداً. إذا استمر الفشل، أعد تشغيل TILLBH.",
   "Try: “Which products are running low?” or “What were last week's top sellers?”":
     "جرّب: «ما المنتجات التي أوشكت على النفاد؟» أو «ما الأكثر مبيعاً الأسبوع الماضي؟»",
   "Try: “Which products are running low?”, or type / for commands.":
@@ -2791,13 +2791,13 @@ export const AR: Record<string, string> = {
   "Variance approved by": "اعتمد الفرق",
   Variances: "الفروقات",
   Verified: "مُتحقَّق منه",
-  "Verified AMWAPOS sidecar {0}": "خدمة AMWAPOS المساعدة موثّقة {0}",
+  "Verified TILLBH sidecar {0}": "خدمة TILLBH المساعدة موثّقة {0}",
   Version: "الإصدار",
   "Version mismatch": "عدم تطابق الإصدار",
-  "Version mismatch: hub runs AMWAPOS {0} (schema {1}), this terminal runs {2} (schema {3}). Update both to the same version.":
-    "عدم تطابق الإصدار: يعمل الخادم بـ AMWAPOS {0} (البنية {1})، ونقطة البيع هذه بـ {2} (البنية {3}). حدّث الاثنين إلى الإصدار نفسه.",
-  "Version mismatch: the hub uses schema {0}, this terminal uses {1}. Install the same AMWAPOS version on both.":
-    "عدم تطابق الإصدار: يستخدم الخادم البنية {0}، ونقطة البيع هذه تستخدم {1}. ثبّت إصدار AMWAPOS نفسه على الاثنين.",
+  "Version mismatch: hub runs TILLBH {0} (schema {1}), this terminal runs {2} (schema {3}). Update both to the same version.":
+    "عدم تطابق الإصدار: يعمل الخادم بـ TILLBH {0} (البنية {1})، ونقطة البيع هذه بـ {2} (البنية {3}). حدّث الاثنين إلى الإصدار نفسه.",
+  "Version mismatch: the hub uses schema {0}, this terminal uses {1}. Install the same TILLBH version on both.":
+    "عدم تطابق الإصدار: يستخدم الخادم البنية {0}، ونقطة البيع هذه تستخدم {1}. ثبّت إصدار TILLBH نفسه على الاثنين.",
   "Version {0}": "الإصدار {0}",
   "Version {0} is available": "الإصدار {0} متاح",
   "View attachment": "عرض المرفق",
@@ -2825,7 +2825,7 @@ export const AR: Record<string, string> = {
   "Weighted average: receiving updates the average cost (each change is audited). Manual: receiving never changes cost.":
     "المتوسط المرجّح: الاستلام يحدّث متوسط التكلفة (مع تسجيل كل تغيير في السجل). يدوي: الاستلام لا يغيّر التكلفة أبداً.",
   Welcome: "مرحباً",
-  "Welcome to AMWAPOS": "مرحباً بك في AMWAPOS",
+  "Welcome to TILLBH": "مرحباً بك في TILLBH",
   "What can be refunded on a receipt": "ما يمكن إرجاعه من فاتورة",
   WhatsApp: "واتساب",
   "WhatsApp (unofficial Web client)": "واتساب (عميل ويب غير رسمي)",
@@ -2839,8 +2839,8 @@ export const AR: Record<string, string> = {
   "WhatsApp ready to send": "واتساب جاهز للإرسال",
   "WhatsApp runs in an optional sidecar; checkout never depends on it.":
     "يعمل واتساب في ملحق اختياري؛ ولا تعتمد عملية الدفع عليه أبداً.",
-  "WhatsApp runs inside AMWAPOS with its own supervisor. If it stops, it restarts by itself and the tills keep selling; messages wait in the queue.":
-    "يعمل واتساب داخل AMWAPOS مع مشرف خاص به. إذا توقف يعيد التشغيل تلقائياً وتستمر نقاط البيع في البيع، وتنتظر الرسائل في قائمة الانتظار.",
+  "WhatsApp runs inside TILLBH with its own supervisor. If it stops, it restarts by itself and the tills keep selling; messages wait in the queue.":
+    "يعمل واتساب داخل TILLBH مع مشرف خاص به. إذا توقف يعيد التشغيل تلقائياً وتستمر نقاط البيع في البيع، وتنتظر الرسائل في قائمة الانتظار.",
   "WhatsApp temporarily blocked this number until {0}.": "حظر واتساب هذا الرقم مؤقتاً حتى {0}.",
   "WhatsApp's terms do not allow unofficial clients. WhatsApp can restrict or ban a number that uses one, especially for bulk or unsolicited messages. Use a number you can afford to lose and message only customers who expect it.":
     "لا تسمح شروط واتساب بالعملاء غير الرسميين. قد يقيّد واتساب أو يحظر رقماً يستخدم أحدها، خاصة عند إرسال رسائل جماعية أو غير مرغوبة. استخدم رقماً يمكنك الاستغناء عنه وراسل فقط العملاء الذين يتوقعون رسائلك.",
@@ -2849,8 +2849,8 @@ export const AR: Record<string, string> = {
   "WhatsApp: delivery notices": "واتساب: إشعارات التوصيل",
   "WhatsApp: send receipts after a sale": "واتساب: إرسال الإيصالات بعد البيع",
   When: "متى",
-  "When someone asks a question, AMWAPOS sends the question and the results of the lookups the assistant makes (product names, prices, stock, report totals) to the provider. PINs, keys and full customer lists are never sent. Customer messages are sent only if WhatsApp is on and the assistant reads them.":
-    "عند طرح سؤال، يرسل AMWAPOS السؤال ونتائج عمليات البحث التي يجريها المساعد (أسماء المنتجات والأسعار والمخزون وإجماليات التقارير) إلى المزوّد. لا تُرسل الرموز السرية أو المفاتيح أو قوائم العملاء الكاملة أبداً. تُرسل رسائل العملاء فقط إذا كان واتساب مفعّلاً وقرأها المساعد.",
+  "When someone asks a question, TILLBH sends the question and the results of the lookups the assistant makes (product names, prices, stock, report totals) to the provider. PINs, keys and full customer lists are never sent. Customer messages are sent only if WhatsApp is on and the assistant reads them.":
+    "عند طرح سؤال، يرسل TILLBH السؤال ونتائج عمليات البحث التي يجريها المساعد (أسماء المنتجات والأسعار والمخزون وإجماليات التقارير) إلى المزوّد. لا تُرسل الرموز السرية أو المفاتيح أو قوائم العملاء الكاملة أبداً. تُرسل رسائل العملاء فقط إذا كان واتساب مفعّلاً وقرأها المساعد.",
   "Who is signing in?": "من يسجّل الدخول؟",
   "Whole units only.": "وحدات كاملة فقط.",
   "Windows Hello step-up": "تحقق إضافي عبر Windows Hello",
@@ -3033,7 +3033,7 @@ export const AR: Record<string, string> = {
   "Archive or restore products": "أرشفة منتجات أو استعادتها",
   "Ask about sales, stock and purchasing": "اسأل عن المبيعات والمخزون والمشتريات",
   "Ask about this sale or the store": "اسأل عن هذا البيع أو عن المتجر",
-  "Automatic backups run only while AMWAPOS is open.": "يعمل النسخ الاحتياطي التلقائي فقط أثناء فتح AMWAPOS.",
+  "Automatic backups run only while TILLBH is open.": "يعمل النسخ الاحتياطي التلقائي فقط أثناء فتح TILLBH.",
   "Back up now": "انسخ احتياطيًا الآن",
   "Bought {0} · refunded {1} · left {2}": "مُشترى {0} · مُسترد {1} · متبقٍ {2}",
   "Briefing note": "ملاحظة موجز",
@@ -3349,8 +3349,8 @@ export const AR: Record<string, string> = {
   "The search engine id has characters it cannot contain.": "يحتوي معرّف محرك البحث على أحرف غير مسموحة.",
   "The search language must be English or Arabic.": "يجب أن تكون لغة البحث الإنجليزية أو العربية.",
   "The image is too small (at least 64×64 pixels).": "الصورة صغيرة جداً (64×64 بكسل على الأقل).",
-  "Automatic pictures are disabled on this computer by the administrator (AMWAPOS_IMAGE_SEARCH=off).":
-    "الصور التلقائية معطّلة على هذا الجهاز من قِبل المسؤول (AMWAPOS_IMAGE_SEARCH=off).",
+  "Automatic pictures are disabled on this computer by the administrator (TILLBH_IMAGE_SEARCH=off).":
+    "الصور التلقائية معطّلة على هذا الجهاز من قِبل المسؤول (TILLBH_IMAGE_SEARCH=off).",
   "Automatic pictures are not running": "الصور التلقائية لا تعمل",
   "Automatic pictures are on": "الصور التلقائية مفعّلة",
   "Automatic pictures are switched off in Settings → Product images.":
@@ -3382,8 +3382,8 @@ export const AR: Record<string, string> = {
   "Deleted on WhatsApp": "حُذف على واتساب",
   "Not on WhatsApp": "ليس على واتساب",
   "WhatsApp catalogue": "كتالوج واتساب",
-  "Publishes this shop's products to the WhatsApp Business catalogue of the linked number, through the same WhatsApp link that sends receipts. AMWAPOS stays the source of truth: prices, names, descriptions and pictures flow from AMWAPOS to WhatsApp, never back.":
-    "ينشر منتجات المتجر في كتالوج واتساب للأعمال للرقم المرتبط، عبر نفس ربط واتساب الذي يرسل الإيصالات. يبقى AMWAPOS المصدر المعتمد: الأسعار والأسماء والأوصاف والصور تنتقل من AMWAPOS إلى واتساب، ولا تعود أبداً.",
+  "Publishes this shop's products to the WhatsApp Business catalogue of the linked number, through the same WhatsApp link that sends receipts. TILLBH stays the source of truth: prices, names, descriptions and pictures flow from TILLBH to WhatsApp, never back.":
+    "ينشر منتجات المتجر في كتالوج واتساب للأعمال للرقم المرتبط، عبر نفس ربط واتساب الذي يرسل الإيصالات. يبقى TILLBH المصدر المعتمد: الأسعار والأسماء والأوصاف والصور تنتقل من TILLBH إلى واتساب، ولا تعود أبداً.",
   "Linked number": "الرقم المرتبط",
   Supported: "مدعوم",
   "Not available": "غير متاح",
@@ -3408,8 +3408,8 @@ export const AR: Record<string, string> = {
     "سيُنشر أو يُحدَّث {0} منتجاً في كتالوج واتساب للرقم +{1}. المنتجات التي أنشأتها مباشرة في واتساب لا تتغير.",
   "The linked WhatsApp number is a personal account. Catalogues need WhatsApp Business.":
     "رقم واتساب المرتبط حساب شخصي. الكتالوجات تحتاج واتساب للأعمال.",
-  "This WhatsApp Business account has no catalogue that AMWAPOS can read. Create the catalogue once in the WhatsApp Business app, then check again.":
-    "لا يوجد في حساب واتساب للأعمال هذا كتالوج يستطيع AMWAPOS قراءته. أنشئ الكتالوج مرة واحدة في تطبيق واتساب للأعمال ثم تحقق مجدداً.",
+  "This WhatsApp Business account has no catalogue that TILLBH can read. Create the catalogue once in the WhatsApp Business app, then check again.":
+    "لا يوجد في حساب واتساب للأعمال هذا كتالوج يستطيع TILLBH قراءته. أنشئ الكتالوج مرة واحدة في تطبيق واتساب للأعمال ثم تحقق مجدداً.",
   "The WhatsApp catalogue is not available right now. Check again in a moment.":
     "كتالوج واتساب غير متاح الآن. تحقق مجدداً بعد قليل.",
   "WhatsApp is not connected, or the linked account is still being checked.":

@@ -3,7 +3,7 @@ name = "amwapos"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "AMWAPOS desktop application (Windows)"
+description = "TILLBH desktop application (Windows)"
 default-run = "amwapos"
 
 [build-dependencies]

@@ -1,4 +1,4 @@
-# AMWAPOS
+# TILLBH
 
 Offline-first retail point of sale for Windows 10/11 (x64), built for Bahrain and GCC shops.
 English and Arabic (right-to-left) user interface; Arabic prints correctly on thermal receipts.
@@ -47,7 +47,7 @@ cargo run -p amwapos-core --example raster_preview -- out.pbm   # look at Arabic
 
 ## Build the Windows installer
 
-On Windows: `npx tauri build --bundles nsis` → `target/release/bundle/nsis/AMWAPOS_<ver>_x64-setup.exe`.
+On Windows: `npx tauri build --bundles nsis` → `target/release/bundle/nsis/TILLBH_<ver>_x64-setup.exe`.
 See [docs/RELEASE.md](docs/RELEASE.md) for signing, SBOM and checksums.
 
 ## Documentation

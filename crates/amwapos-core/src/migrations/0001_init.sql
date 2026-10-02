@@ -1,4 +1,4 @@
--- AMWAPOS schema v1.
+-- TILLBH schema v1.
 -- Conventions:
 --   * IDs are ULID text (26 chars).
 --   * Money columns end in _minor and are INTEGER minor units.

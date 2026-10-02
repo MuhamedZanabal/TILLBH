@@ -1,7 +1,7 @@
 //! Product images: manual upload / replace / remove, precedence over the
 //! automatic image, and the one-time automatic lookup state machine.
 //!
-//! The workspace's `.cargo/config.toml` sets `AMWAPOS_IMAGE_SEARCH=off` for
+//! The workspace's `.cargo/config.toml` sets `TILLBH_IMAGE_SEARCH=off` for
 //! every cargo-run process so tests never reach real providers; this binary
 //! clears it to test the product default (the kill switch has its own test
 //! binary, `product_images_kill_switch.rs`).
@@ -39,7 +39,7 @@ fn count(e: &Env, sql: &str) -> i64 {
 
 /// A normal installation: no administrator kill switch in the environment.
 fn normal_env() -> Env {
-    std::env::remove_var("AMWAPOS_IMAGE_SEARCH");
+    std::env::remove_var("TILLBH_IMAGE_SEARCH");
     env()
 }
 

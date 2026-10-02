@@ -14,7 +14,7 @@
 //! Automatic discovery is on by default for new products created without a
 //! picture. Two switches turn it off: the "Find pictures automatically"
 //! setting (`catalog.image_search.enabled`) and, for administrators, the
-//! environment variable `AMWAPOS_IMAGE_SEARCH=off`.
+//! environment variable `TILLBH_IMAGE_SEARCH=off`.
 //!
 //! Lifecycle (persisted in `products.auto_image_status`, migration 0020):
 //!
@@ -204,10 +204,10 @@ impl Default for ImageSearchSettings {
 }
 pub const KEY_IMAGE_SEARCH: &str = "catalog.image_search";
 
-/// Administrator kill switch: `AMWAPOS_IMAGE_SEARCH=off` (or 0 / false / no)
+/// Administrator kill switch: `TILLBH_IMAGE_SEARCH=off` (or 0 / false / no)
 /// stops every outside image search on this computer, whatever the settings.
 pub fn search_disabled_by_environment() -> bool {
-    std::env::var("AMWAPOS_IMAGE_SEARCH")
+    std::env::var("TILLBH_IMAGE_SEARCH")
         .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "off" | "0" | "false" | "no"))
         .unwrap_or(false)
 }
@@ -228,7 +228,7 @@ pub enum Availability {
     Active,
     /// The "Find pictures automatically" setting is off.
     SwitchedOff,
-    /// `AMWAPOS_IMAGE_SEARCH=off` on this computer.
+    /// `TILLBH_IMAGE_SEARCH=off` on this computer.
     DisabledByAdministrator,
     /// Every source is switched off (or Google alone, without its key / id).
     NoSources,

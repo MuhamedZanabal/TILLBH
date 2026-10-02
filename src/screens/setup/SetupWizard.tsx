@@ -237,7 +237,7 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
       <aside className="wizard-steps" aria-label={t("Setup steps")}>
         <div className="row" style={{ marginBottom: 20 }}>
           <Logo size={30} />
-          <strong>{t("AMWAPOS Setup")}</strong>
+          <strong>{t("TILLBH Setup")}</strong>
           <span className="grow" />
           <LanguageToggle />
         </div>
@@ -258,7 +258,7 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
             {name === "Welcome" ? (
               <>
                 <div>
-                  <h1>{t("Welcome to AMWAPOS")}</h1>
+                  <h1>{t("Welcome to TILLBH")}</h1>
                   <p className="muted">
                     {t("Set up this computer. Everything runs locally; the Internet is not required to sell.")}
                   </p>
@@ -566,7 +566,7 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
                 ) : null}
                 {probe ? (
                   <Banner tone="success" title={t("Found {0}", String(probe.business_name))}>
-                    {t("Hub {0} · AMWAPOS {1}", String(probe.hub_name), String(probe.app_version))}
+                    {t("Hub {0} · TILLBH {1}", String(probe.hub_name), String(probe.app_version))}
                   </Banner>
                 ) : null}
                 <TextInput

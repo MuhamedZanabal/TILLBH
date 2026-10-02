@@ -36,7 +36,7 @@ use crate::time;
 use crate::validate;
 
 pub const KEY_WA_CATALOG: &str = "whatsapp.catalog";
-/// Conservative AMWAPOS limits (not published by WhatsApp): longer text is
+/// Conservative TILLBH limits (not published by WhatsApp): longer text is
 /// cut deterministically at a character boundary with "…".
 pub const NAME_MAX_CHARS: usize = 150;
 pub const DESCRIPTION_MAX_CHARS: usize = 1000;

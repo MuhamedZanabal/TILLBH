@@ -1,10 +1,10 @@
 //! Where the WhatsApp session lives, and its (explicit) backup.
 //!
 //! The session (device identity and Signal keys) is kept in its own SQLite
-//! file, `<data>/whatsapp/session.db`, where `<data>` is the AMWAPOS data
-//! folder (`%ProgramData%\AMWAPOS\data` on Windows). It is never the sales
+//! file, `<data>/whatsapp/session.db`, where `<data>` is the TILLBH data
+//! folder (`%ProgramData%\TILLBH\data` on Windows). It is never the sales
 //! ledger and never a file next to the program. Only the WhatsApp adapter
-//! opens it; AMWAPOS' own connections never do (the explicit backup below
+//! opens it; TILLBH' own connections never do (the explicit backup below
 //! opens its own read-only connection).
 
 use std::path::{Path, PathBuf};

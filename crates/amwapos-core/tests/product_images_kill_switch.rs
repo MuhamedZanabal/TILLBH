@@ -1,4 +1,4 @@
-//! The administrator kill switch `AMWAPOS_IMAGE_SEARCH=off`: discovery is
+//! The administrator kill switch `TILLBH_IMAGE_SEARCH=off`: discovery is
 //! reported as disabled by the administrator, nothing is queued or claimed,
 //! the settings cannot turn it back on, and manual pictures keep working.
 //! (One test in this binary: it sets a process-wide environment variable.)
@@ -12,7 +12,7 @@ use serde_json::json;
 
 #[test]
 fn the_environment_kill_switch_stops_discovery_but_not_manual_pictures() {
-    std::env::set_var("AMWAPOS_IMAGE_SEARCH", "off");
+    std::env::set_var("TILLBH_IMAGE_SEARCH", "off");
     let e = env();
     let o = e.core.product_image_overview(&e.owner_token).unwrap();
     assert_eq!(
@@ -39,9 +39,9 @@ fn the_environment_kill_switch_stops_discovery_but_not_manual_pictures() {
     let st = e.core.product_image_upload(&e.owner_token, &pid, &base64::engine::general_purpose::STANDARD.encode(&png)).unwrap();
     assert_eq!(st.image_source.as_deref(), Some("manual"));
     for v in ["0", "false", "NO", " Off "] {
-        std::env::set_var("AMWAPOS_IMAGE_SEARCH", v);
+        std::env::set_var("TILLBH_IMAGE_SEARCH", v);
         assert!(amwapos_core::product_images::search_disabled_by_environment(), "{v}");
     }
-    std::env::set_var("AMWAPOS_IMAGE_SEARCH", "on");
+    std::env::set_var("TILLBH_IMAGE_SEARCH", "on");
     assert!(!amwapos_core::product_images::search_disabled_by_environment());
 }

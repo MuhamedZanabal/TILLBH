@@ -1,4 +1,4 @@
--- AMWAPOS schema v2: multi-terminal replication support.
+-- TILLBH schema v2: multi-terminal replication support.
 --
 -- Change capture: AFTER triggers append (table, primary key) to sync_outbox.
 -- The row payload is read when a change is shipped, so the outbox never holds

@@ -15,7 +15,7 @@ jobs:
       HAS_UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY != '' }}
       # Public half of the update-signing key, compiled into the app. Without it
       # the app never checks for or installs updates.
-      AMWAPOS_UPDATE_PUBKEY: ${{ vars.AMWAPOS_UPDATE_PUBKEY }}
+      TILLBH_UPDATE_PUBKEY: ${{ vars.TILLBH_UPDATE_PUBKEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

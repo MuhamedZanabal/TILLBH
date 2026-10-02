@@ -56,7 +56,7 @@ fn protocol_rejection(h: &HeaderMap) -> Option<Response> {
 
 fn outdated() -> Response {
     let e = AppError::conflict(format!(
-        "This hub requires AMWAPOS sync protocol {PROTOCOL_VERSION} (encrypted). Install the same AMWAPOS version on the hub and this terminal."
+        "This hub requires TILLBH sync protocol {PROTOCOL_VERSION} (encrypted). Install the same TILLBH version on the hub and this terminal."
     ));
     (StatusCode::UPGRADE_REQUIRED, [("content-type", "application/json")], serde_json::to_vec(&e).unwrap_or_default()).into_response()
 }
@@ -96,7 +96,7 @@ fn header<'a>(h: &'a HeaderMap, k: &str) -> &'a str {
 }
 
 async fn health() -> Response {
-    json_response(&serde_json::json!({ "ok": true, "product": "AMWAPOS", "version": amwapos_core::audit::APP_VERSION }))
+    json_response(&serde_json::json!({ "ok": true, "product": "TILLBH", "version": amwapos_core::audit::APP_VERSION }))
 }
 
 async fn info(State(st): State<Arc<HubState>>) -> Response {

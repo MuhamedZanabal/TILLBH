@@ -3,7 +3,7 @@ name = "amwapos-hub"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "AMWAPOS LAN hub server, terminal sync client and discovery"
+description = "TILLBH LAN hub server, terminal sync client and discovery"
 
 [dependencies]
 amwapos-core = { path = "../amwapos-core" }

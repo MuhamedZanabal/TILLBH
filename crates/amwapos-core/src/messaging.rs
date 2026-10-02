@@ -1065,7 +1065,7 @@ impl AppCore {
             .map_err(|_| AppError::new(crate::error::ErrorCode::NotFound, "The file is no longer on this computer."))?;
         let root = std::fs::canonicalize(&self.data_dir)?;
         if !p.starts_with(&root) {
-            return Err(AppError::new(crate::error::ErrorCode::Forbidden, "File is outside the AMWAPOS data folder."));
+            return Err(AppError::new(crate::error::ErrorCode::Forbidden, "File is outside the TILLBH data folder."));
         }
         let bytes = std::fs::read(&p)?;
         Ok(json!({ "mime": mime, "base64": crate::ids::b64(&bytes), "size": bytes.len() }))

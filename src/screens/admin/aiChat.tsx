@@ -315,7 +315,7 @@ function LiveView({ live }: { live: Live }) {
           </div>
         ) : null}
         {live.nudged ? (
-          <div className="tiny">{t("AMWAPOS asked the assistant to back its figures with a tool.")}</div>
+          <div className="tiny">{t("TILLBH asked the assistant to back its figures with a tool.")}</div>
         ) : null}
         <div className="ai-rich streaming">
           {live.text ? <span style={{ whiteSpace: "pre-wrap" }}>{live.text}</span> : null}
@@ -352,7 +352,7 @@ type Message = AiConversation["messages"][number];
 function MessageView({ m, fallback }: { m: Message; fallback?: { from: string; to: string } | null }) {
   if (m.kind === "nudge") {
     return (
-      <div className="tiny muted msg-note">{t("AMWAPOS asked the assistant to back its figures with a tool.")}</div>
+      <div className="tiny muted msg-note">{t("TILLBH asked the assistant to back its figures with a tool.")}</div>
     );
   }
   const mine = m.role === "user";
@@ -788,7 +788,7 @@ function BriefingForm({ b, onSaved, onCancel }: { b: AiBriefing | null; onSaved:
         />
         <div className="tiny">
           {t(
-            "Runs while AMWAPOS is open on this computer, with the permissions of the person who saves it. It only reads.",
+            "Runs while TILLBH is open on this computer, with the permissions of the person who saves it. It only reads.",
           )}
         </div>
       </div>

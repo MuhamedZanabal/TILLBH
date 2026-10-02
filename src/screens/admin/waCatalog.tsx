@@ -101,7 +101,7 @@ export function WaCatalog() {
         </div>
         <div className="tiny">
           {t(
-            "Publishes this shop's products to the WhatsApp Business catalogue of the linked number, through the same WhatsApp link that sends receipts. AMWAPOS stays the source of truth: prices, names, descriptions and pictures flow from AMWAPOS to WhatsApp, never back.",
+            "Publishes this shop's products to the WhatsApp Business catalogue of the linked number, through the same WhatsApp link that sends receipts. TILLBH stays the source of truth: prices, names, descriptions and pictures flow from TILLBH to WhatsApp, never back.",
           )}
         </div>
         {cap.detail ? <div className="tiny muted">{tb(cap.detail)}</div> : null}

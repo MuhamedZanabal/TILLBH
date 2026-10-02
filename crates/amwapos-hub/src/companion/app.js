@@ -1,4 +1,4 @@
-// AMWAPOS owner view (read-only). Plain script: no build step, no framework.
+// TILLBH owner view (read-only). Plain script: no build step, no framework.
 // The token arrives in the link's #fragment (never sent to a server log),
 // is kept in this phone's storage and sent as a bearer header.
 (function () {
@@ -83,7 +83,7 @@
     if (!snap) return;
     digits = snap.digits == null ? 3 : snap.digits;
     currency = snap.currency || "BHD";
-    document.getElementById("biz").textContent = snap.business_name || "AMWAPOS";
+    document.getElementById("biz").textContent = snap.business_name || "TILLBH";
     document.getElementById("stamp").textContent = t("Updated {0}", when(snap.generated_at));
     var d = snap.dashboard || {};
     var k = d.kpis || {};

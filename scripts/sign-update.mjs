@@ -2,11 +2,11 @@
 //
 //   node scripts/sign-update.mjs --gen-key
 //       Prints a new private key (PKCS#8 PEM, keep secret) and the public key
-//       (base64, 32 bytes) to build into the app as AMWAPOS_UPDATE_PUBKEY.
+//       (base64, 32 bytes) to build into the app as TILLBH_UPDATE_PUBKEY.
 //
 //   UPDATE_SIGNING_KEY="$(cat key.pem)" node scripts/sign-update.mjs \
-//       --installer path/AMWAPOS_1.2.0_x64-setup.exe --version 1.2.0 \
-//       --url https://updates.example/AMWAPOS_1.2.0_x64-setup.exe [--notes "…"] > latest.json
+//       --installer path/TILLBH_1.2.0_x64-setup.exe --version 1.2.0 \
+//       --url https://updates.example/TILLBH_1.2.0_x64-setup.exe [--notes "…"] > latest.json
 //
 // The app accepts latest.json only if the signature verifies with the built-in
 // public key, the version is newer, and the downloaded file matches size+SHA-256.
@@ -22,7 +22,7 @@ if (args["gen-key"]) {
   const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
   const raw = publicKey.export({ format: "der", type: "spki" }).subarray(-32);
   process.stdout.write(privateKey.export({ format: "pem", type: "pkcs8" }));
-  process.stdout.write(`\nAMWAPOS_UPDATE_PUBKEY=${raw.toString("base64")}\n`);
+  process.stdout.write(`\nTILLBH_UPDATE_PUBKEY=${raw.toString("base64")}\n`);
   process.exit(0);
 }
 

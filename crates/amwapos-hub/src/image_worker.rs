@@ -372,7 +372,7 @@ fn api_client() -> reqwest::Client {
         }))
         .timeout(Duration::from_secs(15))
         .connect_timeout(Duration::from_secs(6))
-        .user_agent("AMWAPOS/0.1 (product image lookup)")
+        .user_agent("TILLBH/0.1 (product image lookup)")
         .build()
         .unwrap_or_default()
 }
@@ -476,7 +476,7 @@ fn fe(transient: bool, m: impl Into<String>) -> FetchError {
 /// because behind a proxy the proxy resolves the host name again and the
 /// address check above would no longer bind the real destination. Where the
 /// network allows only proxied traffic, an administrator can name a proxy
-/// they trust with `AMWAPOS_IMAGE_FETCH_PROXY`; destination filtering then
+/// they trust with `TILLBH_IMAGE_FETCH_PROXY`; destination filtering then
 /// also depends on that proxy (the local check still runs first).
 pub struct SafeFetcher {
     allow_private: bool,
@@ -493,9 +493,9 @@ pub enum ProxyPolicy {
 }
 
 impl ProxyPolicy {
-    /// `AMWAPOS_IMAGE_FETCH_PROXY=<url>` → trusted proxy; otherwise direct.
+    /// `TILLBH_IMAGE_FETCH_PROXY=<url>` → trusted proxy; otherwise direct.
     pub fn from_environment() -> Self {
-        match std::env::var("AMWAPOS_IMAGE_FETCH_PROXY") {
+        match std::env::var("TILLBH_IMAGE_FETCH_PROXY") {
             Ok(u) if !u.trim().is_empty() => ProxyPolicy::Trusted(u.trim().to_string()),
             _ => ProxyPolicy::Direct,
         }
@@ -510,7 +510,7 @@ impl Default for SafeFetcher {
             ONCE.call_once(|| {
                 tracing::warn!(
                     "a system proxy is configured but product image downloads connect directly; \
-                     set AMWAPOS_IMAGE_FETCH_PROXY to a trusted proxy if direct connections are blocked"
+                     set TILLBH_IMAGE_FETCH_PROXY to a trusted proxy if direct connections are blocked"
                 )
             });
         }
@@ -621,7 +621,7 @@ impl SafeFetcher {
                 .redirect(reqwest::redirect::Policy::none())
                 .timeout(Duration::from_secs(15))
                 .connect_timeout(Duration::from_secs(6))
-                .user_agent("AMWAPOS/0.1 (product image lookup)");
+                .user_agent("TILLBH/0.1 (product image lookup)");
             match &self.proxy {
                 ProxyPolicy::Direct => {
                     // Never the system proxy; pinned to the address checked above,
@@ -783,8 +783,8 @@ pub async fn lookup(providers: &[Arc<dyn ImageSearchProvider>], fetcher: &SafeFe
 /// without claiming anything, so nothing is marked failed for lack of setup).
 pub fn providers_for(cfg: &ImageSearchSettings, google_key: Option<String>) -> Vec<Arc<dyn ImageSearchProvider>> {
     let mut v: Vec<Arc<dyn ImageSearchProvider>> = vec![];
-    let off_base = std::env::var("AMWAPOS_OFF_BASE").unwrap_or_else(|_| "https://world.openfoodfacts.org".into());
-    let google_base = std::env::var("AMWAPOS_GOOGLE_SEARCH_BASE").unwrap_or_else(|_| "https://www.googleapis.com".into());
+    let off_base = std::env::var("TILLBH_OFF_BASE").unwrap_or_else(|_| "https://world.openfoodfacts.org".into());
+    let google_base = std::env::var("TILLBH_GOOGLE_SEARCH_BASE").unwrap_or_else(|_| "https://www.googleapis.com".into());
     if amwapos_core::product_images::search_disabled_by_environment() || !cfg.enabled {
         return v;
     }
@@ -792,7 +792,7 @@ pub fn providers_for(cfg: &ImageSearchSettings, google_key: Option<String>) -> V
         v.push(Arc::new(OpenFoodFacts::new(&off_base)));
     }
     if cfg.bing {
-        let bing_base = std::env::var("AMWAPOS_BING_BASE").unwrap_or_else(|_| "https://www.bing.com".into());
+        let bing_base = std::env::var("TILLBH_BING_BASE").unwrap_or_else(|_| "https://www.bing.com".into());
         v.push(Arc::new(BingImages::new(&bing_base)));
     }
     if cfg.google && !cfg.google_cx.is_empty() {

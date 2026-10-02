@@ -433,10 +433,10 @@ impl AppCore {
         out.push(DiagnosticItem {
             component: "Application".into(),
             state: "ok".into(),
-            summary: format!("AMWAPOS {}", audit::APP_VERSION),
+            summary: format!("TILLBH {}", audit::APP_VERSION),
             details: json!({
                 "version": audit::APP_VERSION,
-                "build_sha": option_env!("AMWAPOS_BUILD_SHA").unwrap_or("dev"),
+                "build_sha": option_env!("TILLBH_BUILD_SHA").unwrap_or("dev"),
                 "started_at": time::fmt(self.started_at),
                 "os": std::env::consts::OS, "arch": std::env::consts::ARCH,
                 "data_dir": self.data_dir.to_string_lossy(),

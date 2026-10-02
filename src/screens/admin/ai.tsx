@@ -523,10 +523,10 @@ export function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () =>
             <div className="small">
               {command
                 ? t(
-                    "AMWAPOS runs the same command as the admin page, with your permissions. Manager approval or Windows Hello is asked for if that command needs it. A wrong PIN changes nothing.",
+                    "TILLBH runs the same command as the admin page, with your permissions. Manager approval or Windows Hello is asked for if that command needs it. A wrong PIN changes nothing.",
                   )
                 : t(
-                    "AMWAPOS runs this through the normal command with your permissions. It can be undone later with a correcting record; nothing is deleted.",
+                    "TILLBH runs this through the normal command with your permissions. It can be undone later with a correcting record; nothing is deleted.",
                   )}
             </div>
           </div>
@@ -991,7 +991,7 @@ export function AiSettingsSection() {
             />
             <div className="tiny" style={{ marginInlineStart: 24 }}>
               {t(
-                "When someone asks a question, AMWAPOS sends the question and the results of the lookups the assistant makes (product names, prices, stock, report totals) to the provider. PINs, keys and full customer lists are never sent. Customer messages are sent only if WhatsApp is on and the assistant reads them.",
+                "When someone asks a question, TILLBH sends the question and the results of the lookups the assistant makes (product names, prices, stock, report totals) to the provider. PINs, keys and full customer lists are never sent. Customer messages are sent only if WhatsApp is on and the assistant reads them.",
               )}
               {` ${t("Changing to another provider clears this tick; agree again for the new one.")}`}
               {s.consent_at ? ` ${t("Agreed on {0}.", formatDateTime(s.consent_at))}` : ""}
@@ -1052,7 +1052,7 @@ export function AiSettingsSection() {
         <strong>{t("Free fallback when the provider is unavailable")}</strong>
         <div className="small muted">
           {t(
-            "If the chosen provider times out, is rate-limited, has a server error or does not know the model, AMWAPOS asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key (401) or a refusal. It is off until you tick the box.",
+            "If the chosen provider times out, is rate-limited, has a server error or does not know the model, TILLBH asks OpenRouter instead, using the model below (openrouter/free picks a free model). The page shows when this happens. It never happens for a wrong key (401) or a refusal. It is off until you tick the box.",
           )}
         </div>
         <Checkbox

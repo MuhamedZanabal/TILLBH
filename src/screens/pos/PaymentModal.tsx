@@ -306,7 +306,7 @@ export function PaymentModal({
                 <div className="hint">
                   {method === "benefitpay"
                     ? t("Recorded tender — not verified with the bank. Check the customer's BenefitPay confirmation.")
-                    : t("Recorded tender. AMWAPOS does not verify card settlement.")}
+                    : t("Recorded tender. TILLBH does not verify card settlement.")}
                 </div>
               </div>
             ) : null}

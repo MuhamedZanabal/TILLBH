@@ -385,7 +385,7 @@ function Shell() {
       <aside className="sidebar">
         <div className="sb-brand">
           <Logo size={28} />
-          <span className="sb-label">{t("AMWAPOS")}</span>
+          <span className="sb-label">{t("TILLBH")}</span>
         </div>
         <nav aria-label={t("Admin navigation")}>
           {NAV.map((g) => {

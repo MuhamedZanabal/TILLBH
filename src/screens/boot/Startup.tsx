@@ -9,7 +9,7 @@ export function Startup({ stage }: { stage: string }) {
   return (
     <div className="splash">
       <Logo size={56} light />
-      <div className="splash-name">{t("AMWAPOS")}</div>
+      <div className="splash-name">{t("TILLBH")}</div>
       <div className="splash-sub">{t("Retail Operations System")}</div>
       <div className="splash-bar" role="progressbar" aria-label={t("Starting")}>
         <span />
@@ -27,7 +27,7 @@ export function StartupFailure({ error, onRetry }: { error: unknown; onRetry: ()
     <div className="splash failure">
       <div className="failure-card">
         <AlertOctagon size={44} color="var(--danger)" />
-        <h1>{t("AMWAPOS could not start")}</h1>
+        <h1>{t("TILLBH could not start")}</h1>
         <p className="muted" style={{ maxWidth: 520, textAlign: "center" }}>
           {ex.message}
         </p>

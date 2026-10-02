@@ -60,7 +60,7 @@ export function discoveryNote(a: DiscoveryAvailability): string | null {
     case "switched_off":
       return t("Automatic pictures are switched off in Settings → Product images.");
     case "disabled_by_administrator":
-      return t("Automatic pictures are disabled on this computer by the administrator (AMWAPOS_IMAGE_SEARCH=off).");
+      return t("Automatic pictures are disabled on this computer by the administrator (TILLBH_IMAGE_SEARCH=off).");
     case "no_sources":
       return t("Automatic pictures have no source to search: switch one on in Settings → Product images.");
     default:

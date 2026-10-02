@@ -301,7 +301,7 @@ pub(crate) fn migrate(conn: &Connection, path: &Path) -> AppResult<MigrationRepo
                 return Err(AppError::new(
                     ErrorCode::Database,
                     format!(
-                    "This database was created by a newer AMWAPOS (schema {v}). Install the newer version or restore a compatible backup."
+                    "This database was created by a newer TILLBH (schema {v}). Install the newer version or restore a compatible backup."
                 ),
                 ))
             }

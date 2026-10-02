@@ -20,8 +20,8 @@ use crate::ids::new_id;
 use crate::service::AppCore;
 use crate::{audit, time, validate};
 
-/// Marks a text block AMWAPOS added to the person's message (till cart).
-pub const CONTEXT_PREFIX: &str = "[AMWAPOS context]";
+/// Marks a text block TILLBH added to the person's message (till cart).
+pub const CONTEXT_PREFIX: &str = "[TILLBH context]";
 /// Photos re-sent to the model per request (older ones are summarised).
 pub const MAX_IMAGES_SENT: usize = 4;
 pub const MAX_IMAGES_PER_QUESTION: usize = 4;

@@ -103,11 +103,11 @@ export function LoginScreen() {
       <section className="login-brand">
         <div className="row">
           <Logo size={36} />
-          <strong style={{ fontSize: 18 }}>{t("AMWAPOS")}</strong>
+          <strong style={{ fontSize: 18 }}>{t("TILLBH")}</strong>
         </div>
         <h1>{t("Fast retail. Accurate operations.")}</h1>
         <div className="meta">
-          <div>{t("AMWAPOS Terminal")}</div>
+          <div>{t("TILLBH Terminal")}</div>
           <div>
             {status.business_name} · {status.device?.name} ({status.device?.device_code})
           </div>

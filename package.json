@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "AMWAPOS — offline-first retail POS and operations platform",
+  "description": "TILLBH — offline-first retail POS and operations platform",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

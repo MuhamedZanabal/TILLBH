@@ -1,5 +1,5 @@
 //! Live provider smoke test: NOT part of CI or any normal test run (every
-//! test here is `#[ignore]`, and the workspace sets `AMWAPOS_IMAGE_SEARCH=off`
+//! test here is `#[ignore]`, and the workspace sets `TILLBH_IMAGE_SEARCH=off`
 //! for cargo processes anyway; these tests call the providers directly).
 //!
 //! Run by hand, with internet access, to check that the real sources still
@@ -13,7 +13,7 @@
 //! particular) or is unreachable from this network; the application itself
 //! does not depend on this test. The search clients use the system proxy.
 //! The download test uses the production download policy (direct, or
-//! `AMWAPOS_IMAGE_FETCH_PROXY`).
+//! `TILLBH_IMAGE_FETCH_PROXY`).
 
 use amwapos_hub::image_worker::{BingImages, ImageSearchProvider, OpenFoodFacts, SafeFetcher, SearchQuery};
 

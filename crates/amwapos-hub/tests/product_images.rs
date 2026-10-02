@@ -4,7 +4,7 @@
 //! nothing, no result / bad candidates end in not_found, provider outages are
 //! retried (bounded), and the SSRF guard refuses internal addresses.
 //!
-//! The workspace's `.cargo/config.toml` sets `AMWAPOS_IMAGE_SEARCH=off` for
+//! The workspace's `.cargo/config.toml` sets `TILLBH_IMAGE_SEARCH=off` for
 //! cargo-run processes; this binary clears it (these tests use local
 //! fixtures only, never real providers).
 
@@ -138,7 +138,7 @@ struct Env {
 }
 
 fn env() -> Env {
-    std::env::remove_var("AMWAPOS_IMAGE_SEARCH");
+    std::env::remove_var("TILLBH_IMAGE_SEARCH");
     let dir = tempfile::tempdir().unwrap();
     let core = Arc::new(AppCore::open(dir.path(), Arc::new(MemorySecretStore::default())).unwrap());
     core.setup_initialize(

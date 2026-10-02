@@ -328,7 +328,7 @@ pub struct WhatsAppSettings {
     pub default_lang: String,
     /// Attach the PDF receipt when sending a receipt message.
     pub attach_pdf: bool,
-    /// Mark inbound messages as read on the phone when opened in AMWAPOS.
+    /// Mark inbound messages as read on the phone when opened in TILLBH.
     pub send_read_receipts: bool,
     /// Send the payment acknowledgement automatically after a person confirms
     /// a payment screenshot.

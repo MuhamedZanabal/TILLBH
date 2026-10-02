@@ -20,9 +20,9 @@
 ## Secrets
 
 - The hub master secret and the terminal device key are stored in Windows Credential Manager
-  (`keyring`, service `AMWAPOS`). The database holds only a SHA-256 fingerprint of the hub
+  (`keyring`, service `TILLBH`). The database holds only a SHA-256 fingerprint of the hub
   secret.
-- Credential Manager entries belong to one Windows account. Run AMWAPOS under a single Windows
+- Credential Manager entries belong to one Windows account. Run TILLBH under a single Windows
   account per till. If the hub is started under a different account it reports the missing
   credential. It does not generate a new one, which would silently break every paired terminal.
   **Admin → Sync / Hub → Reset hub credentials** replaces it; every terminal must then pair again.
@@ -42,7 +42,7 @@ These are known and deliberate. None of them is silently weakened by the code.
 | UDP discovery broadcasts the hub name and address | Tills find the hub without typing an IP | Private-profile firewall rule; pairing still needs the code |
 | No forward secrecy for synced traffic | Traffic keys derive from each device key, which derives from the hub master secret | A recording is only readable with the hub's Windows credential; reset hub credentials after a suspected compromise (pairing exchanges use fresh SPAKE2 keys) |
 | Database and backups are not encrypted at rest | SQLite with no page encryption | BitLocker on tills and hub; encrypted drives or access-controlled shares for backups (below) |
-| Hub/till secrets are per Windows account | Windows Credential Manager | Run AMWAPOS under one Windows account per computer; a missing credential is reported, never silently replaced |
+| Hub/till secrets are per Windows account | Windows Credential Manager | Run TILLBH under one Windows account per computer; a missing credential is reported, never silently replaced |
 | Protocol downgrade | — | Not possible: the hub answers only protocol 2 (426 otherwise) and tills refuse a hub that reports another protocol; there is no plaintext fallback |
 
 ## What BitLocker covers, and what a stolen database yields
@@ -74,7 +74,7 @@ share.
 
 ## Data at rest
 
-- `%ProgramData%\AMWAPOS` is created by the installer with explicit ACLs:
+- `%ProgramData%\TILLBH` is created by the installer with explicit ACLs:
   - SYSTEM and Administrators have full control.
   - local Users can modify.
 - The SQLite database is **not encrypted**. Anyone with Windows access to the till can copy the

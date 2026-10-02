@@ -33,16 +33,16 @@ pub struct OcrPaths {
 impl OcrPaths {
     /// Installed layout: `<resources>/tesseract/tesseract.exe` and
     /// `<resources>/ocr-models`. Development: `ocr/models` in the repository
-    /// and `tesseract` on PATH. `AMWAPOS_TESSERACT` / `AMWAPOS_OCR_MODELS`
+    /// and `tesseract` on PATH. `TILLBH_TESSERACT` / `TILLBH_OCR_MODELS`
     /// override both.
     pub fn discover(resource_dir: Option<&Path>) -> Self {
         let exe = if cfg!(windows) { "tesseract.exe" } else { "tesseract" };
-        let tesseract = std::env::var_os("AMWAPOS_TESSERACT")
+        let tesseract = std::env::var_os("TILLBH_TESSERACT")
             .map(PathBuf::from)
             .or_else(|| resource_dir.map(|r| r.join("tesseract").join(exe)).filter(|p| p.exists()))
             .or_else(|| Some(PathBuf::from(exe)));
         let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ocr/models");
-        let models = std::env::var_os("AMWAPOS_OCR_MODELS")
+        let models = std::env::var_os("TILLBH_OCR_MODELS")
             .map(PathBuf::from)
             .or_else(|| resource_dir.map(|r| r.join("ocr-models")).filter(|p| p.join("models.json").exists()))
             .or_else(|| dev.join("models.json").exists().then_some(dev));
@@ -201,7 +201,7 @@ fn engine_missing(msg: impl Into<String>) -> AppError {
 
 /// Verify `models.json` hashes and unpack `<lang>.traineddata.gz` files.
 fn prepare_models(src: Option<&Path>, dest: &Path) -> AppResult<(PathBuf, Vec<String>)> {
-    let src = src.ok_or_else(|| model_missing("The OCR models are not installed. Reinstall AMWAPOS to restore them."))?;
+    let src = src.ok_or_else(|| model_missing("The OCR models are not installed. Reinstall TILLBH to restore them."))?;
     let manifest: serde_json::Value = std::fs::read(src.join("models.json"))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
@@ -234,7 +234,7 @@ fn prepare_models(src: Option<&Path>, dest: &Path) -> AppResult<(PathBuf, Vec<St
         langs.push(lang.clone());
     }
     if !langs.iter().any(|l| l == "eng") {
-        return Err(model_missing("The English OCR model is missing or damaged. OCR stays off until AMWAPOS is reinstalled."));
+        return Err(model_missing("The English OCR model is missing or damaged. OCR stays off until TILLBH is reinstalled."));
     }
     langs.sort();
     Ok((dest.to_path_buf(), langs))

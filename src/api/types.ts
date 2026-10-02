@@ -645,7 +645,7 @@ export interface ImageSearchSettings {
 export interface ImageOverview {
   enabled: boolean;
   availability: DiscoveryAvailability;
-  /** AMWAPOS_IMAGE_SEARCH=off on this computer. */
+  /** TILLBH_IMAGE_SEARCH=off on this computer. */
   environment_disabled: boolean;
   /** Google is switched on and has its engine id and key. */
   google_ready: boolean;
@@ -1423,7 +1423,7 @@ export interface AiConversation {
     thinking?: string;
     attachments?: { attachment_id: string; media_type: string }[];
     has_context?: boolean;
-    /** "nudge": AMWAPOS asked the model to back its figures with a tool. */
+    /** "nudge": TILLBH asked the model to back its figures with a tool. */
     kind?: "nudge";
   }[];
   proposals: AiProposal[];

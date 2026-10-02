@@ -1,4 +1,4 @@
-//! AMWAPOS development bridge.
+//! TILLBH development bridge.
 //!
 //! Serves the built UI and `POST /rpc` over **loopback only**, backed by the
 //! exact same `Runtime`/`AppCore` the desktop app uses. It exists so the UI can
@@ -146,7 +146,7 @@ async fn main() {
     let app = Router::new().route("/rpc", post(rpc)).fallback(static_files).with_state(st);
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
-    tracing::info!(%addr, data_dir = %data_dir.display(), "AMWAPOS dev bridge listening (loopback only)");
+    tracing::info!(%addr, data_dir = %data_dir.display(), "TILLBH dev bridge listening (loopback only)");
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

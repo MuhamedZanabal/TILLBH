@@ -50,7 +50,7 @@ pub fn bitmap_pdf(bm: &Bitmap, title: &str) -> Vec<u8> {
     c.extend_from_slice(content.as_bytes());
     c.extend_from_slice(b"\nendstream");
     obj(&mut out, &c);
-    obj(&mut out, format!("<< /Title ({title}) /Producer (AMWAPOS) >>").as_bytes());
+    obj(&mut out, format!("<< /Title ({title}) /Producer (TILLBH) >>").as_bytes());
     let xref = out.len();
     out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len() + 1).as_bytes());
     for o in &offsets {

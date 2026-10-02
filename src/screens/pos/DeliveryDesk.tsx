@@ -36,7 +36,7 @@ export function DeliveryDesk() {
     <div className="pos-root">
       <header className="pos-header">
         <div className="brand">
-          <Logo size={28} /> {t("AMWAPOS · Deliveries")}
+          <Logo size={28} /> {t("TILLBH · Deliveries")}
         </div>
         <div className="grow" />
         <div className="hitem">{session?.display_name}</div>

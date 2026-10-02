@@ -19,7 +19,7 @@ test.describe.configure({ mode: "serial" });
 test("first run → products → offline checkout → refund → shift close", async ({ page }) => {
   await page.goto("/");
   // ---- Setup wizard ----
-  await expect(page.getByRole("heading", { name: "Welcome to AMWAPOS" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome to TILLBH" })).toBeVisible();
   await shot(page, "01-welcome");
   await page.getByRole("button", { name: /Continue/ }).click();
   await page.getByLabel("Business name").fill("Al Noor Supermarket");
@@ -478,7 +478,7 @@ test("product pictures: upload in the editor, shown in the catalogue and at the 
   await expect(milk.getByTestId("product-image")).toHaveAttribute("data-state", "placeholder");
 
   // Remove → placeholder again. This server runs with the administrator kill
-  // switch (AMWAPOS_IMAGE_SEARCH=off, set for every cargo-run process), so the
+  // switch (TILLBH_IMAGE_SEARCH=off, set for every cargo-run process), so the
   // editor says why no automatic search follows and offers none.
   await row.click();
   await page.getByRole("button", { name: "Remove picture" }).click();

@@ -1,4 +1,4 @@
-// Installer smoke test, part 2: drives the INSTALLED AMWAPOS window (not a
+// Installer smoke test, part 2: drives the INSTALLED TILLBH window (not a
 // dev server) through WebView2's remote-debugging port, which
 // scripts/installer-smoke.ps1 opens with
 // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222.
@@ -112,7 +112,7 @@ async function login(page) {
 
 async function first(page) {
   // Fresh database: the setup wizard (migrations ran on first start).
-  await expect(page.getByRole("heading", { name: "Welcome to AMWAPOS" })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Welcome to TILLBH" })).toBeVisible({ timeout: 60_000 });
   await shot(page, "01-welcome");
   await page.getByRole("button", { name: /Continue/ }).click();
   await page.getByLabel("Business name").fill("Smoke Test Mart");

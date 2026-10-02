@@ -16,12 +16,12 @@ Classes:
 
 | | |
 | --- | --- |
-| File | `AMWAPOS_0.1.0_x64-setup.exe` (artifact `amwapos-windows-unsigned`) |
+| File | `TILLBH_0.1.0_x64-setup.exe` (artifact `amwapos-windows-unsigned`) |
 | SHA-256 | `d6c0e260be719cd05a3755601bc7c70ea95153e535695173934ab371ee94f452` |
 | Built by | GitHub Actions CI run #12 (`36024872450`) on `windows-2022`, commit `ad7e650` |
 | WebView2 | Bootstrapper **embedded** (`webviewInstallMode: embedBootstrapper`); the CI job fails if the configuration changes to an install-time download |
 | Signing | **Unsigned.** For internal soak only (SmartScreen will warn). |
-| Download | https://github.com/ZanaNowshad/AMWAPOS/actions/runs/36024872450 (artifact `amwapos-windows-unsigned`, id 10819612747, kept for 90 days) |
+| Download | https://github.com/ZanaNowshad/TILLBH/actions/runs/36024872450 (artifact `amwapos-windows-unsigned`, id 10819612747, kept for 90 days) |
 
 Evidence was re-run on 2026-09-24:
 - **Rust** (`cargo test --workspace`, Linux and Windows CI), 77 tests:
@@ -66,7 +66,7 @@ Evidence was re-run on 2026-09-24:
 | Reports (14) + CSV export (formula-injection safe) | Complete | Report tests; CSV escape round-trip test | — |
 | CSV product import | Complete | Preview/apply tests, duplicate isolation, scientific-notation guard, 100k import | — |
 | Backup / verified restore / safety backup | Partially complete | Round-trip and tamper tests; E2E backup | USB / network-share folder checked in the soak (OPERATIONS checklist) |
-| Backup-while-closed | Complete (operational rule) | OPERATIONS "Backup rule" (the hub keeps AMWAPOS running). Red banner on every Admin page and a till header pill, with one-click Backup Now. `backup.health` reports ok / overdue / failed. | A Windows scheduled task was deliberately not built (reasons in OPERATIONS) |
+| Backup-while-closed | Complete (operational rule) | OPERATIONS "Backup rule" (the hub keeps TILLBH running). Red banner on every Admin page and a till header pill, with one-click Backup Now. `backup.health` reports ok / overdue / failed. | A Windows scheduled task was deliberately not built (reasons in OPERATIONS) |
 | Diagnostics | Complete | Readable details; last backup shown in local time with age; sync errors classified | — |
 | Sync protocol v2 (encrypted, SPAKE2 pairing, one live code, burn after 5, pairing-id reuse rejected, versioned) | Complete | Encrypted-channel tests: proxy test, protocol 1 refused, burn, version mismatch shown as "Update needed", not offline | — |
 | Lost hub credential | Complete | Reported, never silently replaced; owner reset + re-pair (sync test) | — |
@@ -82,7 +82,7 @@ Evidence was re-run on 2026-09-24:
 | CI (lint, types, unit, E2E, Windows build + installer) | Complete | GitHub Actions green on this branch | — |
 | Release workflow (tag → draft release, SBOMs, SHA-256 sums, optional signing) | Partially complete | Workflow lint-clean; SBOM generation run locally | First tag run |
 | Code signing | Deferred | Unsigned is accepted for internal soak | Authenticode certificate |
-| Auto-update (flag `updates`) | Partially complete | Ed25519-signed manifest, size + SHA-256 checks, re-verify before install, safety backup; refuses unsigned builds (`tests/updates.rs`) | Signing key (`AMWAPOS_UPDATE_PUBKEY`), hosting, install run on Windows |
+| Auto-update (flag `updates`) | Partially complete | Ed25519-signed manifest, size + SHA-256 checks, re-verify before install, safety backup; refuses unsigned builds (`tests/updates.rs`) | Signing key (`TILLBH_UPDATE_PUBKEY`), hosting, install run on Windows |
 | WhatsApp (flags `whatsapp.enabled`, `.send_receipts`, `.delivery_notices`) | Partially complete | In-process `whatsapp-rust` =0.7.0 adapter behind a trait; supervisor restart after panic, separate status flags, reconnect after restart, idempotent sends, persist-before-ack inbound, media → review (`tests/whatsapp.rs` with `FakeAdapter`); post-commit receipts/notices, payload-hash idempotency, EN/AR templates (`tests/automation.rs`) | Pairing and soak test with a real phone; the real adapter has never connected to WhatsApp |
 | OCR (flags `ocr.enabled`, `.payment_screenshots`, `.supplier_invoices`) | Partially complete | Separate worker running bundled Tesseract with SHA-256-checked eng+ara models; `ocr_model_missing` keeps it off; statuses ocr_match/likely_match/mismatch/needs_review; draft PO only (`tests/ocr.rs` with real Tesseract, `tests/automation.rs`) | Accuracy on real supplier invoices and BenefitPay screenshots |
 | AI assistant (flags `ai.enabled`, `ai.mutations`, `ai.dual_control`) | Partially complete | Read and proposal tools as the signed-in user; confirm runs the normal command; undo by compensating record where one exists; fake-provider and loopback-stub tests (`tests/ai*.rs`) | Vendor API key and owner consent; never called against a real provider or OpenRouter here |
@@ -103,7 +103,7 @@ Flags (all default off): `hub`, `whatsapp.enabled`, `whatsapp.send_receipts`, `w
 costing method `weighted_average` (receiving updates cost, audited) or `manual`, receipts 80 mm (58 mm option), EN or EN+AR labels.
 
 Not in this pass by decision: live WhatsApp link and real photos (owner soak), code signing, card SDK, Cloud API,
-hub TLS rewrite, Task Scheduler backups, the full acceptance matrix. The updater is AMWAPOS' own Ed25519-verified
+hub TLS rewrite, Task Scheduler backups, the full acceptance matrix. The updater is TILLBH' own Ed25519-verified
 flow rather than tauri-plugin-updater; it refuses unsigned builds and opens the installer window (no silent apply).
 
 ## Product brief: 12 pillars, 2026-09-25
@@ -142,7 +142,7 @@ and `crates/amwapos-hub/tests/companion.rs` (flag, token, revoke, LAN routes).
   model is active whenever provider=fake or no key is stored; it never uses the
   network. No OAuth / device-code / subscription sign-in exists or is planned.
 - Keys and the optional extra-header value live only in Windows Credential
-  Manager (service `AMWAPOS`, accounts `ai/<provider>` and `ai/<provider>/header`).
+  Manager (service `TILLBH`, accounts `ai/<provider>` and `ai/<provider>/header`).
   Settings (provider, model_id, base_url, header name, max_output_tokens,
   timeout_ms, model list cache) are in SQLite; no secret is.
 - Owner-only: `ai.configure`, `ai.test`, `ai.models`. Changes apply on the next
@@ -180,7 +180,7 @@ never run against a live provider, the live WhatsApp phone or Windows Hello.
 - Limits: 30 proposals per hour per user, 200 items per bulk proposal, proposals
   expire after 60 minutes, optional daily token cap (Settings → AI). After DATA is
   read in a conversation, every proposal is high risk.
-- A reply with figures and no tool call gets one "[AMWAPOS check]" nudge; if it
+- A reply with figures and no tool call gets one "[TILLBH check]" nudge; if it
   still has no tool call it is shown as **Unverified**. Answers carry evidence
   chips; record paths become links; a barcode in the question names its product.
 - AI page: action inbox with today's digest, playbook buttons (eod, cash_short,
@@ -287,10 +287,10 @@ Precedence: uploaded picture > automatically found picture > monogram placeholde
 - Automatic discovery is on by default. A new product saved without a picture is queued once (`pending`).
 - Two switches turn it off:
   - the Settings → Product images checkbox "Find pictures automatically for new products" (`catalog.image_search.enabled`);
-  - the administrator kill switch `AMWAPOS_IMAGE_SEARCH=off` (also `0`, `false` or `no`), which the setting cannot override.
+  - the administrator kill switch `TILLBH_IMAGE_SEARCH=off` (also `0`, `false` or `no`), which the setting cannot override.
 - When discovery is switched off, disabled by the administrator, or has no usable source, new products stay `not_attempted`. Nothing is claimed, even work that was already queued. Manual uploads always work.
 - The old `catalog.auto_images` feature flag was removed. A stored value is ignored.
-- `.cargo/config.toml` sets `AMWAPOS_IMAGE_SEARCH=off` for processes started by cargo: tests, the e2e dev server and `tauri dev`. Tests and development therefore never contact real providers. Installed builds are not started by cargo, so they keep the default (on).
+- `.cargo/config.toml` sets `TILLBH_IMAGE_SEARCH=off` for processes started by cargo: tests, the e2e dev server and `tauri dev`. Tests and development therefore never contact real providers. Installed builds are not started by cargo, so they keep the default (on).
 
 **Lifecycle** (`products.auto_image_status`, migration 0020):
 - The states run `not_attempted → pending → processing → found | not_found | failed`. A manual upload or removal gives `skipped`.
@@ -355,7 +355,7 @@ Precedence: uploaded picture > automatically found picture > monogram placeholde
 
 **Proxy policy.**
 - Image downloads never use the system proxy (`HTTP(S)_PROXY`, `ALL_PROXY`). Through a forward proxy, the proxy re-resolves the name and the pinned-address guarantee would not hold. Downloads therefore connect directly, and a one-time warning is logged if a system proxy is set.
-- Where only proxied egress is allowed, an administrator can name a trusted proxy with `AMWAPOS_IMAGE_FETCH_PROXY=<url>`. The local address check still runs first, but final destination filtering then also depends on that proxy. This is a documented trust boundary, not a verified invariant.
+- Where only proxied egress is allowed, an administrator can name a trusted proxy with `TILLBH_IMAGE_FETCH_PROXY=<url>`. The local address check still runs first, but final destination filtering then also depends on that proxy. This is a documented trust boundary, not a verified invariant.
 - Both behaviours are tested with a fake proxy.
 
 **Storage.**
@@ -431,7 +431,7 @@ Publishes the POS catalogue to the WhatsApp Business catalogue of the linked num
 - Price in thousandths of the currency (the protocol's amount×1000). For BHD, fils map 1:1: 0.100 → 100, 1.250 → 1250, 9.990 → 9990, 100.000 → 100000. Integer arithmetic only.
 - Currency code, retailer id = the POS product code (SKU), hidden flag.
 - Picture: the POS-managed stored JPEG (uploaded or automatically found), sent byte for byte. It is re-uploaded only when its hash changes. Outside search URLs are never used, and a product without a picture is published without one.
-- These character limits are AMWAPOS' conservative choice; WhatsApp does not publish its limits.
+- These character limits are TILLBH' conservative choice; WhatsApp does not publish its limits.
 
 **Eligibility.**
 - Published: active products with a name and a price above zero.

@@ -79,7 +79,7 @@ fn check_protocol(info: &HubInfo) -> AppResult<()> {
         return Err(version_mismatch(AppError::new(
             ErrorCode::Sync,
             format!(
-                "The hub runs AMWAPOS {} (sync protocol {}); this terminal needs protocol {PROTOCOL_VERSION}. Install the same AMWAPOS version on both.",
+                "The hub runs TILLBH {} (sync protocol {}); this terminal needs protocol {PROTOCOL_VERSION}. Install the same TILLBH version on both.",
                 info.app_version, info.protocol
             ),
         )));
@@ -88,12 +88,12 @@ fn check_protocol(info: &HubInfo) -> AppResult<()> {
 }
 
 fn error_from(status: reqwest::StatusCode, bytes: &[u8]) -> AppError {
-    // 426: the hub refused this till's sync protocol (different AMWAPOS versions).
+    // 426: the hub refused this till's sync protocol (different TILLBH versions).
     if status == reqwest::StatusCode::UPGRADE_REQUIRED {
         let e = serde_json::from_slice::<AppError>(bytes).unwrap_or_else(|_| {
             AppError::new(
                 ErrorCode::Sync,
-                "The hub requires a different AMWAPOS version. Install the same version on the hub and this till.",
+                "The hub requires a different TILLBH version. Install the same version on the hub and this till.",
             )
         });
         return version_mismatch(e);
@@ -261,7 +261,7 @@ pub async fn sync_cycle(core: Arc<AppCore>) -> AppResult<CycleReport> {
             return Err(version_mismatch(AppError::new(
                 ErrorCode::Sync,
                 format!(
-                    "Version mismatch: hub runs AMWAPOS {} (schema {}), this terminal runs {} (schema {}). Update both to the same version.",
+                    "Version mismatch: hub runs TILLBH {} (schema {}), this terminal runs {} (schema {}). Update both to the same version.",
                     info.app_version,
                     info.schema_version,
                     amwapos_core::audit::APP_VERSION,

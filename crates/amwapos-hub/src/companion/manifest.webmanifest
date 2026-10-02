@@ -1,6 +1,6 @@
 {
-  "name": "AMWAPOS owner view",
-  "short_name": "AMWAPOS",
+  "name": "TILLBH owner view",
+  "short_name": "TILLBH",
   "start_url": "/companion/",
   "scope": "/companion/",
   "display": "standalone",

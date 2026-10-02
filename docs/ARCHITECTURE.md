@@ -18,7 +18,7 @@ same `dispatch` serves Tauri IPC, the devserver (`/rpc`) and the tests.
 ## Storage
 
 - A single SQLite database, `amwapos.db`, in the data directory
-  (`%ProgramData%\AMWAPOS\data`; override with `AMWAPOS_DATA_DIR`).
+  (`%ProgramData%\TILLBH\data`; override with `TILLBH_DATA_DIR`).
 - `journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON`. One writer connection (every write is
   `BEGIN IMMEDIATE`) plus a pool of readers.
 - Migrations are embedded, numbered and SHA-256 checksummed. The app refuses a database whose
@@ -163,9 +163,9 @@ AppCore ── wa_outbox / wa_inbox / payment_reviews / invoice_scans (ledger DB
 How the rules are enforced:
 
 - **Separate session store.** `SessionPath::for_data_dir` is the only way to get the session
-  location: `<data>/whatsapp/session.db` (`%ProgramData%\AMWAPOS\data\whatsapp` on Windows). It
+  location: `<data>/whatsapp/session.db` (`%ProgramData%\TILLBH\data\whatsapp` on Windows). It
   refuses a relative path, the ledger file (`amwapos.db`) and the executable's folder. The file is
-  opened only by the crate's own SQLite store inside the adapter; AMWAPOS' connection pool never
+  opened only by the crate's own SQLite store inside the adapter; TILLBH' connection pool never
   opens it. The explicit owner-only session backup opens its own read-only connection.
 - **No lock across the client.** The supervisor keeps the client's exit future in its own task
   state and receives commands over a channel; status is published through a `watch` channel.

@@ -111,7 +111,7 @@ impl AppCore {
 
     pub(crate) fn write_marker(&self) -> AppResult<()> {
         let marker = self.data_dir.join(MARKER_FILE);
-        std::fs::write(&marker, format!("AMWAPOS store initialized {}\n", crate::time::now_str()))?;
+        std::fs::write(&marker, format!("TILLBH store initialized {}\n", crate::time::now_str()))?;
         Ok(())
     }
 

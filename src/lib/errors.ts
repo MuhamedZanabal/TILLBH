@@ -25,7 +25,7 @@ export function explain(e: unknown): { title: string; message: string; action: s
       return {
         title: t("Could not reach the application service"),
         message,
-        action: t("Try again. If it keeps failing, restart AMWAPOS."),
+        action: t("Try again. If it keeps failing, restart TILLBH."),
       };
     case "unauthenticated":
       return { title: t("Session ended"), message, action: "" };

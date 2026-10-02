@@ -192,7 +192,7 @@ async fn whatsapp_service_end_to_end_with_fake_adapter() {
     rt.whatsapp.poke.notify_one();
     until("retried", || e.fake.sent().iter().filter(|m| m.text == "retry me").count() == 1).await;
 
-    // Inbound: committed to AMWAPOS tables before WhatsApp is acknowledged.
+    // Inbound: committed to TILLBH tables before WhatsApp is acknowledged.
     let rev = wa(rt).inbox_rev;
     let img = Inbound {
         wa_id: "IN1".into(),
