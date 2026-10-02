@@ -9,6 +9,7 @@
 //! interpreted as an instruction. WhatsApp's own session keys are not in this
 //! database (see the hub's `whatsapp::session`).
 
+use std::collections::{hash_map::Entry, HashMap};
 use std::path::PathBuf;
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -994,26 +995,80 @@ impl AppCore {
         let s = self.session(token)?;
         s.require("whatsapp.manage")?;
         self.db.read(|c| {
+            // Build the current identity index once. Conversation rows may
+            // contain an old auto-matched customer_id from before duplicate
+            // numbers were detected; the list must not keep showing that stale
+            // person. Manual chat links win, otherwise only a unique number does.
+            let mut links: HashMap<String, (String, String)> = HashMap::new();
+            {
+                let mut st = c.prepare(
+                    "SELECT l.chat, l.customer_id, cu.name FROM wa_chat_links l JOIN customers cu ON cu.customer_id=l.customer_id",
+                )?;
+                for row in st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))? {
+                    let (chat, id, name) = row?;
+                    links.insert(chat, (id, name));
+                }
+            }
+            let mut numbers: HashMap<String, Option<(String, String)>> = HashMap::new();
+            {
+                let mut st = c.prepare("SELECT customer_id, name, phone, whatsapp FROM customers")?;
+                for row in st.query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                    ))
+                })? {
+                    let (id, name, phone, whatsapp) = row?;
+                    for number in [phone, whatsapp].into_iter().flatten() {
+                        match numbers.entry(number) {
+                            Entry::Vacant(v) => {
+                                v.insert(Some((id.clone(), name.clone())));
+                            }
+                            Entry::Occupied(mut o) => {
+                                let same_customer = o.get().as_ref().is_some_and(|(existing, _)| existing == &id);
+                                if !same_customer {
+                                    o.insert(None);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             let mut st = c.prepare(
-                "SELECT i.chat, MAX(i.phone), MAX(COALESCE(cu.name, i.push_name)), MAX(i.customer_id), MAX(i.received_at),
+                "SELECT i.chat, MAX(i.phone), MAX(i.push_name), MAX(i.received_at),
                         (SELECT COALESCE(body, caption, '[' || kind || ']') FROM wa_inbox x WHERE x.chat=i.chat ORDER BY seq DESC LIMIT 1),
                         SUM(CASE WHEN i.read_at IS NULL THEN 1 ELSE 0 END)
-                 FROM wa_inbox i LEFT JOIN customers cu ON cu.customer_id=i.customer_id
+                 FROM wa_inbox i
                  GROUP BY i.chat ORDER BY MAX(i.seq) DESC LIMIT 300",
             )?;
-            let rows = st
+            let mut rows = st
                 .query_map([], |r| {
                     Ok(Conversation {
                         chat: r.get(0)?,
                         phone: r.get(1)?,
                         name: r.get(2)?,
-                        customer_id: r.get(3)?,
-                        last_at: r.get(4)?,
-                        last_text: r.get(5)?,
-                        unread: r.get(6)?,
+                        customer_id: None,
+                        last_at: r.get(3)?,
+                        last_text: r.get(4)?,
+                        unread: r.get(5)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
+
+            for row in &mut rows {
+                if let Some((id, name)) = links.get(&row.chat) {
+                    row.customer_id = Some(id.clone());
+                    row.name = Some(name.clone());
+                    continue;
+                }
+                if let Some((id, name)) = row.phone.as_ref().and_then(|p| numbers.get(p)).and_then(|m| m.as_ref()) {
+                    row.customer_id = Some(id.clone());
+                    row.name = Some(name.clone());
+                }
+            }
             Ok(rows)
         })
     }
