@@ -268,6 +268,34 @@ fn find_customer_by_phone(c: &Connection, phone: &str) -> AppResult<ContactMatch
     match_customer_by_phone(c, phone)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ChatCustomerMatch {
+    None,
+    Linked(String),
+    Number(String),
+    Ambiguous,
+}
+
+/// Resolve the person behind a chat from today's source of truth. A manual
+/// link always wins. Otherwise a phone number is accepted only when exactly
+/// one customer owns it.
+pub(crate) fn resolve_chat_customer(c: &Connection, chat: &str, phone: Option<&str>) -> AppResult<ChatCustomerMatch> {
+    let linked: Option<String> = c
+        .query_row("SELECT customer_id FROM wa_chat_links WHERE chat=?1", [chat], |r| r.get(0))
+        .optional()?;
+    if let Some(id) = linked {
+        return Ok(ChatCustomerMatch::Linked(id));
+    }
+    Ok(match phone {
+        Some(p) => match find_customer_by_phone(c, p)? {
+            ContactMatch::Unique { customer_id, .. } => ChatCustomerMatch::Number(customer_id),
+            ContactMatch::Ambiguous => ChatCustomerMatch::Ambiguous,
+            ContactMatch::None => ChatCustomerMatch::None,
+        },
+        None => ChatCustomerMatch::None,
+    })
+}
+
 impl AppCore {
     fn receipts_dir(&self) -> PathBuf {
         self.data_dir.join("receipts")
@@ -842,20 +870,10 @@ impl AppCore {
                 };
                 let phone = m.sender_pn.as_deref().and_then(phone_from_jid).or_else(|| phone_from_jid(&m.chat));
                 // A chat a person linked by hand wins over the number match.
-                let linked: Option<(String, String)> = tx
-                    .query_row(
-                        "SELECT l.customer_id, cu.name FROM wa_chat_links l JOIN customers cu ON cu.customer_id=l.customer_id WHERE l.chat=?1",
-                        [&m.chat],
-                        |r| Ok((r.get(0)?, r.get(1)?)),
-                    )
-                    .optional()?;
-                let customer = match (linked, &phone) {
-                    (Some(l), _) => Some(l),
-                    (None, Some(p)) => match find_customer_by_phone(tx, p)? {
-                        ContactMatch::Unique { customer_id, name } => Some((customer_id, name)),
-                        ContactMatch::None | ContactMatch::Ambiguous => None,
-                    },
-                    (None, None) => None,
+                // Legacy duplicate numbers are deliberately left unlinked.
+                let customer = match resolve_chat_customer(tx, &m.chat, phone.as_deref())? {
+                    ChatCustomerMatch::Linked(id) | ChatCustomerMatch::Number(id) => Some(id),
+                    ChatCustomerMatch::None | ChatCustomerMatch::Ambiguous => None,
                 };
                 let received = chrono::DateTime::from_timestamp(m.ts, 0).map(time::fmt).unwrap_or_else(time::now_str);
                 let clip = |v: &Option<String>| v.as_ref().map(|t| t.chars().take(8000).collect::<String>());
@@ -875,7 +893,7 @@ impl AppCore {
                         m.media_mime,
                         m.media_ref,
                         media_state,
-                        customer.map(|c| c.0)
+                        customer
                     ],
                 )?;
             }
