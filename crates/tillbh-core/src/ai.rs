@@ -1587,16 +1587,38 @@ impl AppCore {
                 s.require("whatsapp.manage")?;
                 let n = limit_arg(input, 30);
                 let msgs = self.db.read(|c| {
+                    type WaAiRow = (String, String, Option<String>, Option<String>, String, Option<String>);
                     let mut st = c.prepare(
-                        "SELECT i.received_at, COALESCE(cu.name, i.push_name), i.kind, COALESCE(i.body, i.caption) FROM wa_inbox i
-                         LEFT JOIN customers cu ON cu.customer_id=i.customer_id ORDER BY i.seq DESC LIMIT ?1",
+                        "SELECT i.received_at, i.chat, i.phone, i.push_name, i.kind, COALESCE(i.body, i.caption)
+                         FROM wa_inbox i ORDER BY i.seq DESC LIMIT ?1",
                     )?;
-                    let rows = st
-                        .query_map([n], |r| {
-                            Ok(json!({ "received_at": r.get::<_, String>(0)?, "from": r.get::<_, Option<String>>(1)?, "type": r.get::<_, String>(2)?,
-                                       "untrusted_text": r.get::<_, Option<String>>(3)?.as_deref().map(data_block) }))
-                        })?
-                        .collect::<Result<Vec<_>, _>>()?;
+                    let raw = st
+                        .query_map([n], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?
+                        .collect::<Result<Vec<WaAiRow>, _>>()?;
+                    let mut rows = Vec::with_capacity(raw.len());
+                    for (received_at, chat, phone, push_name, kind, body) in raw {
+                        let (from, customer_match) = match crate::messaging::resolve_chat_customer(c, &chat, phone.as_deref())? {
+                            crate::messaging::ChatCustomerMatch::Linked(id) => {
+                                let name: Option<String> =
+                                    c.query_row("SELECT name FROM customers WHERE customer_id=?1", [id], |r| r.get(0)).optional()?;
+                                (name.or(push_name.clone()), Some("linked"))
+                            }
+                            crate::messaging::ChatCustomerMatch::Number(id) => {
+                                let name: Option<String> =
+                                    c.query_row("SELECT name FROM customers WHERE customer_id=?1", [id], |r| r.get(0)).optional()?;
+                                (name.or(push_name.clone()), Some("number"))
+                            }
+                            crate::messaging::ChatCustomerMatch::Ambiguous => (push_name.clone(), Some("ambiguous")),
+                            crate::messaging::ChatCustomerMatch::None => (push_name.clone(), None),
+                        };
+                        rows.push(json!({
+                            "received_at": received_at,
+                            "from": from,
+                            "customer_match": customer_match,
+                            "type": kind,
+                            "untrusted_text": body.as_deref().map(data_block),
+                        }));
+                    }
                     Ok(rows)
                 })?;
                 self.mark_untrusted(cid)?;

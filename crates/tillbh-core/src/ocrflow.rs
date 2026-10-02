@@ -598,15 +598,19 @@ impl AppCore {
         self.db.write(|tx| {
             let mut ids = vec![];
             for seq in seqs {
-                type InboxImage = (String, Option<String>, Option<String>, Option<String>);
+                type InboxImage = (String, Option<String>, Option<String>, String);
                 let row: Option<InboxImage> = tx
                     .query_row(
-                        "SELECT media_path, media_sha256, phone, customer_id FROM wa_inbox WHERE seq=?1 AND kind='image'",
+                        "SELECT media_path, media_sha256, phone, chat FROM wa_inbox WHERE seq=?1 AND kind='image'",
                         [seq],
                         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
                     )
                     .optional()?;
-                let Some((path, sha, phone, customer)) = row else { continue };
+                let Some((path, sha, phone, chat)) = row else { continue };
+                let customer = match crate::messaging::resolve_chat_customer(tx, &chat, phone.as_deref())? {
+                    crate::messaging::ChatCustomerMatch::Linked(id) | crate::messaging::ChatCustomerMatch::Number(id) => Some(id),
+                    crate::messaging::ChatCustomerMatch::None | crate::messaging::ChatCustomerMatch::Ambiguous => None,
+                };
                 ids.push(insert_review(tx, "whatsapp", Some(*seq), &path, &sha.unwrap_or_default(), phone, customer, None, None)?);
             }
             Ok(ids)

@@ -94,6 +94,39 @@ fn customers_and_deliveries() {
     assert_eq!(cust.info.phone.as_deref(), Some("+97333123456"));
     let dup = e.core.customer_save(t, None, serde_json::from_value(json!({ "name": "Someone", "phone": "+973 33123456" })).unwrap());
     assert_eq!(dup.unwrap_err().code, ErrorCode::Duplicate);
+    let cross = e
+        .core
+        .customer_save(
+            t,
+            None,
+            serde_json::from_value(json!({ "name": "WhatsApp collision", "whatsapp": "+97333123456" })).unwrap(),
+        );
+    assert_eq!(cross.unwrap_err().code, ErrorCode::Duplicate, "a WhatsApp number cannot reuse another customer's phone");
+    let other = e
+        .core
+        .customer_save(
+            t,
+            None,
+            serde_json::from_value(json!({ "name": "Other", "phone": "35550000", "whatsapp": "36660000" })).unwrap(),
+        )
+        .unwrap();
+    let cross_back = e
+        .core
+        .customer_save(
+            t,
+            None,
+            serde_json::from_value(json!({ "name": "Phone collision", "phone": "36660000" })).unwrap(),
+        );
+    assert_eq!(cross_back.unwrap_err().code, ErrorCode::Duplicate, "a phone cannot reuse another customer's WhatsApp number");
+    // Existing numbers remain editable so legacy duplicates can be cleaned up
+    // without locking the customer record.
+    e.core
+        .customer_save(
+            t,
+            Some(other.customer_id),
+            serde_json::from_value(json!({ "name": "Other renamed", "phone": "35550000", "whatsapp": "36660000" })).unwrap(),
+        )
+        .unwrap();
     assert_eq!(e.core.customers_search(t, Some("3312".into()), false, None).unwrap().len(), 1);
     assert_eq!(e.core.customers_search(t, Some("fati".into()), false, None).unwrap().len(), 1);
     e.core.pos_scan(t, "6001", None).unwrap();

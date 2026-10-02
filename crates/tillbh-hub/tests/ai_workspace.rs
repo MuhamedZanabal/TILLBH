@@ -529,6 +529,22 @@ async fn draft_reply_is_text_for_a_person_and_never_sent() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn draft_reply_uses_the_latest_meaningful_customer_language() {
+    let e = env().await;
+    inbox(&e, "c10@s", "text", "مرحبا، عندي سؤال");
+    inbox(&e, "c10@s", "text", "Are you open tonight?");
+    let d = call(&e.rt, "whatsapp.draft_reply", Some(&e.t), json!({ "chat": "c10@s" })).await;
+    assert_eq!(d["source"], "template");
+    assert_eq!(d["lang"], "en", "an older Arabic message must not force the current reply into Arabic");
+
+    inbox(&e, "c11@s", "text", "Hello");
+    inbox(&e, "c11@s", "image", "");
+    inbox(&e, "c11@s", "text", "هل التوصيل متوفر؟");
+    let d = call(&e.rt, "whatsapp.draft_reply", Some(&e.t), json!({ "chat": "c11@s" })).await;
+    assert_eq!(d["lang"], "ar");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn payment_review_shows_a_comparison_that_never_settles() {
     let e = env().await;
     let now = tillbh_core::time::now_str();

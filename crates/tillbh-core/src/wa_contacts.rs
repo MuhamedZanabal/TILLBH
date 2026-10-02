@@ -6,7 +6,7 @@
 //! customers: the saved name becomes the customer name, the number the phone
 //! and WhatsApp number, and the digits with their hyphens or slashes found in
 //! the name become the address ("825 - 3325"). Import matches on the phone
-//! number, so running it again never creates duplicates.
+//! number. A unique match is reused; legacy duplicate numbers are left for a\n//! person to resolve, so import never guesses which customer owns a number.
 
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -135,8 +135,9 @@ impl AppCore {
         self.db.read(|c| {
             let mut st = c.prepare(
                 "SELECT w.jid, w.phone, w.full_name, w.first_name, w.updated_at,
-                        (SELECT cu.customer_id FROM customers cu WHERE w.phone IS NOT NULL AND (cu.phone=w.phone OR cu.whatsapp=w.phone) ORDER BY cu.active DESC LIMIT 1),
-                        (SELECT cu.name FROM customers cu WHERE w.phone IS NOT NULL AND (cu.phone=w.phone OR cu.whatsapp=w.phone) ORDER BY cu.active DESC LIMIT 1)
+                        (SELECT COUNT(*) FROM customers cu WHERE w.phone IS NOT NULL AND (cu.phone=w.phone OR cu.whatsapp=w.phone)),
+                        (SELECT cu.customer_id FROM customers cu WHERE w.phone IS NOT NULL AND (cu.phone=w.phone OR cu.whatsapp=w.phone) ORDER BY cu.active DESC, cu.updated_at DESC LIMIT 1),
+                        (SELECT cu.name FROM customers cu WHERE w.phone IS NOT NULL AND (cu.phone=w.phone OR cu.whatsapp=w.phone) ORDER BY cu.active DESC, cu.updated_at DESC LIMIT 1)
                  FROM wa_contacts w ORDER BY COALESCE(w.full_name, w.first_name, w.phone) COLLATE NOCASE LIMIT 5000",
             )?;
             let rows = st
@@ -144,11 +145,14 @@ impl AppCore {
                     let (full, first): (Option<String>, Option<String>) = (r.get(2)?, r.get(3)?);
                     let phone: Option<String> = r.get(1)?;
                     let name = display_name(&full, &first);
-                    let existing: Option<String> = r.get(5)?;
+                    let matches: i64 = r.get(5)?;
+                    let existing: Option<String> = r.get(6)?;
                     let status = if phone.is_none() {
                         "no_phone"
                     } else if name.is_none() {
                         "no_name"
+                    } else if matches > 1 {
+                        "ambiguous"
                     } else if existing.is_some() {
                         "exists"
                     } else {
@@ -161,8 +165,8 @@ impl AppCore {
                         "address": name.as_deref().and_then(|n| address_from_name(n, phone.as_deref())),
                         "area": name.as_deref().and_then(crate::customers::area_from_text),
                         "status": status,
-                        "customer_id": existing,
-                        "customer_name": r.get::<_, Option<String>>(6)?,
+                        "customer_id": if matches == 1 { existing } else { None::<String> },
+                        "customer_name": if matches == 1 { r.get::<_, Option<String>>(7)? } else { None::<String> },
                         "updated_at": r.get::<_, String>(4)?,
                     }))
                 })?
@@ -171,7 +175,7 @@ impl AppCore {
             let last: Option<String> = c.query_row("SELECT MAX(updated_at) FROM wa_contacts", [], |r| r.get(0)).optional()?.flatten();
             Ok(json!({
                 "contacts": rows,
-                "counts": { "new": count("new"), "exists": count("exists"), "no_phone": count("no_phone"), "no_name": count("no_name") },
+                "counts": { "new": count("new"), "exists": count("exists"), "ambiguous": count("ambiguous"), "no_phone": count("no_phone"), "no_name": count("no_name") },
                 "last_sync_at": last,
             }))
         })
@@ -209,19 +213,15 @@ impl AppCore {
                 }
                 let address = row["address"].as_str();
                 let area = row["area"].as_str();
-                let existing: Option<(String, Option<String>)> = tx
-                    .query_row(
-                        "SELECT customer_id, address FROM customers WHERE phone=?1 OR whatsapp=?1 ORDER BY active DESC LIMIT 1",
-                        [phone],
-                        |r| Ok((r.get(0)?, r.get(1)?)),
-                    )
-                    .optional()?;
-                let cid = match existing {
-                    Some((id, addr)) => {
+                let matched = crate::customers::match_customer_by_phone(tx, phone)?;
+                let cid = match matched {
+                    crate::customers::ContactMatch::Unique { customer_id: id, .. } => {
                         if !req.update_existing {
                             skipped += 1;
                             continue;
                         }
+                        let addr: Option<String> =
+                            tx.query_row("SELECT address FROM customers WHERE customer_id=?1", [&id], |r| r.get(0))?;
                         let fill = addr.as_deref().is_none_or(|a| a.trim().is_empty());
                         tx.execute(
                             "UPDATE customers SET name=?2, whatsapp=COALESCE(whatsapp, ?3), address=CASE WHEN ?4 THEN COALESCE(?5, address) ELSE address END,
@@ -231,7 +231,12 @@ impl AppCore {
                         updated += 1;
                         id
                     }
-                    None => {
+                    crate::customers::ContactMatch::Ambiguous => {
+                        // Never update one arbitrary legacy duplicate.
+                        skipped += 1;
+                        continue;
+                    }
+                    crate::customers::ContactMatch::None => {
                         let id = new_id();
                         tx.execute(
                             "INSERT INTO customers(customer_id, name, phone, whatsapp, address, area, active, created_at, updated_at) VALUES (?1,?2,?3,?3,?4,?6,1,?5,?5)",

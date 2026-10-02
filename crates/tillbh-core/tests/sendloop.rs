@@ -301,6 +301,52 @@ fn chat_links_to_a_customer_by_number_and_unmatched_stays_unmatched() {
     e.core.wa_ingest(&[msg("A1", "97333336666@s.whatsapp.net"), msg("B1", "97339990000@s.whatsapp.net")]).unwrap();
     let known = e.core.wa_thread_context(t, "97333336666@s.whatsapp.net").unwrap();
     assert_eq!((known["match"].as_str(), known["customer"]["customer_id"].as_str()), (Some("number"), Some(cu.as_str())));
+
+    // Simulate legacy data from before cross-field uniqueness was enforced.
+    // Once two customers own the same number, neither a new inbound message,
+    // the conversation list nor a WhatsApp-derived order may guess a customer.
+    let legacy = op();
+    e.core
+        .db
+        .write(|tx| {
+            tx.execute(
+                "INSERT INTO customers(customer_id, name, phone, whatsapp, active, created_at, updated_at)
+                 VALUES (?1,'Legacy duplicate','+97331112222','+97333336666',1,'2026-10-01','2026-10-01')",
+                rusqlite::params![legacy],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    e.core.wa_ingest(&[msg("A2", "97333336666@s.whatsapp.net")]).unwrap();
+    let ambiguous = e.core.wa_thread_context(t, "97333336666@s.whatsapp.net").unwrap();
+    assert!(ambiguous["customer"].is_null());
+    assert_eq!(ambiguous["match"], "ambiguous");
+    let thread = e.core.wa_thread(t, "97333336666@s.whatsapp.net").unwrap();
+    assert!(
+        thread["inbound"].as_array().unwrap().iter().all(|m| m["customer_id"].is_null() && m["customer_name"].is_null()),
+        "thread rows must not leak a stale historical customer when the current number is ambiguous"
+    );
+    let conversations = e.core.wa_conversations(t).unwrap();
+    let conversation = conversations.iter().find(|x| x.chat == "97333336666@s.whatsapp.net").unwrap();
+    assert!(conversation.customer_id.is_none(), "the list must not keep a stale historical auto-match");
+    assert_eq!(
+        count(&e, "SELECT COUNT(*) FROM wa_inbox WHERE wa_id='A2' AND customer_id IS NULL"),
+        1,
+        "new ambiguous messages stay unlinked"
+    );
+    features(&e, json!({ "whatsapp.enabled": true, "orders.digital": true }));
+    let seq: i64 = e
+        .core
+        .db
+        .read(|c| Ok(c.query_row("SELECT seq FROM wa_inbox WHERE wa_id='A2'", [], |r| r.get(0))?))
+        .unwrap();
+    let draft = e.core.order_from_inbox(t, seq).unwrap();
+    assert!(draft.customer_id.is_none(), "an ambiguous WhatsApp message must create an unlinked draft");
+
+    // A manual link is authoritative and resolves the ambiguity for the chat.
+    let relinked = e.core.wa_link_customer(t, "97333336666@s.whatsapp.net", Some(cu.clone())).unwrap();
+    assert_eq!((relinked["match"].as_str(), relinked["customer"]["customer_id"].as_str()), (Some("linked"), Some(cu.as_str())));
+
     let unknown = e.core.wa_thread_context(t, "97339990000@s.whatsapp.net").unwrap();
     assert!(unknown["customer"].is_null() && unknown["match"].is_null());
     // A person links it by hand; later messages in that chat follow the link.
@@ -316,6 +362,97 @@ fn chat_links_to_a_customer_by_number_and_unmatched_stays_unmatched() {
     assert_eq!(e.core.wa_link_customer(&ct, "97339990000@s.whatsapp.net", None).unwrap_err().code, ErrorCode::Forbidden);
     features(&e, json!({ "whatsapp.enabled": true }));
     assert_eq!(e.core.wa_contacts_preview(&ct).unwrap_err().code, ErrorCode::Forbidden);
+}
+
+#[test]
+fn whatsapp_sender_import_repairs_stale_cached_identity_without_guessing() {
+    let e = env();
+    let t = &e.owner_token;
+    features(&e, json!({ "whatsapp.enabled": true }));
+    let correct = customer(&e, "Correct customer", "33338888", None);
+    let wrong = customer(&e, "Wrong cached customer", "33339999", None);
+    let chat = "97333338888@s.whatsapp.net";
+    let msg = Inbound {
+        wa_id: "IMPORT-ST1".into(),
+        chat: chat.into(),
+        ts: 1_790_000_100,
+        kind: "text".into(),
+        text: Some("hello".into()),
+        push_name: Some("Correct customer".into()),
+        ..Default::default()
+    };
+    e.core.wa_ingest(&[msg]).unwrap();
+
+    // Simulate an old cached wrong id. Import must resolve from today's
+    // manual-link/unique-number rule, not from this denormalized column.
+    e.core
+        .db
+        .write(|tx| {
+            tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1", rusqlite::params![chat, wrong])?;
+            Ok(())
+        })
+        .unwrap();
+    let r = e.core.wa_import_contacts(t, Some(vec![chat.into()])).unwrap();
+    assert_eq!(r["created"], 0);
+    assert_eq!(r["linked"], 1);
+    assert_eq!(
+        count(&e, &format!("SELECT COUNT(*) FROM wa_inbox WHERE chat='{chat}' AND customer_id='{correct}'")),
+        1
+    );
+
+    // A manual link outranks the phone and repairs cached rows to the linked
+    // person without reporting the already-resolved chat as a new link.
+    e.core.wa_link_customer(t, chat, Some(wrong.clone())).unwrap();
+    e.core
+        .db
+        .write(|tx| {
+            tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1", rusqlite::params![chat, correct])?;
+            Ok(())
+        })
+        .unwrap();
+    let r = e.core.wa_import_contacts(t, Some(vec![chat.into()])).unwrap();
+    assert_eq!(r["created"], 0);
+    assert_eq!(r["linked"], 0);
+    assert_eq!(
+        count(&e, &format!("SELECT COUNT(*) FROM wa_inbox WHERE chat='{chat}' AND customer_id='{wrong}'")),
+        1
+    );
+}
+
+#[test]
+fn whatsapp_order_parser_preserves_numbered_product_names_and_arabic_quantities() {
+    let e = env();
+    let coke = e.product("Coke 330", "8801", 300, 180, 50_000);
+    let seven = e.product("7 Up", "8802", 350, 200, 50_000);
+    let milk = e.product("Milk", "8803", 500, 300, 50_000);
+    let bread = e.product("Bread", "8804", 250, 120, 50_000);
+
+    let parsed = e
+        .core
+        .db
+        .read(|c| tillbh_core::orders::suggest_lines(c, "Coke 330, 7 Up"))
+        .unwrap();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!((parsed[0].product_id.as_deref(), parsed[0].qty_milli), (Some(coke.as_str()), 1000));
+    assert_eq!((parsed[1].product_id.as_deref(), parsed[1].qty_milli), (Some(seven.as_str()), 1000));
+
+    let parsed = e
+        .core
+        .db
+        .read(|c| tillbh_core::orders::suggest_lines(c, "أبغى ٢ Milk، Bread 3"))
+        .unwrap();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!((parsed[0].product_id.as_deref(), parsed[0].qty_milli), (Some(milk.as_str()), 2000));
+    assert_eq!((parsed[1].product_id.as_deref(), parsed[1].qty_milli), (Some(bread.as_str()), 3000));
+
+    let parsed = e
+        .core
+        .db
+        .read(|c| tillbh_core::orders::suggest_lines(c, "please bring 2 x Milk; Bread لو سمحت"))
+        .unwrap();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!((parsed[0].product_id.as_deref(), parsed[0].qty_milli), (Some(milk.as_str()), 2000));
+    assert_eq!((parsed[1].product_id.as_deref(), parsed[1].qty_milli), (Some(bread.as_str()), 1000));
 }
 
 #[test]

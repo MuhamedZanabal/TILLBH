@@ -1,4 +1,4 @@
-; TILLBH NSIS installer hooks.
+; Tillbahrain NSIS installer hooks.
 ; Business data lives in %ProgramData%\TILLBH\data and is NEVER removed by
 ; install, upgrade or uninstall. Only the program files are managed here.
 
@@ -15,18 +15,18 @@
   nsExec::Exec 'icacls "$R9\TILLBH" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)M"'
   Pop $R9
   ; One inbound rule only: the hub API (TCP 47800), private networks, bound to
-  ; the TILLBH executable. Terminals join by entering the hub address shown on
-  ; the hub's Sync page. WhatsApp runs inside TILLBH (outbound only) and OCR
+  ; the Tillbahrain executable. Terminals join by entering the hub address shown on
+  ; the hub's Sync page. WhatsApp currently runs inside the desktop process (outbound only) and OCR
   ; runs the bundled Tesseract as a child process; neither listens on a port.
   ; The UDP discovery rule of earlier versions is removed.
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="TILLBH Hub"'
-  nsExec::Exec 'netsh advfirewall firewall add rule name="TILLBH Hub" dir=in action=allow program="$INSTDIR\tillbh.exe" protocol=TCP localport=47800 profile=private enable=yes'
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="TILLBH Discovery"'
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="Tillbahrain Hub"'
+  nsExec::Exec 'netsh advfirewall firewall add rule name="Tillbahrain Hub" dir=in action=allow program="$INSTDIR\tillbh.exe" protocol=TCP localport=47800 profile=private enable=yes'
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="Tillbahrain Discovery"'
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="TILLBH Hub"'
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="TILLBH Discovery"'
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="Tillbahrain Hub"'
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="Tillbahrain Discovery"'
   Push $R9
   ReadEnvStr $R9 PROGRAMDATA
   DetailPrint "Business data in $R9\TILLBH is kept. Delete it manually only after taking a backup."

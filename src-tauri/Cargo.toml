@@ -1,10 +1,10 @@
 [package]
-name = "tillbh"
+name = "tillbahrain"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "TILLBH desktop application (Windows)"
-default-run = "tillbh"
+description = "Tillbahrain desktop application (Windows)"
+default-run = "tillbahrain"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
