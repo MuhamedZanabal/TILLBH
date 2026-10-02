@@ -360,6 +360,42 @@ fn chat_links_to_a_customer_by_number_and_unmatched_stays_unmatched() {
 }
 
 #[test]
+fn whatsapp_order_parser_preserves_numbered_product_names_and_arabic_quantities() {
+    let e = env();
+    let coke = e.product("Coke 330", "8801", 300, 180, 50_000);
+    let seven = e.product("7 Up", "8802", 350, 200, 50_000);
+    let milk = e.product("Milk", "8803", 500, 300, 50_000);
+    let bread = e.product("Bread", "8804", 250, 120, 50_000);
+
+    let parsed = e
+        .core
+        .db
+        .read(|c| tillbh_core::orders::suggest_lines(c, "Coke 330, 7 Up"))
+        .unwrap();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!((parsed[0].product_id.as_deref(), parsed[0].qty_milli), (Some(coke.as_str()), 1000));
+    assert_eq!((parsed[1].product_id.as_deref(), parsed[1].qty_milli), (Some(seven.as_str()), 1000));
+
+    let parsed = e
+        .core
+        .db
+        .read(|c| tillbh_core::orders::suggest_lines(c, "أبغى ٢ Milk، Bread 3"))
+        .unwrap();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!((parsed[0].product_id.as_deref(), parsed[0].qty_milli), (Some(milk.as_str()), 2000));
+    assert_eq!((parsed[1].product_id.as_deref(), parsed[1].qty_milli), (Some(bread.as_str()), 3000));
+
+    let parsed = e
+        .core
+        .db
+        .read(|c| tillbh_core::orders::suggest_lines(c, "please bring 2 x Milk; Bread لو سمحت"))
+        .unwrap();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!((parsed[0].product_id.as_deref(), parsed[0].qty_milli), (Some(milk.as_str()), 2000));
+    assert_eq!((parsed[1].product_id.as_deref(), parsed[1].qty_milli), (Some(bread.as_str()), 1000));
+}
+
+#[test]
 fn order_received_notice_is_manual_by_default_and_automatic_when_the_setting_is_on() {
     let e = env();
     let t = &e.owner_token;
