@@ -1,43 +1,49 @@
 # Completion status
 
-**Overall: feature-complete for the Windows soak, not release-complete.** A row is **Complete**
-only when it is implemented, tested automatically in this repository, and needs no Windows
-hardware or third-party account. Everything that needs the store's hardware stays **Partially
-complete** until the owner signs off the hardware pass in [OPERATIONS.md](OPERATIONS.md).
+**Overall: repository-internal implementation is feature-complete for the pre-soak gate, but the active repository is not release-verified.** A row is **Complete**
+only when the implementation and its automated tests are present in this repository and it needs no Windows
+hardware or third-party account. Everything that needs store hardware, vendor credentials, or a live external service stays **Partially complete**, **Blocked**, or **Deferred** until the corresponding acceptance evidence exists.
 
 Classes:
-- **Complete:** implemented and tested here; no hardware or vendor dependency.
-- **Partially complete:** implemented and tested off-target; hardware verification is pending.
+- **Complete:** implementation and automated tests are present; no hardware or vendor dependency remains.
+- **Partially complete:** implementation exists, but target-hardware, current-CI, or live-service verification is still pending.
 - **Blocked:** needs something outside the repository before work can continue.
 - **Deferred:** deliberately not built yet. The admin page says **Not enabled**. Each needs an
   owner, a key and a rollback plan.
 
-## Soak installer (CI)
+## Current evidence gate — active repository
+
+| | |
+| --- | --- |
+| Repository | `MuhamedZanabal/TILLBH` |
+| Current audited main | `629e6b02fe1314a60d479344980665d64166a58a` |
+| Current GitHub Actions evidence | **Not verified.** The GitHub API reports zero workflow runs in the active repository as of 2026-10-02. |
+| Current installer evidence | **Not verified.** No installer artifact from the active repository has been proven by a fresh successful run. |
+| Release gate | **Open.** Require a fresh green CI run on the active repository, then the Windows hardware checklist in [OPERATIONS.md](OPERATIONS.md). |
+
+The workflow files are present and configured, but configuration is not execution evidence. Until a fresh run succeeds, do not describe CI, the Windows installer, or the release pipeline as currently green.
+
+## Historical soak installer record — pre-migration, not current release evidence
+
+The previous version of this document recorded the following evidence from `ZanaNowshad/TILLBH`. It is retained only as historical implementation evidence and must not be used as the current release artifact or current-CI proof.
 
 | | |
 | --- | --- |
 | File | `TILLBH_0.1.0_x64-setup.exe` (artifact `tillbh-windows-unsigned`) |
 | SHA-256 | `d6c0e260be719cd05a3755601bc7c70ea95153e535695173934ab371ee94f452` |
-| Built by | GitHub Actions CI run #12 (`36024872450`) on `windows-2022`, commit `ad7e650` |
-| WebView2 | Bootstrapper **embedded** (`webviewInstallMode: embedBootstrapper`); the CI job fails if the configuration changes to an install-time download |
-| Signing | **Unsigned.** For internal soak only (SmartScreen will warn). |
-| Download | https://github.com/ZanaNowshad/TILLBH/actions/runs/36024872450 (artifact `tillbh-windows-unsigned`, id 10819612747, kept for 90 days) |
+| Recorded run | GitHub Actions CI run #12 (`36024872450`) on `windows-2022`, commit `ad7e650` |
+| WebView2 | Recorded as embedded bootstrapper |
+| Signing | Recorded as unsigned |
+| Historical URL | `https://github.com/ZanaNowshad/TILLBH/actions/runs/36024872450` |
 
-Evidence was re-run on 2026-09-24:
-- **Rust** (`cargo test --workspace`, Linux and Windows CI), 77 tests:
-  - 38 core unit tests;
-  - 7 back-office, 15 flow, 6 printing and 6 sync tests;
-  - 4 encrypted-channel tests and 1 HTTP sync test.
-- **Lint:** `cargo fmt` and `clippy -D warnings` are clean; `tsc` and `eslint` are clean.
-- **Frontend unit tests** (vitest): 20.
-- **End-to-end** (Playwright): 3 flows.
-  - Owner: setup → sale → split pay → refund → shift close, with the backup banner.
-  - Cashier: Admin blocked, manager PIN, wrong PIN, audit row, and a scanner burst.
-  - Arabic: right-to-left sale, admin, dark/compact theme.
-- **Proxy test:** no product name, barcode, receipt number, pairing code, device key or PIN hash
-  crosses the LAN in clear.
-- **Performance** (100k products, release build, Linux sandbox): P95 scan 0.73 ms, search
-  23.6 ms, cart 0.78 ms, sale commit 9.9 ms.
+Historical test record dated 2026-09-24:
+- Rust workspace tests on Linux and Windows;
+- `cargo fmt`, clippy, TypeScript and ESLint checks;
+- frontend unit tests and Playwright flows;
+- encrypted-protocol/proxy tests;
+- 100k-product performance measurements.
+
+Those records do not replace a fresh run from the active repository.
 
 ## Known limits
 
@@ -46,7 +52,7 @@ Evidence was re-run on 2026-09-24:
 | 1 | Arabic receipt glyphs print as `?` (image-fallback not built). | **Fixed in code** (commit `eda19ef`). Arabic lines are shaped and rasterized (`GS v 0`), and tests prove no `?` reaches the printer. Still open until Arabic is seen on the store's 80 mm printer (hardware pass). |
 | 2 | No RTL shell. | **Fixed** (commit `39652d4`). Cashier and admin work fully in Arabic right-to-left. |
 | 3 | DB file unencrypted (BitLocker-dependent). | **Open.** See SECURITY.md: stolen-database paragraph and residual risks. |
-| 4 | Unsigned installer; not run on Windows. | **Open.** The installer is now built and tested by Windows CI (above), but it is unsigned and has not been installed on a store Windows 10/11 machine. |
+| 4 | Unsigned installer; active-repository Windows evidence is missing. | **Open.** Historical Windows-CI evidence exists, but the active repository has no fresh successful Actions run or current installer artifact. It also still needs installation on store Windows 10/11 hardware. |
 
 ## Matrix
 
@@ -79,8 +85,8 @@ Evidence was re-run on 2026-09-24:
 | Performance targets (100k products) | Partially complete | Numbers above (Linux sandbox) | Re-measure on the till hardware during the soak |
 | Windows desktop shell (single instance, Credential Manager, ProgramData ACLs, 30-day rotating logs) | Partially complete | Built and unit-tested on Windows CI; launched under Xvfb on Linux | First launch on a Windows 10/11 till |
 | NSIS installer (per-machine, firewall rules, ACLs, data kept on uninstall, embedded WebView2) | Partially complete | Built by Windows CI (above); embedded WebView2 enforced by CI | Install / upgrade / uninstall on Windows 10 and 11 |
-| CI (lint, types, unit, E2E, Windows build + installer) | Complete | GitHub Actions green on this branch | — |
-| Release workflow (tag → draft release, SBOMs, SHA-256 sums, optional signing) | Partially complete | Workflow lint-clean; SBOM generation run locally | First tag run |
+| CI (lint, types, unit, E2E, Windows build + installer) | Partially complete | Workflow definition is present in `.github/workflows/ci.yml` for pull requests and pushes to `main` / `claude/**`. | Fresh successful run on the active repository; current GitHub API evidence shows zero runs. |
+| Release workflow (tag → draft release, SBOMs, SHA-256 sums, optional signing) | Partially complete | Workflow definition is present in `.github/workflows/release.yml`. | First successful tag run on the active repository, with draft release assets and hashes inspected. |
 | Code signing | Deferred | Unsigned is accepted for internal soak | Authenticode certificate |
 | Auto-update (flag `updates`) | Partially complete | Ed25519-signed manifest, size + SHA-256 checks, re-verify before install, safety backup; refuses unsigned builds (`tests/updates.rs`) | Signing key (`TILLBH_UPDATE_PUBKEY`), hosting, install run on Windows |
 | WhatsApp (flags `whatsapp.enabled`, `.send_receipts`, `.delivery_notices`) | Partially complete | In-process `whatsapp-rust` =0.7.0 adapter behind a trait; supervisor restart after panic, separate status flags, reconnect after restart, idempotent sends, persist-before-ack inbound, media → review (`tests/whatsapp.rs` with `FakeAdapter`); post-commit receipts/notices, payload-hash idempotency, EN/AR templates (`tests/automation.rs`) | Pairing and soak test with a real phone; the real adapter has never connected to WhatsApp |

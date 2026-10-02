@@ -12,7 +12,7 @@ store hub on the local network.
 
 | Path | What it is |
 | --- | --- |
-| `crates/tillbh-core` | Domain logic and storage: pricing, sales, refunds, shifts, inventory, purchasing, customers, reports, import, backup/restore, audit chain, auth, sync. Migrations in `src/migrations`. |
+| `crates/tillbh-core` | Domain logic and storage: pricing, sales, refunds, shifts, inventory, purchasing, customers, reports, import, backup/restore, audit chain, auth, sync. Migrations in `crates/tillbh-core/src/migrations`. |
 | `crates/tillbh-hub` | LAN hub HTTP server (axum), signed sync client, UDP discovery, background runtime (sync loop, scheduled backups). |
 | `crates/tillbh-devserver` | Loopback-only HTTP bridge serving the UI plus `POST /rpc` for browser development and E2E. Never shipped. |
 | `src-tauri` | Desktop shell: one `rpc` IPC command, single instance, Windows Credential Manager secrets, JSON logs, NSIS installer. |

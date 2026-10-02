@@ -15,7 +15,7 @@ explicit decision.
 
 ## Soak builds
 
-Every push to the working branch runs CI. The **Windows build + tests + installer** job uploads
+CI is configured for every pull request and for pushes to `main` or `claude/**`. A workflow file being present is not proof that CI ran; [STATUS.md](STATUS.md) records the latest verified run on the active repository. When CI runs successfully, the **Windows build + tests + installer** job uploads
 `tillbh-windows-unsigned`, which contains `TILLBH_<ver>_x64-setup.exe`, and prints its SHA-256
 in the "Installer hashes" step. The **Installer smoke test** step then installs that exact installer
 silently on the Windows runner and checks it (`scripts/installer-smoke.ps1`, `scripts/installer-smoke.mjs`):
