@@ -1,7 +1,7 @@
 // Digital orders (phone, WhatsApp, web, other). Shared by the admin page,
 // the delivery desk and the till. An order never becomes a sale by itself:
 // a person confirms it, then a cashier loads it into a sale and takes payment.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { api } from "../api";
 import type { Cart, CustomerAddress, CustomerRow, DigitalOrder, OrderChannel, OrderInput, OrderPaymentState } from "../api/types";
@@ -61,6 +61,7 @@ export function OrderEditor({
   const [cq, setCq] = useState("");
   const [custRows, setCustRows] = useState<CustomerRow[]>([]);
   const [customerAddresses, setCustomerAddresses] = useState<CustomerAddress[]>([]);
+  const addressTouched = useRef(!!order?.address);
   const [matchLine, setMatchLine] = useState<number | null>(null);
   const [pq, setPq] = useState("");
   const [prodRows, setProdRows] = useState<
@@ -97,7 +98,14 @@ export function OrderEditor({
       };
     }
     api.customers.account(customer.id).then(
-      (v) => live && setCustomerAddresses(v.addresses),
+      (v) => {
+        if (!live) return;
+        setCustomerAddresses(v.addresses);
+        if (!addressTouched.current) {
+          const preferred = v.addresses.find((a) => a.is_default) ?? v.addresses[0];
+          if (preferred) setAddress(preferred.address);
+        }
+      },
       () => live && setCustomerAddresses([]),
     );
     return () => {
@@ -218,6 +226,7 @@ export function OrderEditor({
                       // Choosing a person is authoritative. Never carry the
                       // previous customer's contact details into this order.
                       setPhone(c.phone ?? c.whatsapp ?? "");
+                      addressTouched.current = false;
                       setAddress(c.address ?? "");
                       setCq("");
                     }}
@@ -226,6 +235,7 @@ export function OrderEditor({
                         e.preventDefault();
                         setCustomer({ id: c.customer_id, name: c.name });
                         setPhone(c.phone ?? c.whatsapp ?? "");
+                        addressTouched.current = false;
                         setAddress(c.address ?? "");
                         setCq("");
                       }
@@ -260,7 +270,10 @@ export function OrderEditor({
                       className="select"
                       value=""
                       onChange={(e) => {
-                        if (e.target.value) setAddress(e.target.value);
+                        if (e.target.value) {
+                          addressTouched.current = true;
+                          setAddress(e.target.value);
+                        }
                       }}
                     >
                       <option value="">{t("Choose a saved address…")}</option>
@@ -273,7 +286,14 @@ export function OrderEditor({
                     </select>
                   </Field>
                 ) : null}
-                <TextInput label={t("Delivery address")} value={address} onChange={(e) => setAddress(e.target.value)} />
+                <TextInput
+                  label={t("Delivery address")}
+                  value={address}
+                  onChange={(e) => {
+                    addressTouched.current = true;
+                    setAddress(e.target.value);
+                  }}
+                />
               </>
             ) : null}
           </div>
