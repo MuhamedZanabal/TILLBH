@@ -1172,9 +1172,14 @@ impl AppCore {
         s.require("whatsapp.manage")?;
         s.require("customers.manage")?;
         self.require_feature("whatsapp.enabled")?;
+        // Enumerate chats, not rows whose cached customer_id happens to be
+        // null. Older versions may have stored a stale auto-match in every
+        // row of a chat; the current manual-link/unique-number rule is the
+        // source of truth.
         let candidates: Vec<(String, String, Option<String>)> = self.db.read(|c| {
             let mut st = c.prepare(
-                "SELECT chat, MAX(phone), MAX(push_name) FROM wa_inbox WHERE customer_id IS NULL AND phone IS NOT NULL GROUP BY chat ORDER BY MAX(seq) DESC LIMIT 500",
+                "SELECT chat, MAX(phone), MAX(push_name) FROM wa_inbox
+                 WHERE phone IS NOT NULL GROUP BY chat ORDER BY MAX(seq) DESC LIMIT 500",
             )?;
             let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
@@ -1186,19 +1191,22 @@ impl AppCore {
                     continue;
                 }
             }
-            let existing = self.db.read(|c| find_customer_by_phone(c, &phone))?;
-            let cid = match existing {
-                ContactMatch::Unique { customer_id, .. } => {
+            let current = self.db.read(|c| resolve_chat_customer(c, &chat, Some(&phone)))?;
+            let cid = match current {
+                ChatCustomerMatch::Linked(customer_id) => {
+                    // Already explicitly resolved by a person. Repair any old
+                    // cached rows, but don't report it as a newly linked sender.
+                    customer_id
+                }
+                ChatCustomerMatch::Number(customer_id) => {
                     linked += 1;
                     customer_id
                 }
-                ContactMatch::Ambiguous => {
-                    // Legacy duplicate numbers require a person to choose the
-                    // customer from the conversation header. Never guess here.
+                ChatCustomerMatch::Ambiguous => {
                     skipped += 1;
                     continue;
                 }
-                ContactMatch::None => {
+                ChatCustomerMatch::None => {
                     let name = name
                         .clone()
                         .map(|n| n.trim().chars().take(100).collect::<String>())
@@ -1219,9 +1227,7 @@ impl AppCore {
                     }
                 }
             };
-            self.db.write(|tx| {
-                Ok(tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1 AND customer_id IS NULL", params![chat, cid])?)
-            })?;
+            self.db.write(|tx| Ok(tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1", params![chat, cid])?))?;
         }
         Ok(json!({ "created": created, "linked": linked, "skipped": skipped }))
     }
