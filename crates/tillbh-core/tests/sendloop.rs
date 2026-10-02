@@ -365,6 +365,61 @@ fn chat_links_to_a_customer_by_number_and_unmatched_stays_unmatched() {
 }
 
 #[test]
+fn whatsapp_sender_import_repairs_stale_cached_identity_without_guessing() {
+    let e = env();
+    let t = &e.owner_token;
+    features(&e, json!({ "whatsapp.enabled": true }));
+    let correct = customer(&e, "Correct customer", "33338888", None);
+    let wrong = customer(&e, "Wrong cached customer", "33339999", None);
+    let chat = "97333338888@s.whatsapp.net";
+    let msg = Inbound {
+        wa_id: "IMPORT-ST1".into(),
+        chat: chat.into(),
+        ts: 1_790_000_100,
+        kind: "text".into(),
+        text: Some("hello".into()),
+        push_name: Some("Correct customer".into()),
+        ..Default::default()
+    };
+    e.core.wa_ingest(&[msg]).unwrap();
+
+    // Simulate an old cached wrong id. Import must resolve from today's
+    // manual-link/unique-number rule, not from this denormalized column.
+    e.core
+        .db
+        .write(|tx| {
+            tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1", rusqlite::params![chat, wrong])?;
+            Ok(())
+        })
+        .unwrap();
+    let r = e.core.wa_import_contacts(t, Some(vec![chat.into()])).unwrap();
+    assert_eq!(r["created"], 0);
+    assert_eq!(r["linked"], 1);
+    assert_eq!(
+        count(&e, &format!("SELECT COUNT(*) FROM wa_inbox WHERE chat='{chat}' AND customer_id='{correct}'")),
+        1
+    );
+
+    // A manual link outranks the phone and repairs cached rows to the linked
+    // person without reporting the already-resolved chat as a new link.
+    e.core.wa_link_customer(t, chat, Some(wrong.clone())).unwrap();
+    e.core
+        .db
+        .write(|tx| {
+            tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1", rusqlite::params![chat, correct])?;
+            Ok(())
+        })
+        .unwrap();
+    let r = e.core.wa_import_contacts(t, Some(vec![chat.into()])).unwrap();
+    assert_eq!(r["created"], 0);
+    assert_eq!(r["linked"], 0);
+    assert_eq!(
+        count(&e, &format!("SELECT COUNT(*) FROM wa_inbox WHERE chat='{chat}' AND customer_id='{wrong}'")),
+        1
+    );
+}
+
+#[test]
 fn whatsapp_order_parser_preserves_numbered_product_names_and_arabic_quantities() {
     let e = env();
     let coke = e.product("Coke 330", "8801", 300, 180, 50_000);
