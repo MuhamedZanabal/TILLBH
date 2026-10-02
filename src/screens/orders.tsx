@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { api } from "../api";
-import type { Cart, CustomerRow, DigitalOrder, OrderChannel, OrderInput, OrderPaymentState } from "../api/types";
+import type { Cart, CustomerAddress, CustomerRow, DigitalOrder, OrderChannel, OrderInput, OrderPaymentState } from "../api/types";
 import { useSession } from "../state/session";
 import { explain } from "../lib/errors";
 import { newOperationId } from "../lib/ids";
@@ -60,6 +60,8 @@ export function OrderEditor({
   const [lines, setLines] = useState<LineDraft[]>(toDraft(order));
   const [cq, setCq] = useState("");
   const [custRows, setCustRows] = useState<CustomerRow[]>([]);
+  const [customerAddresses, setCustomerAddresses] = useState<CustomerAddress[]>([]);
+  const [matchLine, setMatchLine] = useState<number | null>(null);
   const [pq, setPq] = useState("");
   const [prodRows, setProdRows] = useState<
     { product_id: string; name: string; sku: string; price_minor: number | null }[]
@@ -86,6 +88,22 @@ export function OrderEditor({
     }, 200);
     return () => clearTimeout(h);
   }, [pq]);
+  useEffect(() => {
+    let live = true;
+    if (!customer?.id) {
+      setCustomerAddresses([]);
+      return () => {
+        live = false;
+      };
+    }
+    api.customers.account(customer.id).then(
+      (v) => live && setCustomerAddresses(v.addresses),
+      () => live && setCustomerAddresses([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [customer?.id]);
   const save = async () => {
     setError(null);
     const out: OrderInput["lines"] = [];
@@ -135,6 +153,14 @@ export function OrderEditor({
         {order?.inbox_seq ? (
           <Banner tone="info" title={t("Suggested from a WhatsApp message")}>
             {t("Check every line against the message before confirming. Unmatched text stays as a note on the line.")}
+            {order.note ? (
+              <div style={{ marginTop: 8 }}>
+                <strong>{t("Original WhatsApp message")}</strong>
+                <div dir="auto" style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>
+                  {order.note}
+                </div>
+              </div>
+            ) : null}
           </Banner>
         ) : null}
         <div className="grid-2">
@@ -160,7 +186,13 @@ export function OrderEditor({
               {customer ? (
                 <div className="row">
                   <strong className="grow">{customer.name}</strong>
-                  <Button size="sm" onClick={() => setCustomer(null)}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setCustomer(null);
+                      setCustomerAddresses([]);
+                    }}
+                  >
                     {t("Remove")}
                   </Button>
                 </div>
@@ -179,11 +211,24 @@ export function OrderEditor({
                   <div
                     key={c.customer_id}
                     className="result-row"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       setCustomer({ id: c.customer_id, name: c.name });
-                      if (!phone && c.phone) setPhone(c.phone);
-                      if (!address && c.address) setAddress(c.address);
+                      // Choosing a person is authoritative. Never carry the
+                      // previous customer's contact details into this order.
+                      setPhone(c.phone ?? c.whatsapp ?? "");
+                      setAddress(c.address ?? "");
                       setCq("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setCustomer({ id: c.customer_id, name: c.name });
+                        setPhone(c.phone ?? c.whatsapp ?? "");
+                        setAddress(c.address ?? "");
+                        setCq("");
+                      }
                     }}
                   >
                     <span className="grow">{c.name}</span>
@@ -208,7 +253,28 @@ export function OrderEditor({
           <div className="col gap-8">
             <Checkbox label={t("Deliver this order")} checked={delivery} onChange={setDelivery} />
             {delivery ? (
-              <TextInput label={t("Delivery address")} value={address} onChange={(e) => setAddress(e.target.value)} />
+              <>
+                {customerAddresses.length ? (
+                  <Field label={t("Saved addresses")}>
+                    <select
+                      className="select"
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) setAddress(e.target.value);
+                      }}
+                    >
+                      <option value="">{t("Choose a saved address…")}</option>
+                      {customerAddresses.map((a) => (
+                        <option key={a.address_id} value={a.address}>
+                          {a.is_default ? "★ " : ""}
+                          {a.label} — {[a.area, a.address].filter(Boolean).join(" · ")}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : null}
+                <TextInput label={t("Delivery address")} value={address} onChange={(e) => setAddress(e.target.value)} />
+              </>
             ) : null}
           </div>
         </div>
@@ -236,16 +302,48 @@ export function OrderEditor({
               />
               <Button
                 size="sm"
+                variant={matchLine === i ? "primary" : "default"}
+                onClick={() => {
+                  setMatchLine(i);
+                  setPq(l.description || l.name);
+                }}
+              >
+                {l.product_id ? t("Change product") : t("Match product")}
+              </Button>
+              <Button
+                size="sm"
                 variant="ghost"
                 aria-label={t("Remove")}
                 icon={<Trash2 size={14} />}
-                onClick={() => setLines(lines.filter((_, j) => j !== i))}
+                onClick={() => {
+                  setLines(lines.filter((_, j) => j !== i));
+                  setMatchLine((m) => (m === null ? null : m === i ? null : m > i ? m - 1 : m));
+                }}
               />
             </div>
           ))}
+          {matchLine !== null && lines[matchLine] ? (
+            <div className="row gap-8">
+              <Chip tone="warning">{t("Matching: {0}", lines[matchLine].description || lines[matchLine].name)}</Chip>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setMatchLine(null);
+                  setPq("");
+                }}
+              >
+                {t("Cancel")}
+              </Button>
+            </div>
+          ) : null}
           <input
             className="input"
-            placeholder={t("Add a product: type a name, SKU or barcode…")}
+            placeholder={
+              matchLine !== null && lines[matchLine]
+                ? t("Find the product for: {0}", lines[matchLine].description || lines[matchLine].name)
+                : t("Add a product: type a name, SKU or barcode…")
+            }
             value={pq}
             onChange={(e) => setPq(e.target.value)}
           />
@@ -255,13 +353,26 @@ export function OrderEditor({
                 <div
                   key={p.product_id}
                   className="result-row"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
-                    // Matching an unmatched line keeps its text; otherwise add a new line.
-                    const idx = lines.findIndex((x) => !x.product_id);
-                    if (idx >= 0)
-                      setLines(lines.map((x, j) => (j === idx ? { ...x, product_id: p.product_id, name: p.name } : x)));
-                    else
+                    if (matchLine !== null && lines[matchLine]) {
+                      setLines(lines.map((x, j) => (j === matchLine ? { ...x, product_id: p.product_id, name: p.name } : x)));
+                      setMatchLine(null);
+                    } else {
                       setLines([...lines, { product_id: p.product_id, name: p.name, description: p.name, qty: "1" }]);
+                    }
+                    setPq("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    if (matchLine !== null && lines[matchLine]) {
+                      setLines(lines.map((x, j) => (j === matchLine ? { ...x, product_id: p.product_id, name: p.name } : x)));
+                      setMatchLine(null);
+                    } else {
+                      setLines([...lines, { product_id: p.product_id, name: p.name, description: p.name, qty: "1" }]);
+                    }
                     setPq("");
                   }}
                 >
@@ -353,6 +464,11 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
             <Chip>{codeLabel(o.channel)}</Chip>
             <Chip tone={o.payment_state === "unpaid" ? "warning" : "default"}>{codeLabel(o.payment_state)}</Chip>
             {o.delivery_wanted ? <Chip>{t("Delivery")}</Chip> : null}
+            {o.lines.some((l) => !l.product_id) ? (
+              <Chip tone="warning">{t("{0} items need matching", o.lines.filter((l) => !l.product_id).length)}</Chip>
+            ) : o.lines.length === 0 ? (
+              <Chip tone="warning">{t("No items yet.")}</Chip>
+            ) : null}
             <span className="grow" />
             <span className="tiny">{formatShort(o.created_at)}</span>
           </div>
@@ -374,9 +490,15 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
                 <Button size="sm" onClick={() => setEditing(o)}>
                   {t("Edit")}
                 </Button>
-                <Button size="sm" variant="primary" onClick={() => act(() => api.orders.confirm(o.order_id))}>
-                  {t("Confirm")}
-                </Button>
+                {o.lines.length > 0 && o.lines.every((l) => !!l.product_id) ? (
+                  <Button size="sm" variant="primary" onClick={() => act(() => api.orders.confirm(o.order_id))}>
+                    {t("Confirm")}
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="primary" onClick={() => setEditing(o)}>
+                    {t("Review & match")}
+                  </Button>
+                )}
               </>
             ) : null}
             {manage && (o.status === "draft" || o.status === "confirmed") ? (
