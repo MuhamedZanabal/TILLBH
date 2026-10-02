@@ -10,7 +10,7 @@ import { relative } from "../../lib/time";
 import { t } from "../../i18n";
 import { useAction, useLoad } from "./common";
 
-type Filter = "new" | "exists" | "all";
+type Filter = "new" | "exists" | "ambiguous" | "all";
 
 /**
  * Customers page: shown while WhatsApp is connected. Imports the contacts
@@ -153,7 +153,7 @@ function WhatsAppContactsSheet({ onClose, onImported }: { onClose: () => void; o
       <div className="col gap-16">
         <p className="small muted" style={{ margin: 0 }}>
           {t(
-            "The name saved on the shop's phone becomes the customer name, the number becomes the phone and WhatsApp number, and any numbers with hyphens or slashes in the name (e.g. “825 - 3325 husband”) become the address. Customers already saved with the same number are not duplicated.",
+            "The name saved on the shop's phone becomes the customer name, the number becomes the phone and WhatsApp number, and any numbers with hyphens or slashes in the name (e.g. “825 - 3325 husband”) become the address. Existing customers are matched only when the number belongs to exactly one customer.",
           )}
         </p>
         <div className="row wrap">
@@ -188,6 +188,7 @@ function WhatsAppContactsSheet({ onClose, onImported }: { onClose: () => void; o
                 [
                   ["new", t("New ({0})", c?.new ?? 0)],
                   ["exists", t("Already customers ({0})", c?.exists ?? 0)],
+                  ["ambiguous", t("Needs review ({0})", c?.ambiguous ?? 0)],
                   ["all", t("All ({0})", rows.length)],
                 ] as const
               ).map(([k, label]) => (
@@ -254,6 +255,10 @@ function WhatsAppContactsSheet({ onClose, onImported }: { onClose: () => void; o
                       <span className="chip">{t("Customer: {0}", r.customer_name ?? "")}</span>
                     ) : r.status === "new" ? (
                       <span className="chip brand">{t("New")}</span>
+                    ) : r.status === "ambiguous" ? (
+                      <span className="chip warning" title={t("More than one customer uses this number. Fix the duplicate before importing.")}>
+                        {t("Needs review")}
+                      </span>
                     ) : (
                       <span className="chip">{r.status === "no_phone" ? t("No number") : t("No name")}</span>
                     )}
