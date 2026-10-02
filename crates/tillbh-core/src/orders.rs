@@ -489,12 +489,16 @@ impl AppCore {
         let s = self.order_session(token, "orders.manage")?;
         let actor = self.actor(&s, None);
         let id = self.db.write(|tx| {
-            let (body, phone, customer): (Option<String>, Option<String>, Option<String>) = tx
-                .query_row("SELECT COALESCE(body, caption), phone, customer_id FROM wa_inbox WHERE seq=?1", [seq], |r| {
+            let (body, phone, chat): (Option<String>, Option<String>, String) = tx
+                .query_row("SELECT COALESCE(body, caption), phone, chat FROM wa_inbox WHERE seq=?1", [seq], |r| {
                     Ok((r.get(0)?, r.get(1)?, r.get(2)?))
                 })
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Message"))?;
+            let customer = match crate::messaging::resolve_chat_customer(tx, &chat, phone.as_deref())? {
+                crate::messaging::ChatCustomerMatch::Linked(id) | crate::messaging::ChatCustomerMatch::Number(id) => Some(id),
+                crate::messaging::ChatCustomerMatch::None | crate::messaging::ChatCustomerMatch::Ambiguous => None,
+            };
             if let Some(existing) = tx
                 .query_row("SELECT order_id FROM digital_orders WHERE inbox_seq=?1 AND status<>'cancelled'", [seq], |r| r.get::<_, String>(0))
                 .optional()?
