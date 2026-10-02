@@ -321,6 +321,11 @@ fn chat_links_to_a_customer_by_number_and_unmatched_stays_unmatched() {
     let ambiguous = e.core.wa_thread_context(t, "97333336666@s.whatsapp.net").unwrap();
     assert!(ambiguous["customer"].is_null());
     assert_eq!(ambiguous["match"], "ambiguous");
+    let thread = e.core.wa_thread(t, "97333336666@s.whatsapp.net").unwrap();
+    assert!(
+        thread["inbound"].as_array().unwrap().iter().all(|m| m["customer_id"].is_null() && m["customer_name"].is_null()),
+        "thread rows must not leak a stale historical customer when the current number is ambiguous"
+    );
     let conversations = e.core.wa_conversations(t).unwrap();
     let conversation = conversations.iter().find(|x| x.chat == "97333336666@s.whatsapp.net").unwrap();
     assert!(conversation.customer_id.is_none(), "the list must not keep a stale historical auto-match");
