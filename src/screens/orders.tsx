@@ -137,22 +137,12 @@ export function OrderEditor({
             {t("Review the items before saving. Anything we could not match stays highlighted.")}
           </Banner>
         ) : null}
-        <div className="grid-2">
-          <Field label={t("Order source")}>
-            <select className="select" value={channel} onChange={(e) => setChannel(e.target.value as OrderChannel)}>
-              {CHANNELS.map((c) => (
-                <option key={c} value={c}>
-                  {codeLabel(c)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <TextInput
-            label={t("Reference (optional)")}
-            value={ref}
-            onChange={(e) => setRef(e.target.value)}
-            hint={t("Use the website or marketplace order number, if there is one.")}
-          />
+        <div className="flow-heading">
+          <span className="flow-step">1</span>
+          <div>
+            <strong>{t("Customer")}</strong>
+            <div className="tiny muted">{t("Choose the customer or enter their phone number.")}</div>
+          </div>
         </div>
         <div className="grid-2">
           <div className="col gap-8">
@@ -195,25 +185,14 @@ export function OrderEditor({
           </div>
           <TextInput label={t("Phone")} value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} />
         </div>
-        <div className="grid-2">
-          <Field label={t("Payment status")}>
-            <select className="select" value={pay} onChange={(e) => setPay(e.target.value as OrderPaymentState)}>
-              {PAY.map((p) => (
-                <option key={p} value={p}>
-                  {codeLabel(p)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="col gap-8">
-            <Checkbox label={t("Delivery")} checked={delivery} onChange={setDelivery} />
-            {delivery ? (
-              <TextInput label={t("Delivery address")} value={address} onChange={(e) => setAddress(e.target.value)} hint={t("Use the customer’s saved address or enter a different one.")} />
-            ) : null}
+        <div className="flow-heading">
+          <span className="flow-step">2</span>
+          <div>
+            <strong>{t("Items")}</strong>
+            <div className="tiny muted">{t("Add exactly what the customer wants.")}</div>
           </div>
         </div>
         <div className="col gap-8">
-          <h3>{t("Items")}</h3>
           {lines.length === 0 ? <div className="muted small">{t("Add the products the customer wants.")}</div> : null}
           {lines.map((l, i) => (
             <div key={i} className="row" data-testid="order-line">
@@ -273,9 +252,55 @@ export function OrderEditor({
             </div>
           ) : null}
         </div>
-        <Field label={t("Order note (optional)")}>
-          <textarea className="textarea" value={note} onChange={(e) => setNote(e.target.value)} />
-        </Field>
+        <div className="flow-heading">
+          <span className="flow-step">3</span>
+          <div>
+            <strong>{t("Delivery & payment")}</strong>
+            <div className="tiny muted">{t("Choose how the order is fulfilled and whether payment is still due.")}</div>
+          </div>
+        </div>
+        <div className="grid-2">
+          <Field label={t("Payment status")}>
+            <select className="select" value={pay} onChange={(e) => setPay(e.target.value as OrderPaymentState)}>
+              {PAY.map((p) => (
+                <option key={p} value={p}>
+                  {codeLabel(p)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="col gap-8">
+            <Checkbox label={t("Delivery")} checked={delivery} onChange={setDelivery} />
+            {delivery ? (
+              <TextInput label={t("Delivery address")} value={address} onChange={(e) => setAddress(e.target.value)} hint={t("Use the customer’s saved address or enter a different one.")} />
+            ) : null}
+          </div>
+        </div>
+        <details className="progressive">
+          <summary>{t("More order details")}</summary>
+          <div className="col gap-16 progressive-body">
+        <div className="grid-2">
+          <Field label={t("Order source")}>
+            <select className="select" value={channel} onChange={(e) => setChannel(e.target.value as OrderChannel)}>
+              {CHANNELS.map((c) => (
+                <option key={c} value={c}>
+                  {codeLabel(c)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <TextInput
+            label={t("Reference (optional)")}
+            value={ref}
+            onChange={(e) => setRef(e.target.value)}
+            hint={t("Use the website or marketplace order number, if there is one.")}
+          />
+        </div>
+            <Field label={t("Order note (optional)")}>
+              <textarea className="textarea" value={note} onChange={(e) => setNote(e.target.value)} />
+            </Field>
+          </div>
+        </details>
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
     </Modal>

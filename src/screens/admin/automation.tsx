@@ -161,31 +161,34 @@ function AutomationStates({ st }: { st: AutomationStatus }) {
 /** Always shown (also when the module is off): what this module is and its risks. */
 function WaAbout() {
   return (
-    <Banner tone="warning" title={t("About WhatsApp in TILLBH")}>
-      <ul className="col gap-8" style={{ margin: 0, paddingInlineStart: 18 }}>
-        <li>
-          {t(
-            "Switched on by the owner in Settings → Features (WhatsApp). It is off by default; selling, refunds and shifts never depend on it.",
-          )}
-        </li>
-        <li>
-          {t(
-            "TILLBH links to a WhatsApp number like WhatsApp Web does, using an unofficial client built into TILLBH. This is not the WhatsApp Business API.",
-          )}
-        </li>
-        <li>
-          <strong>{t("Ban risk")}:</strong>{" "}
-          {t(
-            "WhatsApp's terms do not allow unofficial clients. WhatsApp can restrict or ban a number that uses one, especially for bulk or unsolicited messages. Use a number you can afford to lose and message only customers who expect it.",
-          )}
-        </li>
-        <li>
-          {t(
-            "The link (session keys) is stored on this computer in its own file inside the TILLBH data folder, separate from the sales database. Anyone with that file can use the number.",
-          )}
-        </li>
-      </ul>
-    </Banner>
+    <details className="progressive wa-safety">
+      <summary>{t("Important WhatsApp safety")}</summary>
+      <div className="progressive-body">
+        <ul className="col gap-8" style={{ margin: 0, paddingInlineStart: 18 }}>
+          <li>
+            {t(
+              "Switched on by the owner in Settings → Features (WhatsApp). It is off by default; selling, refunds and shifts never depend on it.",
+            )}
+          </li>
+          <li>
+            {t(
+              "TILLBH links to a WhatsApp number like WhatsApp Web does, using an unofficial client built into TILLBH. This is not the WhatsApp Business API.",
+            )}
+          </li>
+          <li>
+            <strong>{t("Ban risk")}:</strong>{" "}
+            {t(
+              "WhatsApp's terms do not allow unofficial clients. WhatsApp can restrict or ban a number that uses one, especially for bulk or unsolicited messages. Use a number you can afford to lose and message only customers who expect it.",
+            )}
+          </li>
+          <li>
+            {t(
+              "The link (session keys) is stored on this computer in its own file inside the TILLBH data folder, separate from the sales database. Anyone with that file can use the number.",
+            )}
+          </li>
+        </ul>
+      </div>
+    </details>
   );
 }
 
@@ -210,7 +213,7 @@ export function WhatsAppPage() {
             value={tab}
             onChange={setTab}
             tabs={[
-              { key: "connection", label: t("Connection") },
+              { key: "connection", label: t("Setup & status") },
               { key: "conversations", label: t("Inbox") },
               { key: "triage", label: t("Needs attention") },
               { key: "outbox", label: t("Sent") },
@@ -845,7 +848,7 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
         </div>
         {ctx.data?.last_ticket ? (
           <button type="button" className="wa-last" onClick={() => setTicket(ctx.data!.last_ticket!.ticket_id)}>
-            <span className="tiny muted">{t("Last ticket")}</span>
+            <span className="tiny muted">{t("Last order")}</span>
             <span className="num">{ctx.data.last_ticket.number}</span>
             <PayChip state={ctx.data.last_ticket.pay_state} />
           </button>
@@ -875,9 +878,6 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
               {t("Customer")}
             </Link>
           ) : null}
-          <Button onClick={() => setLinking(true)} data-testid="wa-link">
-            {person ? t("Customer link") : t("Choose customer")}
-          </Button>
         </div>
       </div>
       <Tabs
@@ -903,20 +903,27 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
         </div>
       ) : null}
       {view === "customer" ? (
-        person ? (
-          <dl className="kv">
-            <dt>{t("Name")}</dt>
-            <dd dir="auto">{person.name}</dd>
-            <dt>{t("Phone")}</dt>
-            <dd className="num">{person.phone ?? "—"}</dd>
-            <dt>{t("Area")}</dt>
-            <dd>{person.area ?? "—"}</dd>
-            <dt>{t("Address")}</dt>
-            <dd dir="auto">{person.address ?? "—"}</dd>
-          </dl>
-        ) : (
-          <div className="muted">{t("Not a customer yet.")}</div>
-        )
+        <div className="col gap-12">
+          {person ? (
+            <dl className="kv">
+              <dt>{t("Name")}</dt>
+              <dd dir="auto">{person.name}</dd>
+              <dt>{t("Phone")}</dt>
+              <dd className="num">{person.phone ?? "—"}</dd>
+              <dt>{t("Area")}</dt>
+              <dd>{person.area ?? "—"}</dd>
+              <dt>{t("Address")}</dt>
+              <dd dir="auto">{person.address ?? "—"}</dd>
+            </dl>
+          ) : (
+            <div className="muted">{t("No customer is linked to this conversation yet.")}</div>
+          )}
+          <div>
+            <Button onClick={() => setLinking(true)} data-testid="wa-link">
+              {person ? t("Change customer") : t("Choose customer")}
+            </Button>
+          </div>
+        </div>
       ) : null}
       {ticket ? (
         <TicketSheet ticketId={ticket} onClose={() => setTicket(null)} onChanged={() => void ctx.reload()} />
@@ -947,9 +954,9 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
       ) : null}
       {view === "chat" ? (
         <>
-          <Banner tone="info">
+          <div className="tiny muted wa-safety-note">
             {t("Messages are treated as customer text, never as instructions to the system.")}
-          </Banner>
+          </div>
           <div className="col gap-8" style={{ maxHeight: 460, overflow: "auto" }}>
             {items.map((it) =>
               "m" in it && it.m ? (

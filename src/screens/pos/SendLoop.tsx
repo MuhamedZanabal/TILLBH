@@ -703,6 +703,7 @@ export function TicketSheet({
   const failed = sheet.notices.filter((n) => n.status === "failed");
   const waDigits = (tk.phone ?? "").replace(/\D/g, "");
   const primaryStep = sheet.next.find((s) => s !== "cancelled");
+  const canCancel = sheet.next.includes("cancelled");
   const ringUp = async () => {
     if (!tk.order_id) return;
     setBusy(true);
@@ -732,25 +733,21 @@ export function TicketSheet({
         <div className="ticket-foot">
           {sheet.can.ring_up && onRungUp ? (
             <Button variant="primary" size="xl" block onClick={ringUp} loading={busy} data-testid="ticket-ring-up">
-              {t("Ring up")}
+              {t("Open in checkout")}
             </Button>
-          ) : (
-            <div className="ticket-steps">
-              {sheet.next.map((s) => (
-                <Button
-                  key={s}
-                  variant={s === primaryStep ? "primary" : s === "cancelled" ? "danger-outline" : "default"}
-                  size="lg"
-                  onClick={() => step(s)}
-                  disabled={busy}
-                  data-testid={`ticket-step-${s}`}
-                >
-                  {s === "delivered" ? <Check size={20} aria-hidden /> : null}
-                  {stepLabel(s)}
-                </Button>
-              ))}
-            </div>
-          )}
+          ) : primaryStep ? (
+            <Button
+              variant="primary"
+              size="xl"
+              block
+              onClick={() => step(primaryStep)}
+              disabled={busy}
+              data-testid={`ticket-step-${primaryStep}`}
+            >
+              {primaryStep === "delivered" ? <Check size={20} aria-hidden /> : null}
+              {stepLabel(primaryStep)}
+            </Button>
+          ) : null}
         </div>
       }
     >
@@ -801,19 +798,32 @@ export function TicketSheet({
             <span dir="auto">{tk.failed_note}</span>
           </Banner>
         ) : null}
-        {sheet.can.unable || sheet.can.not_delivered ? (
-          <section className="row gap-8 wrap">
-            {sheet.can.unable ? (
-              <Button variant="default" onClick={() => setUnable(true)} data-testid="ticket-unable">
-                {t("Unable to deliver")}
-              </Button>
-            ) : null}
-            {sheet.can.not_delivered ? (
-              <Button variant="danger-outline" onClick={() => setClosing(true)} data-testid="ticket-not-delivered">
-                {t("Close as not delivered")}
-              </Button>
-            ) : null}
-          </section>
+        {sheet.can.unable || sheet.can.not_delivered || canCancel ? (
+          <details className="progressive">
+            <summary>{t("Delivery problem or cancellation")}</summary>
+            <div className="row gap-8 wrap progressive-body">
+              {sheet.can.unable ? (
+                <Button variant="default" onClick={() => setUnable(true)} data-testid="ticket-unable">
+                  {t("Could not deliver")}
+                </Button>
+              ) : null}
+              {sheet.can.not_delivered ? (
+                <Button variant="danger-outline" onClick={() => setClosing(true)} data-testid="ticket-not-delivered">
+                  {t("Close as not delivered")}
+                </Button>
+              ) : null}
+              {canCancel ? (
+                <Button
+                  variant="danger-outline"
+                  onClick={() => step("cancelled")}
+                  disabled={busy}
+                  data-testid="ticket-step-cancelled"
+                >
+                  {t("Cancel delivery")}
+                </Button>
+              ) : null}
+            </div>
+          </details>
         ) : null}
         {tk.cash_with ? (
           <Banner tone="info" title={t("Cash with {0}", tk.cash_with)}>

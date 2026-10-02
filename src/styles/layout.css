@@ -3220,6 +3220,48 @@ table.diff tr.changed {
 .delivery-card:active {
   transform: scale(0.995);
 }
+.flow-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+.flow-step {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 13px;
+}
+.delivery-card {
+  display: flex;
+  flex-direction: column;
+}
+.delivery-card-top,
+.delivery-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.delivery-card-actions {
+  flex-wrap: wrap;
+}
+.delivery-address {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+.wa-safety-note {
+  padding-inline: 4px;
+}
 .wa-last {
   display: inline-flex;
   align-items: center;

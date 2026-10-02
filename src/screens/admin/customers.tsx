@@ -49,6 +49,13 @@ function CustomerForm({
   const set = (k: keyof CustomerInput, v: string | boolean) => setF({ ...f, [k]: v });
   return (
     <div className="col gap-16">
+      <div className="flow-heading">
+        <span className="flow-step">1</span>
+        <div>
+          <strong>{t("Contact")}</strong>
+          <div className="tiny muted">{t("Only the name is required.")}</div>
+        </div>
+      </div>
       <div className="form-grid">
         <TextInput
           label={t("Name")}
@@ -63,20 +70,40 @@ function CustomerForm({
           value={f.phone ?? ""}
           onChange={(e) => set("phone", e.target.value)}
           hint={t("8-digit Bahrain numbers get +973.")}
+          fieldClass="span-2"
         />
-        <TextInput
-          label={t("WhatsApp (if different)")}
-          value={f.whatsapp ?? ""}
-          onChange={(e) => set("whatsapp", e.target.value)}
-          hint={t("Leave blank to use the phone number.")}
-        />
-        <TextInput label={t("Email")} value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
+      </div>
+      <div className="flow-heading">
+        <span className="flow-step">2</span>
+        <div>
+          <strong>{t("Delivery address")}</strong>
+          <div className="tiny muted">{t("Optional now. Add it once and future deliveries fill it automatically.")}</div>
+        </div>
+      </div>
+      <div className="form-grid">
         <div className="span-2">
           <AddressFields value={addr} onChange={setAddr} idPrefix="cf" />
         </div>
-        <TextInput label={t("Area")} value={addr.area} onChange={(e) => setAddr({ ...addr, area: e.target.value })} />
-        <Checkbox label={t("Active")} checked={f.active} onChange={(v) => set("active", v)} />
+        <TextInput
+          label={t("Area")}
+          value={addr.area}
+          onChange={(e) => setAddr({ ...addr, area: e.target.value })}
+          fieldClass="span-2"
+        />
       </div>
+      <details className="progressive">
+        <summary>{t("More customer details")}</summary>
+        <div className="form-grid progressive-body">
+          <TextInput
+            label={t("WhatsApp (if different)")}
+            value={f.whatsapp ?? ""}
+            onChange={(e) => set("whatsapp", e.target.value)}
+            hint={t("Leave blank to use the phone number.")}
+          />
+          <TextInput label={t("Email")} value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
+          <Checkbox label={t("Active")} checked={f.active} onChange={(v) => set("active", v)} />
+        </div>
+      </details>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       <div className="row">
         <Button onClick={onCancel}>{t("Cancel")}</Button>
@@ -98,7 +125,7 @@ function CustomerForm({
             if (r) onSaved(r);
           }}
         >
-          {t("Save")}
+          {t("Save customer")}
         </Button>
       </div>
     </div>
