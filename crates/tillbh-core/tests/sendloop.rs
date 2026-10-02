@@ -311,7 +311,7 @@ fn chat_links_to_a_customer_by_number_and_unmatched_stays_unmatched() {
         .write(|tx| {
             tx.execute(
                 "INSERT INTO customers(customer_id, name, phone, whatsapp, active, created_at, updated_at)
-                 VALUES (?1,'Legacy duplicate','+97333336666',NULL,1,'2026-10-01','2026-10-01')",
+                 VALUES (?1,'Legacy duplicate','+97331112222','+97333336666',1,'2026-10-01','2026-10-01')",
                 rusqlite::params![legacy],
             )?;
             Ok(())
