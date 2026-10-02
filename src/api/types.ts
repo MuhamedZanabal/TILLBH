@@ -356,7 +356,7 @@ export interface WaThreadContext {
     area: string | null;
     address: string | null;
   } | null;
-  match: "linked" | "number" | null;
+  match: "linked" | "number" | "ambiguous" | null;
   last_ticket: TicketRow | null;
   tickets: TicketRow[];
   orders_digital: boolean;
@@ -1764,14 +1764,14 @@ export interface WaPhoneContact {
   name: string | null;
   /** Digits with their hyphens/slashes taken from the saved name ("825 - 3325"). */
   address: string | null;
-  status: "new" | "exists" | "no_phone" | "no_name";
+  status: "new" | "exists" | "ambiguous" | "no_phone" | "no_name";
   customer_id: string | null;
   customer_name: string | null;
   updated_at: string;
 }
 export interface WaPhoneContacts {
   contacts: WaPhoneContact[];
-  counts: { new: number; exists: number; no_phone: number; no_name: number };
+  counts: { new: number; exists: number; ambiguous: number; no_phone: number; no_name: number };
   last_sync_at: string | null;
 }
 
