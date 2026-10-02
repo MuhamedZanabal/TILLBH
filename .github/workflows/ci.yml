@@ -27,6 +27,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Tillbahrain product identity contract
+        run: python scripts/check_product_identity.py --root .
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
@@ -119,7 +121,7 @@ jobs:
         run: Get-ChildItem target/release/bundle/nsis/*.exe | Get-FileHash -Algorithm SHA256 | Format-List
       - uses: actions/upload-artifact@v4
         with:
-          name: tillbh-windows-unsigned
+          name: tillbahrain-windows-unsigned
           path: target/release/bundle/nsis/*.exe
       # The installer itself, not just the build: silent install, the installed
       # app driven through its own WebView2 window (setup, products with
