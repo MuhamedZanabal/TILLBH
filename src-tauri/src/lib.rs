@@ -1,4 +1,4 @@
-//! TILLBH desktop shell.
+//! Tillbahrain desktop shell.
 //!
 //! The shell is deliberately thin: it resolves the data folder, opens the
 //! core, starts background services and exposes ONE typed IPC command
@@ -53,7 +53,7 @@ fn init_logging(dir: &std::path::Path) -> Option<tracing_appender::non_blocking:
     // Daily files, 30 kept: a till runs for years and must not fill its disk with logs.
     let appender = tracing_appender::rolling::RollingFileAppender::builder()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
-        .filename_prefix("tillbh")
+        .filename_prefix("tillbahrain")
         .filename_suffix("log")
         .max_log_files(30)
         .build(&logs)
@@ -82,7 +82,7 @@ pub fn run() {
             let guard = init_logging(&dir);
             // Keep the log writer alive for the process lifetime.
             app.manage(LogGuard(guard));
-            tracing::info!(version = tillbh_core::audit::APP_VERSION, build = env!("TILLBH_BUILD_SHA"), data_dir = %dir.display(), "TILLBH starting");
+            tracing::info!(version = tillbh_core::audit::APP_VERSION, build = env!("TILLBAHRAIN_BUILD_SHA"), data_dir = %dir.display(), "Tillbahrain starting");
             let state = match AppCore::open(&dir, Arc::new(secrets::OsSecretStore)) {
                 Ok(core) => {
                     let rt = Runtime::new(Arc::new(core));
@@ -102,7 +102,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![rpc])
         .run(tauri::generate_context!())
-        .expect("error while running TILLBH");
+        .expect("error while running Tillbahrain");
 }
 
 struct LogGuard(#[allow(dead_code)] Option<tracing_appender::non_blocking::WorkerGuard>);
