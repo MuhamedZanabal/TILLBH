@@ -4,7 +4,7 @@
 # commit and the logs, relaunches it, reinstalls over it, and uninstalls it.
 # Business data in %ProgramData%\TILLBH must survive every step.
 #
-#   pwsh scripts/installer-smoke.ps1 -Installer <path to TILLBH_<ver>_x64-setup.exe> -ExpectSha <git sha>
+#   pwsh scripts/installer-smoke.ps1 -Installer <path to Tillbahrain_<ver>_x64-setup.exe> -ExpectSha <git sha>
 param(
   [Parameter(Mandatory)] [string] $Installer,
   [Parameter(Mandatory)] [string] $ExpectSha,
@@ -16,8 +16,8 @@ function Step($m) { Write-Host "== $m" }
 
 $exe = Get-Item $Installer
 $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-$installDir = Join-Path $env:ProgramFiles 'TILLBH'
-$app = Join-Path $installDir 'tillbh.exe'
+$installDir = Join-Path $env:ProgramFiles 'Tillbahrain'
+$app = Join-Path $installDir 'tillbahrain.exe'
 $dataRoot = Join-Path $env:ProgramData 'TILLBH'
 $db = Join-Path $dataRoot 'data\tillbh.db'
 New-Item -ItemType Directory -Force $Shots | Out-Null
@@ -27,7 +27,7 @@ $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
 Write-Host "file:    $($exe.Name)"
 Write-Host "size:    $($exe.Length) bytes"
 Write-Host "sha256:  $hash"
-if ($exe.Name -ne "TILLBH_${version}_x64-setup.exe") { Fail "unexpected installer name $($exe.Name) for version $version" }
+if ($exe.Name -ne "Tillbahrain_${version}_x64-setup.exe") { Fail "unexpected installer name $($exe.Name) for version $version" }
 $sig = Get-AuthenticodeSignature $exe.FullName
 Write-Host "signature: $($sig.Status)"
 
@@ -51,7 +51,7 @@ if (-not (Test-Path (Join-Path $dataRoot 'data'))) { Fail "the installer did not
 
 Step "Secret scan of the installed program"
 $text = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($app))
-foreach ($pat in @('sk-ant-[A-Za-z0-9_-]{20,}', 'sk-or-v1-[a-f0-9]{20,}', '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----', '/home/user/TILLBH')) {
+foreach ($pat in @('sk-ant-[A-Za-z0-9_-]{20,}', 'sk-or-v1-[a-f0-9]{20,}', '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----', '/home/user/Tillbahrain')) {
   if ($text -match $pat) { Fail "the program contains a secret or developer path matching '$pat'" }
 }
 # Google API keys (AIza + 35 = 39 characters). The one exception is a public
@@ -72,9 +72,9 @@ function Start-App {
 }
 function Stop-App {
   # A normal close (WM_CLOSE), not a kill.
-  & taskkill /IM tillbh.exe | Out-Null
+  & taskkill /IM tillbahrain.exe | Out-Null
   for ($i = 0; $i -lt 60; $i++) {
-    if (-not (Get-Process tillbh -ErrorAction SilentlyContinue)) { return }
+    if (-not (Get-Process tillbahrain -ErrorAction SilentlyContinue)) { return }
     Start-Sleep -Milliseconds 500
   }
   Fail "the app did not close normally within 30 s"
@@ -104,9 +104,9 @@ sys.exit(0 if (v >= 21 and p == 1 and s >= 1 and ok == 'ok') else 1)
 $check | Set-Content "$env:RUNNER_TEMP\dbcheck.py"
 python "$env:RUNNER_TEMP\dbcheck.py" $db
 if ($LASTEXITCODE -ne 0) { Fail "database check failed" }
-$logs = (Get-ChildItem (Join-Path $dataRoot 'logs') -Filter 'tillbh*.log' | Get-Content -Raw) -join "`n"
+$logs = (Get-ChildItem (Join-Path $dataRoot 'logs') -Filter 'tillbahrain*.log' | Get-Content -Raw) -join "`n"
 $short = $ExpectSha.Substring(0, 12)
-if ($logs -notmatch '"message":"TILLBH starting"') { Fail "no startup line in the log" }
+if ($logs -notmatch '"message":"Tillbahrain starting"') { Fail "no startup line in the log" }
 if ($logs -notmatch "`"build`":`"$short`"") { Fail "the installed app was not built from $short" }
 if ($logs -match 'startup failed') { Fail "the log reports a startup failure" }
 Write-Host "log: started, build $short"
