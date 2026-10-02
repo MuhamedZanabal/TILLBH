@@ -157,14 +157,36 @@ fn ensure_contact_number_available(c: &Connection, customer_id: Option<&str>, nu
     Ok(())
 }
 
+fn phone_digit(c: char) -> Option<char> {
+    Some(match c {
+        '0'..='9' => c,
+        '٠' | '۰' => '0',
+        '١' | '۱' => '1',
+        '٢' | '۲' => '2',
+        '٣' | '۳' => '3',
+        '٤' | '۴' => '4',
+        '٥' | '۵' => '5',
+        '٦' | '۶' => '6',
+        '٧' | '۷' => '7',
+        '٨' | '۸' => '8',
+        '٩' | '۹' => '9',
+        _ => return None,
+    })
+}
+
 pub fn normalize_phone(p: &str) -> AppResult<Option<String>> {
     let t = p.trim();
     if t.is_empty() {
         return Ok(None);
     }
-    let plus = t.starts_with('+') || t.starts_with("00");
-    let digits: String = t.chars().filter(|c| c.is_ascii_digit()).collect();
-    let digits = if t.starts_with("00") { digits[2..].to_string() } else { digits };
+    let international_00 = t.starts_with("00") || t.starts_with("٠٠") || t.starts_with("۰۰");
+    let plus = t.starts_with('+') || international_00;
+    let digits: String = t.chars().filter_map(phone_digit).collect();
+    let digits = if international_00 {
+        digits.strip_prefix("00").unwrap_or(&digits).to_string()
+    } else {
+        digits
+    };
     if digits.len() < 7 || digits.len() > 15 {
         return Err(AppError::validation("Enter a valid phone number."));
     }
@@ -294,8 +316,10 @@ impl AppCore {
         let limit = validate::limit(limit, 50, 500);
         self.db.read(|c| {
             let text = q.unwrap_or_default().trim().to_string();
-            let digits: String = text.chars().filter(|c| c.is_ascii_digit()).collect();
-            let like = format!("%{}%", text.replace('%', ""));
+            let digits: String = text.chars().filter_map(phone_digit).collect();
+            // Treat user text literally: SQL LIKE wildcards typed into the
+            // customer box must not unexpectedly match unrelated people.
+            let like = format!("%{}%", text.replace(['%', '_'], ""));
             let dlike = if digits.len() >= 3 { format!("%{digits}%") } else { "\u{0}".into() };
             let mut st = c.prepare(&format!(
                 "SELECT customer_id FROM customers WHERE (?1 OR active=1) AND (?2 = '%%' OR name LIKE ?2 OR phone LIKE ?3 OR whatsapp LIKE ?3)
@@ -818,6 +842,9 @@ mod tests {
         assert_eq!(normalize_phone("3312 3456").unwrap().unwrap(), "+97333123456");
         assert_eq!(normalize_phone("+973 3312-3456").unwrap().unwrap(), "+97333123456");
         assert_eq!(normalize_phone("0097333123456").unwrap().unwrap(), "+97333123456");
+        assert_eq!(normalize_phone("٣٣١٢ ٣٤٥٦").unwrap().unwrap(), "+97333123456");
+        assert_eq!(normalize_phone("٠٠٩٧٣ ٣٣١٢٣٤٥٦").unwrap().unwrap(), "+97333123456");
+        assert_eq!(normalize_phone("۰۰۹۷۳ ۳۳۱۲۳۴۵۶").unwrap().unwrap(), "+97333123456");
         assert!(normalize_phone("12").is_err());
         assert!(normalize_phone("").unwrap().is_none());
     }
