@@ -3441,4 +3441,5 @@ export const AR: Record<string, string> = {
   "Choose customer": "اختيار العميل",
   "Review order": "مراجعة الطلب",
   "This number is already saved for {0}.": "هذا الرقم محفوظ بالفعل للعميل {0}.",
+  "Area can fill automatically from the Bahrain block number.": "يمكن تعبئة المنطقة تلقائياً من رقم المجمع في البحرين.",
 };
