@@ -1,7 +1,7 @@
 // The Send loop on the till and the board: Person → Channel → Ticket → Drop → Close.
 // A ticket is an order the shop must fulfil (a sent sale or a digital order);
 // its drop is the delivery job. One pay state everywhere.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Banknote,
   Check,
@@ -244,6 +244,9 @@ export function SendPanel({
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [savedAddresses, setSavedAddresses] = useState<{ address_id: string; label: string; area: string | null; address: string; is_default: boolean }[]>([]);
+  // An order-specific or cashier-edited address must never be overwritten by
+  // an async saved-address lookup.
+  const addressChosen = useRef(!!cart.order?.address);
   const [creating, setCreating] = useState(false);
   const { error, handle } = useErr();
   const customer = cart.customer;
@@ -270,16 +273,14 @@ export function SendPanel({
       (v) => {
         if (!live) return;
         setSavedAddresses(v.addresses);
-        if (!hasAddr(value)) {
-          const preferred = v.addresses.find((a) => a.is_default) ?? v.addresses[0];
-          if (preferred) {
-            onChange({
-              ...value,
-              ...emptyAddr,
-              address: preferred.address,
-              area: preferred.area ?? "",
-            });
-          }
+        const preferred = v.addresses.find((a) => a.is_default) ?? v.addresses[0];
+        if (preferred && !addressChosen.current) {
+          onChange({
+            ...value,
+            ...emptyAddr,
+            address: preferred.address,
+            area: preferred.area ?? "",
+          });
         }
       },
       () => live && setSavedAddresses([]),
@@ -298,11 +299,13 @@ export function SendPanel({
       if (!c.customer) {
         // Never leave the previous customer's address behind when changing
         // who the sale belongs to.
+        addressChosen.current = false;
         onChange({ ...value, ...emptyAddr, save: false });
       } else {
         // Customer selection is authoritative. Start from this person's main
-        // address; the saved-address effect above upgrades it to their default
-        // saved address when the main address is empty.
+        // address while their saved-address lookup loads; a saved default may
+        // then replace it unless the cashier edits first.
+        addressChosen.current = false;
         onChange({ ...value, ...emptyAddr, ...fromCustomer(c.customer), save: false });
       }
       setQ("");
@@ -394,14 +397,15 @@ export function SendPanel({
                       key={a.address_id}
                       type="button"
                       className={`filter-chip ${active ? "active" : ""}`}
-                      onClick={() =>
+                      onClick={() => {
+                        addressChosen.current = true;
                         onChange({
                           ...value,
                           ...emptyAddr,
                           address: a.address,
                           area: a.area ?? "",
-                        })
-                      }
+                        });
+                      }}
                     >
                       {a.is_default ? "★ " : ""}
                       {a.label}
@@ -412,8 +416,21 @@ export function SendPanel({
             </div>
           ) : null}
           <div className="send-where">
-            <AddressFields value={value} onChange={(a) => onChange({ ...value, ...a })} idPrefix="send" />
-            <AreaPicker value={value.area} onChange={(area) => onChange({ ...value, area })} />
+            <AddressFields
+              value={value}
+              onChange={(a) => {
+                addressChosen.current = true;
+                onChange({ ...value, ...a });
+              }}
+              idPrefix="send"
+            />
+            <AreaPicker
+              value={value.area}
+              onChange={(area) => {
+                addressChosen.current = true;
+                onChange({ ...value, area });
+              }}
+            />
           </div>
           <div className="send-opts">
             <Checkbox
@@ -446,6 +463,7 @@ export function SendPanel({
           onClose={() => setCreating(false)}
           onCreated={(c, addr) => {
             setCreating(false);
+            addressChosen.current = hasAddr(addr);
             onCartChanged(c);
             onChange({ ...value, ...(hasAddr(addr) ? addr : {}), mode: "send" });
           }}
