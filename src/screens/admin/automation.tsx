@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2,
   CircleAlert,
@@ -194,7 +194,18 @@ function WaAbout() {
 type WaTab = "connection" | "conversations" | "triage" | "outbox" | "templates" | "catalogue" | "diagnostics";
 
 export function WhatsAppPage() {
-  const [tab, setTab] = useState<WaTab>("connection");
+  const [params, setParams] = useSearchParams();
+  const requested = params.get("tab");
+  const tab: WaTab =
+    requested && ["connection", "conversations", "triage", "outbox", "templates", "catalogue", "diagnostics"].includes(requested)
+      ? (requested as WaTab)
+      : "connection";
+  const setTab = (next: WaTab) => {
+    const p = new URLSearchParams(params);
+    p.set("tab", next);
+    if (next !== "conversations") p.delete("chat");
+    setParams(p, { replace: true });
+  };
   return (
     <div>
       <PageHeader
@@ -221,7 +232,7 @@ export function WhatsAppPage() {
           />
           <div style={{ marginTop: 16 }}>
             {tab === "connection" ? <WaConnection /> : null}
-            {tab === "conversations" ? <WaConversations /> : null}
+            {tab === "conversations" ? <WaConversations initialChat={params.get("chat")} /> : null}
             {tab === "triage" ? <WaTriage /> : null}
             {tab === "outbox" ? <WaOutbox /> : null}
             {tab === "templates" ? <WaTemplates /> : null}
@@ -459,18 +470,37 @@ function WaDiagnostics() {
   );
 }
 
-function WaConversations() {
+function WaConversations({ initialChat }: { initialChat?: string | null }) {
   const { data, error, reload } = useLoad(() => api.whatsapp.conversations(), []);
   const [chat, setChat] = useState<WaConversation | null>(null);
+  const [openedDeepLink, setOpenedDeepLink] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<"all" | "unread" | "unknown" | "customers">("all");
   useEffect(() => {
     const id = window.setInterval(() => void reload(), 8000);
     return () => window.clearInterval(id);
   }, [reload]);
+  useEffect(() => {
+    if (!initialChat || !data || openedDeepLink === initialChat) return;
+    const found = data.find((c) => c.chat === initialChat);
+    if (found) {
+      setChat(found);
+      setOpenedDeepLink(initialChat);
+    }
+  }, [data, initialChat, openedDeepLink]);
   const toast = useToast();
   const { has } = useSession();
   const act = useAction();
   if (error) return <Banner tone="danger">{error}</Banner>;
   const unknown = (data ?? []).filter((c) => !c.customer_id && c.phone).length;
+  const needle = q.trim().toLowerCase();
+  const shown = (data ?? []).filter((c) => {
+    if (filter === "unread" && c.unread <= 0) return false;
+    if (filter === "unknown" && c.customer_id) return false;
+    if (filter === "customers" && !c.customer_id) return false;
+    if (!needle) return true;
+    return [c.name, c.phone, c.last_text].some((v) => (v ?? "").toLowerCase().includes(needle));
+  });
   return (
     <div className="col gap-16">
       {unknown > 0 && has("customers.manage") ? (
@@ -481,7 +511,11 @@ function WaConversations() {
             onClick={async () => {
               const r = await act.run(() => api.whatsapp.importContacts());
               if (r) {
-                toast("success", t("{0} customers created, {1} linked", r.created, r.linked));
+                toast(
+                  "success",
+                  t("{0} customers created, {1} linked", r.created, r.linked),
+                  r.skipped ? t("{0} skipped", r.skipped) : undefined,
+                );
                 void reload();
               }
             }}
@@ -491,6 +525,26 @@ function WaConversations() {
         </div>
       ) : null}
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+      <div className="row wrap gap-8">
+        <input
+          className="input grow"
+          style={{ minWidth: 220 }}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t("Search conversations…")}
+          aria-label={t("Search conversations…")}
+        />
+        {([
+          ["all", t("All")],
+          ["unread", t("Unread")],
+          ["unknown", t("Not linked")],
+          ["customers", t("Customers")],
+        ] as const).map(([key, label]) => (
+          <Button key={key} size="sm" variant={filter === key ? "primary" : "ghost"} onClick={() => setFilter(key)}>
+            {label}
+          </Button>
+        ))}
+      </div>
       <div className="grid-2" style={{ gridTemplateColumns: "320px 1fr", gap: 16, alignItems: "start" }}>
         <div className="card" style={{ maxHeight: 640, overflow: "auto" }}>
           {!data ? (
@@ -498,7 +552,7 @@ function WaConversations() {
           ) : data.length === 0 ? (
             <div className="empty">{t("No messages received yet.")}</div>
           ) : (
-            data.map((c) => (
+            shown.map((c) => (
               <button
                 key={c.chat}
                 className={`list-row ${chat?.chat === c.chat ? "active" : ""}`}
@@ -564,6 +618,7 @@ function WaTriage() {
   const toast = useToast();
   const { has } = useSession();
   const [filter, setFilter] = useState<WaTriageItem["category"] | "all">("all");
+  const [draft, setDraft] = useState<DigitalOrder | null>(null);
   const items = (data?.items ?? []).filter((i) => filter === "all" || i.category === filter);
   return (
     <div className="card card-pad col gap-16" data-testid="wa-triage">
@@ -641,14 +696,52 @@ function WaTriage() {
                     ))}
                   </select>
                 </td>
-                <td style={{ width: 170 }}>
-                  <Link to={i.suggestion.link}>{SUGGESTION_LABEL[i.suggestion.action]?.() ?? i.suggestion.action}</Link>
+                <td style={{ width: 190 }}>
+                  {i.category === "order" && has("orders.manage") ? (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={async () => {
+                        const o = await act.run(() => api.orders.fromInbox(i.seq));
+                        if (o) setDraft(o);
+                      }}
+                    >
+                      {t("Review order")}
+                    </Button>
+                  ) : i.category === "spam" ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        if ((await act.run(() => api.whatsapp.markRead(i.chat))) !== undefined) void reload();
+                      }}
+                    >
+                      {t("Mark as read")}
+                    </Button>
+                  ) : i.category === "payment" ? (
+                    <Link to="/admin/payment-reviews">{t("Review the payment")}</Link>
+                  ) : (
+                    <Link to={`/admin/whatsapp?tab=conversations&chat=${encodeURIComponent(i.chat)}`}>
+                      {SUGGESTION_LABEL[i.suggestion.action]?.() ?? t("Open the conversation")}
+                    </Link>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {draft ? (
+        <OrderEditor
+          order={draft}
+          onClose={() => setDraft(null)}
+          onSaved={() => {
+            setDraft(null);
+            toast("success", t("Draft ticket saved. It waits on the Send rail until it is rung up."));
+            void reload();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -837,7 +930,9 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
                 ? ctx.data?.match === "linked"
                   ? t("Linked by hand")
                   : t("Matched by number")
-                : t("Not a customer yet"),
+                : ctx.data?.match === "ambiguous"
+                  ? t("Multiple customers use this number")
+                  : t("Not a customer yet"),
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -876,10 +971,15 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
             </Link>
           ) : null}
           <Button onClick={() => setLinking(true)} data-testid="wa-link">
-            {person ? t("Change link") : t("Link or create customer")}
+            {person ? t("Change link") : ctx.data?.match === "ambiguous" ? t("Choose customer") : t("Link or create customer")}
           </Button>
         </div>
       </div>
+      {ctx.data?.match === "ambiguous" ? (
+        <Banner tone="warning" title={t("Choose the customer")}>
+          {t("More than one customer uses this WhatsApp number. TILLBH will not guess which person owns the chat. Link the correct customer before creating orders or using customer history.")}
+        </Banner>
+      ) : null}
       <Tabs
         tabs={[
           { key: "chat", label: t("Chat") },
@@ -1066,7 +1166,7 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
                 operation_id: newOperationId(),
                 kind: "text",
                 to_phone: data?.phone,
-                customer_id: chat.customer_id,
+                customer_id: person?.customer_id ?? null,
                 text,
               }),
             );
