@@ -358,14 +358,29 @@ impl AppCore {
                 }
             }
             // A phone or WhatsApp number identifies a person across the whole
-            // customer book. Do not permit cross-field collisions: otherwise
+            // customer book. Do not create new cross-field collisions: otherwise
             // WhatsApp auto-linking could attach a chat/order to the wrong person.
+            //
+            // Existing legacy duplicates remain editable (for example, to fix
+            // their name/address) as long as this save does not introduce a new
+            // number onto the record.
             let current_id = customer_id.as_deref();
+            let prior: Option<(Option<String>, Option<String>)> = match current_id {
+                Some(id) => tx
+                    .query_row("SELECT phone, whatsapp FROM customers WHERE customer_id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .optional()?,
+                None => None,
+            };
+            let previously_owned = |number: &str| {
+                prior.as_ref().is_some_and(|(phone, whatsapp)| phone.as_deref() == Some(number) || whatsapp.as_deref() == Some(number))
+            };
             if let Some(p) = &v.phone {
-                ensure_contact_number_available(tx, current_id, p)?;
+                if !previously_owned(p) {
+                    ensure_contact_number_available(tx, current_id, p)?;
+                }
             }
             if let Some(w) = &v.whatsapp {
-                if v.phone.as_deref() != Some(w.as_str()) {
+                if v.phone.as_deref() != Some(w.as_str()) && !previously_owned(w) {
                     ensure_contact_number_available(tx, current_id, w)?;
                 }
             }
