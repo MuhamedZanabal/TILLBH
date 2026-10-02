@@ -301,6 +301,47 @@ fn chat_links_to_a_customer_by_number_and_unmatched_stays_unmatched() {
     e.core.wa_ingest(&[msg("A1", "97333336666@s.whatsapp.net"), msg("B1", "97339990000@s.whatsapp.net")]).unwrap();
     let known = e.core.wa_thread_context(t, "97333336666@s.whatsapp.net").unwrap();
     assert_eq!((known["match"].as_str(), known["customer"]["customer_id"].as_str()), (Some("number"), Some(cu.as_str())));
+
+    // Simulate legacy data from before cross-field uniqueness was enforced.
+    // Once two customers own the same number, neither a new inbound message,
+    // the conversation list nor a WhatsApp-derived order may guess a customer.
+    let legacy = op();
+    e.core
+        .db
+        .write(|tx| {
+            tx.execute(
+                "INSERT INTO customers(customer_id, name, phone, whatsapp, active, created_at, updated_at)
+                 VALUES (?1,'Legacy duplicate','+97333336666',NULL,1,'2026-10-01','2026-10-01')",
+                rusqlite::params![legacy],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    e.core.wa_ingest(&[msg("A2", "97333336666@s.whatsapp.net")]).unwrap();
+    let ambiguous = e.core.wa_thread_context(t, "97333336666@s.whatsapp.net").unwrap();
+    assert!(ambiguous["customer"].is_null());
+    assert_eq!(ambiguous["match"], "ambiguous");
+    let conversations = e.core.wa_conversations(t).unwrap();
+    let conversation = conversations.iter().find(|x| x.chat == "97333336666@s.whatsapp.net").unwrap();
+    assert!(conversation.customer_id.is_none(), "the list must not keep a stale historical auto-match");
+    assert_eq!(
+        count(&e, "SELECT COUNT(*) FROM wa_inbox WHERE wa_id='A2' AND customer_id IS NULL"),
+        1,
+        "new ambiguous messages stay unlinked"
+    );
+    features(&e, json!({ "whatsapp.enabled": true, "orders.digital": true }));
+    let seq: i64 = e
+        .core
+        .db
+        .read(|c| Ok(c.query_row("SELECT seq FROM wa_inbox WHERE wa_id='A2'", [], |r| r.get(0))?))
+        .unwrap();
+    let draft = e.core.order_from_inbox(t, seq).unwrap();
+    assert!(draft.customer_id.is_none(), "an ambiguous WhatsApp message must create an unlinked draft");
+
+    // A manual link is authoritative and resolves the ambiguity for the chat.
+    let relinked = e.core.wa_link_customer(t, "97333336666@s.whatsapp.net", Some(cu.clone())).unwrap();
+    assert_eq!((relinked["match"].as_str(), relinked["customer"]["customer_id"].as_str()), (Some("linked"), Some(cu.as_str())));
+
     let unknown = e.core.wa_thread_context(t, "97339990000@s.whatsapp.net").unwrap();
     assert!(unknown["customer"].is_null() && unknown["match"].is_null());
     // A person links it by hand; later messages in that chat follow the link.
