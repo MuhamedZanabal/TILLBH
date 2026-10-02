@@ -974,9 +974,18 @@ export function TicketSheet({
         ) : null}
         {sheet.can.message && did ? (
           <section className="row gap-8 wrap">
-            <WhatsAppSendButton kind="received" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
-            <WhatsAppSendButton kind="dispatch" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
-            <WhatsAppSendButton kind="delivered" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            {tk.status === "pending" || tk.status === "preparing" ? (
+              <WhatsAppSendButton kind="received" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            ) : null}
+            {tk.status === "dispatched" ? (
+              <WhatsAppSendButton kind="dispatch" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            ) : null}
+            {tk.status === "delivered" ? (
+              <WhatsAppSendButton kind="delivered" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            ) : null}
+            {!settled && tk.status !== "cancelled" ? (
+              <WhatsAppSendButton kind="reminder" deliveryId={did} customerId={tk.customer_id} phone={tk.phone} />
+            ) : null}
           </section>
         ) : null}
         <section className="ticket-lines">
