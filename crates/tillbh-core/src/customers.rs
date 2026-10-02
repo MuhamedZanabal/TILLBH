@@ -114,6 +114,49 @@ pub struct DeliveryCreate {
 
 /// Normalize a phone number: keep digits and a leading '+'. Bahrain local
 /// 8-digit numbers get +973.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ContactMatch {
+    None,
+    Unique { customer_id: String, name: String },
+    Ambiguous,
+}
+
+/// Resolve a normalized phone/WhatsApp number only when it belongs to exactly
+/// one customer. Legacy duplicate data must never be guessed: callers can ask
+/// a person to link the chat/customer explicitly instead.
+pub(crate) fn match_customer_by_phone(c: &Connection, phone: &str) -> AppResult<ContactMatch> {
+    let mut st = c.prepare(
+        "SELECT customer_id, name FROM customers
+         WHERE phone=?1 OR whatsapp=?1
+         ORDER BY active DESC, updated_at DESC, customer_id
+         LIMIT 2",
+    )?;
+    let rows = st
+        .query_map([phone], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(match rows.as_slice() {
+        [] => ContactMatch::None,
+        [(customer_id, name)] => ContactMatch::Unique { customer_id: customer_id.clone(), name: name.clone() },
+        _ => ContactMatch::Ambiguous,
+    })
+}
+
+fn ensure_contact_number_available(c: &Connection, customer_id: Option<&str>, number: &str) -> AppResult<()> {
+    let owner: Option<String> = c
+        .query_row(
+            "SELECT name FROM customers
+             WHERE (?2 IS NULL OR customer_id<>?2) AND (phone=?1 OR whatsapp=?1)
+             ORDER BY active DESC, updated_at DESC LIMIT 1",
+            params![number, customer_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(name) = owner {
+        return Err(AppError::duplicate(format!("This number is already saved for {name}.")));
+    }
+    Ok(())
+}
+
 pub fn normalize_phone(p: &str) -> AppResult<Option<String>> {
     let t = p.trim();
     if t.is_empty() {
@@ -314,12 +357,16 @@ impl AppCore {
                     v.area = crate::address::area_for_block(tx, b)?;
                 }
             }
+            // A phone or WhatsApp number identifies a person across the whole
+            // customer book. Do not permit cross-field collisions: otherwise
+            // WhatsApp auto-linking could attach a chat/order to the wrong person.
+            let current_id = customer_id.as_deref();
             if let Some(p) = &v.phone {
-                let other: Option<String> = tx
-                    .query_row("SELECT name FROM customers WHERE phone=?1 AND customer_id IS NOT ?2", params![p, customer_id], |r| r.get(0))
-                    .optional()?;
-                if let Some(o) = other {
-                    return Err(AppError::duplicate(format!("This phone number is already saved for {o}.")));
+                ensure_contact_number_available(tx, current_id, p)?;
+            }
+            if let Some(w) = &v.whatsapp {
+                if v.phone.as_deref() != Some(w.as_str()) {
+                    ensure_contact_number_available(tx, current_id, w)?;
                 }
             }
             let now = time::now_str();
@@ -747,7 +794,10 @@ pub(crate) fn insert_delivery(tx: &Connection, s: &Session, actor: &audit::Actor
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_phone;
+    use rusqlite::Connection;
+
+    use super::{match_customer_by_phone, normalize_phone, ContactMatch};
+
     #[test]
     fn phones() {
         assert_eq!(normalize_phone("3312 3456").unwrap().unwrap(), "+97333123456");
@@ -755,5 +805,31 @@ mod tests {
         assert_eq!(normalize_phone("0097333123456").unwrap().unwrap(), "+97333123456");
         assert!(normalize_phone("12").is_err());
         assert!(normalize_phone("").unwrap().is_none());
+    }
+
+    #[test]
+    fn contact_match_never_guesses_duplicate_numbers() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE customers(
+                customer_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                phone TEXT,
+                whatsapp TEXT,
+                active INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO customers VALUES ('C1','Ali','+97333000000',NULL,1,'2026-01-01');
+            INSERT INTO customers VALUES ('C2','Ahmed',NULL,'+97333000000',1,'2026-01-02');
+            INSERT INTO customers VALUES ('C3','Mona','+97334000000','+97334000000',1,'2026-01-03');",
+        )
+        .unwrap();
+
+        assert_eq!(match_customer_by_phone(&c, "+97335000000").unwrap(), ContactMatch::None);
+        assert_eq!(match_customer_by_phone(&c, "+97333000000").unwrap(), ContactMatch::Ambiguous);
+        assert_eq!(
+            match_customer_by_phone(&c, "+97334000000").unwrap(),
+            ContactMatch::Unique { customer_id: "C3".into(), name: "Mona".into() }
+        );
     }
 }
