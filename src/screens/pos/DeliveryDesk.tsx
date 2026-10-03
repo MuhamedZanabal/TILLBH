@@ -84,11 +84,19 @@ export function DeliveryDesk() {
                   : d.status === "dispatched"
                     ? t("Out for delivery")
                     : codeLabel(d.status);
+            const payment =
+              d.payment_status === "cod"
+                ? t("Collect {0}", formatMoney(d.amount_minor))
+                : d.payment_status === "paid"
+                  ? t("Paid")
+                  : t("Payment pending");
             return (
               <div key={d.delivery_id} className="card card-pad delivery-card">
                 <div className="delivery-card-top">
                   <div className="grow">
-                    <div className="strong" dir="auto">{d.customer_name ?? t("Customer")}</div>
+                    <div className="strong" dir="auto">
+                      {d.customer_name ?? t("Customer")}
+                    </div>
                     <div className="tiny muted">
                       {d.delivery_number} · {formatShort(d.created_at)}
                     </div>
@@ -101,16 +109,14 @@ export function DeliveryDesk() {
                 <div className="delivery-card-actions">
                   <div className="row gap-8 wrap">
                     <Chip tone="info">{status}</Chip>
-                    <Chip tone={d.payment_status === "paid" ? "success" : "warning"}>
-                      {d.payment_status === "cod"
-                        ? t("Collect on delivery")
-                        : d.payment_status === "paid"
-                          ? t("Paid")
-                          : t("Payment pending")}
-                    </Chip>
+                    <Chip tone={d.payment_status === "paid" ? "success" : "warning"}>{payment}</Chip>
                   </div>
                   <span className="grow" />
-                  {d.phone ? <a className="btn" href={`tel:${d.phone}`}>{t("Call")}</a> : null}
+                  {d.phone ? (
+                    <a className="btn" href={`tel:${d.phone}`}>
+                      {t("Call")}
+                    </a>
+                  ) : null}
                   {digits ? (
                     <a className="btn" href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer">
                       {t("WhatsApp")}
