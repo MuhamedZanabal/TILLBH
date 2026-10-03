@@ -1,6 +1,9 @@
 // UI language. English source strings are the keys; `ar.ts` maps them to Arabic.
 // A missing Arabic entry falls back to English (and fails the coverage test).
-import { AR } from "./ar";
+import { AR as BASE_AR } from "./ar";
+import { UX_AR } from "./ux";
+
+const AR: Record<string, string> = { ...BASE_AR, ...UX_AR };
 
 export type Lang = "en" | "ar";
 const KEY = "tillbh.lang";
