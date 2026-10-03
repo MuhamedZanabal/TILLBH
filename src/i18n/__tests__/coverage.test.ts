@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { AR } from "../ar";
+import { AR as BASE_AR } from "../ar";
+import { UX_AR } from "../ux";
+
+const AR: Record<string, string> = { ...BASE_AR, ...UX_AR };
 
 // Every UI source file, as text (Vite glob import; no Node APIs needed).
 const files = import.meta.glob(["../../**/*.{ts,tsx}", "!../../**/__tests__/**", "!../../i18n/**"], {
