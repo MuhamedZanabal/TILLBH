@@ -32,6 +32,11 @@ export function DeliveryDesk() {
     return () => clearInterval(id);
   }, []);
   const next: Record<string, string> = { pending: "preparing", preparing: "dispatched", dispatched: "delivered" };
+  const nextLabel: Record<string, string> = {
+    preparing: t("Start preparing"),
+    dispatched: t("Send with rider"),
+    delivered: t("Mark delivered"),
+  };
   return (
     <div className="pos-root">
       <header className="pos-header">
@@ -54,58 +59,89 @@ export function DeliveryDesk() {
               className={`filter-chip ${tab === "deliveries" ? "active" : ""}`}
               onClick={() => setTab("deliveries")}
             >
-              {t("Deliveries")}
+              {t("My deliveries")}
             </button>
             <button className={`filter-chip ${tab === "orders" ? "active" : ""}`} onClick={() => setTab("orders")}>
-              {t("Digital orders")}
+              {t("New orders")}
             </button>
           </div>
         ) : null}
         {tab === "orders" && ordersOn ? <OrdersList /> : null}
         {tab === "deliveries" && error ? <Banner tone="danger">{error}</Banner> : null}
         {tab !== "deliveries" ? null : rows.length === 0 ? (
-          <Empty title={t("No deliveries assigned")}>
-            {t("New deliveries appear here when a manager assigns them to you.")}
+          <Empty title={t("No deliveries right now")}>
+            {t("Assigned deliveries will appear here automatically.")}
           </Empty>
         ) : null}
-        <div className="col" hidden={tab !== "deliveries"}>
-          {rows.map((d) => (
-            <div key={d.delivery_id} className="card card-pad row">
-              <div className="grow">
-                <div style={{ fontWeight: 650 }}>
-                  {d.delivery_number} · {d.customer_name ?? t("Customer")}
+        <div className="col gap-12" hidden={tab !== "deliveries"}>
+          {rows.map((d) => {
+            const digits = (d.phone ?? "").replace(/\D/g, "");
+            const status =
+              d.status === "pending"
+                ? t("New")
+                : d.status === "preparing"
+                  ? t("Preparing")
+                  : d.status === "dispatched"
+                    ? t("Out for delivery")
+                    : codeLabel(d.status);
+            const payment =
+              d.payment_status === "cod"
+                ? t("Collect {0}", formatMoney(d.amount_minor))
+                : d.payment_status === "paid"
+                  ? t("Paid")
+                  : t("Payment pending");
+            return (
+              <div key={d.delivery_id} className="card card-pad delivery-card">
+                <div className="delivery-card-top">
+                  <div className="grow">
+                    <div className="strong" dir="auto">
+                      {d.customer_name ?? t("Customer")}
+                    </div>
+                    <div className="tiny muted">
+                      {d.delivery_number} · {formatShort(d.created_at)}
+                    </div>
+                  </div>
+                  <span className="money strong">{formatMoney(d.amount_minor)}</span>
                 </div>
-                <div className="small muted">
-                  {[d.area, d.address].filter(Boolean).join(", ")} · {d.phone ?? t("no phone")} ·{" "}
-                  {formatShort(d.created_at)}
+                <div className="delivery-address" dir="auto">
+                  {[d.area, d.address].filter(Boolean).join(" · ") || t("No delivery address")}
+                </div>
+                <div className="delivery-card-actions">
+                  <div className="row gap-8 wrap">
+                    <Chip tone="info">{status}</Chip>
+                    <Chip tone={d.payment_status === "paid" ? "success" : "warning"}>{payment}</Chip>
+                  </div>
+                  <span className="grow" />
+                  {d.phone ? (
+                    <a className="btn" href={`tel:${d.phone}`}>
+                      {t("Call")}
+                    </a>
+                  ) : null}
+                  {digits ? (
+                    <a className="btn" href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer">
+                      {t("WhatsApp")}
+                    </a>
+                  ) : null}
+                  {next[d.status] ? (
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      onClick={async () => {
+                        try {
+                          await api.deliveries.update({ delivery_id: d.delivery_id, status: next[d.status] });
+                          void load();
+                        } catch (e) {
+                          setError(explain(e).message);
+                        }
+                      }}
+                    >
+                      {nextLabel[next[d.status]] ?? t("Update delivery")}
+                    </Button>
+                  ) : null}
                 </div>
               </div>
-              <Chip tone={d.payment_status === "paid" ? "success" : "warning"}>
-                {d.payment_status === "cod"
-                  ? t("Cash on delivery")
-                  : d.payment_status === "paid"
-                    ? t("Paid")
-                    : t("Payment pending")}
-              </Chip>
-              <span className="money">{formatMoney(d.amount_minor)}</span>
-              <Chip tone="info">{codeLabel(d.status)}</Chip>
-              {next[d.status] ? (
-                <Button
-                  variant="primary"
-                  onClick={async () => {
-                    try {
-                      await api.deliveries.update({ delivery_id: d.delivery_id, status: next[d.status] });
-                      void load();
-                    } catch (e) {
-                      setError(explain(e).message);
-                    }
-                  }}
-                >
-                  {t("Mark {0}", codeLabel(next[d.status]))}
-                </Button>
-              ) : null}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
