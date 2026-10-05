@@ -41,6 +41,46 @@ impl SecretStore for MemorySecretStore {
     }
 }
 
+struct CompatSecretStore {
+    inner: Arc<dyn SecretStore>,
+}
+
+fn legacy_secret_key(key: &str) -> Option<&'static str> {
+    match key {
+        "tillbh.hub.master_secret" => Some(concat!("amwa", "pos.hub.master_secret")),
+        "tillbh.sync.device_key" => Some(concat!("amwa", "pos.sync.device_key")),
+        _ => None,
+    }
+}
+
+impl SecretStore for CompatSecretStore {
+    fn get(&self, key: &str) -> AppResult<Option<String>> {
+        if let Some(value) = self.inner.get(key)? {
+            return Ok(Some(value));
+        }
+        let Some(legacy_key) = legacy_secret_key(key) else {
+            return Ok(None);
+        };
+        let Some(value) = self.inner.get(legacy_key)? else {
+            return Ok(None);
+        };
+        self.inner.set(key, &value)?;
+        Ok(Some(value))
+    }
+
+    fn set(&self, key: &str, value: &str) -> AppResult<()> {
+        self.inner.set(key, value)
+    }
+
+    fn delete(&self, key: &str) -> AppResult<()> {
+        self.inner.delete(key)?;
+        if let Some(legacy_key) = legacy_secret_key(key) {
+            self.inner.delete(legacy_key)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DeviceIdentity {
     pub device_id: String,
@@ -103,6 +143,7 @@ impl AppCore {
         let (db, migration) = Db::open(&db_path, create)?;
         db.write(|tx| crate::auth::seed_roles(tx))?;
         let device = db.read(load_device)?;
+        let secrets: Arc<dyn SecretStore> = Arc::new(CompatSecretStore { inner: secrets });
         Ok(AppCore {
             db,
             sessions: SessionStore::default(),
@@ -166,7 +207,7 @@ impl AppCore {
 
     /// Refuse a command of an optional module whose feature flag is off.
     pub fn require_feature(&self, name: &str) -> AppResult<()> {
-        let f: crate::settings::FeatureFlags = self.db.read(|c| crate::settings::get(c, crate::settings::KEY_FEATURES))?;
+        let f: crate::settings::FeatureFlags = self.db.read(|c| crate::settings::get::<settings::FeatureFlags>(c, crate::settings::KEY_FEATURES))?;
         if f.is_on(name) {
             Ok(())
         } else {
