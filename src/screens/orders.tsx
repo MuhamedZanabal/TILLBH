@@ -1,13 +1,22 @@
 // Digital orders (phone, WhatsApp, web, other). Shared by the admin page,
 // the delivery desk and the till. An order never becomes a sale by itself:
 // a person confirms it, then a cashier loads it into a sale and takes payment.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { api } from "../api";
-import type { Cart, CustomerRow, DigitalOrder, OrderChannel, OrderInput, OrderPaymentState } from "../api/types";
+import type {
+  Cart,
+  CustomerAddress,
+  CustomerRow,
+  DigitalOrder,
+  OrderChannel,
+  OrderInput,
+  OrderPaymentState,
+} from "../api/types";
 import { useSession } from "../state/session";
 import { explain } from "../lib/errors";
 import { newOperationId } from "../lib/ids";
+import { chooseDeliveryAddress } from "../lib/serviceFlow";
 import { formatMoney, formatQty } from "../lib/money";
 import { formatShort } from "../lib/time";
 import { Banner, Button, Checkbox, Chip, Empty, Field, Modal, TextInput } from "../components/ui";
@@ -54,6 +63,8 @@ export function OrderEditor({
   );
   const [phone, setPhone] = useState(order?.phone ?? "");
   const [address, setAddress] = useState(order?.address ?? "");
+  const [customerFallbackAddress, setCustomerFallbackAddress] = useState("");
+  const [savedAddresses, setSavedAddresses] = useState<CustomerAddress[]>([]);
   const [delivery, setDelivery] = useState(order?.delivery_wanted ?? false);
   const [pay, setPay] = useState<OrderPaymentState>(order?.payment_state ?? "unpaid");
   const [note, setNote] = useState(order?.note ?? "");
@@ -66,6 +77,11 @@ export function OrderEditor({
   >([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const review = useMemo(
+    () => ({ matched: lines.filter((l) => !!l.product_id).length, unmatched: lines.filter((l) => !l.product_id).length }),
+    [lines],
+  );
+
   useEffect(() => {
     if (cq.trim().length < 2) return setCustRows([]);
     const h = setTimeout(() => {
@@ -76,6 +92,33 @@ export function OrderEditor({
     }, 200);
     return () => clearTimeout(h);
   }, [cq]);
+
+  useEffect(() => {
+    if (!customer) {
+      setSavedAddresses([]);
+      return;
+    }
+    let live = true;
+    api.customers
+      .account(customer.id)
+      .then((v) => {
+        if (live) setSavedAddresses(v.addresses);
+      })
+      .catch(() => {
+        if (live) setSavedAddresses([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [customer]);
+
+  useEffect(() => {
+    if (!delivery || address.trim()) return;
+    const picked = chooseDeliveryAddress({ address: "", area: "" }, savedAddresses);
+    if (picked.address) setAddress(picked.address);
+    else if (customerFallbackAddress) setAddress(customerFallbackAddress);
+  }, [address, customerFallbackAddress, delivery, savedAddresses]);
+
   useEffect(() => {
     if (pq.trim().length < 2) return setProdRows([]);
     const h = setTimeout(() => {
@@ -86,6 +129,7 @@ export function OrderEditor({
     }, 200);
     return () => clearTimeout(h);
   }, [pq]);
+
   const save = async () => {
     setError(null);
     const out: OrderInput["lines"] = [];
@@ -117,6 +161,7 @@ export function OrderEditor({
       setBusy(false);
     }
   };
+
   return (
     <Modal
       title={order ? t("Order {0}", order.order_number) : t("New order")}
@@ -126,33 +171,27 @@ export function OrderEditor({
         <>
           <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" loading={busy} onClick={save}>
-            {t("Save draft")}
+            {t("Save order")}
           </Button>
         </>
       }
     >
       <div className="col gap-16">
         {order?.inbox_seq ? (
-          <Banner tone="info" title={t("Suggested from a WhatsApp message")}>
-            {t("Check every line against the message before confirming. Unmatched text stays as a note on the line.")}
+          <Banner tone={review.unmatched ? "warning" : "info"} title={t("Created from a WhatsApp message")}>
+            <div>{t("Review the items before saving. Anything we could not match stays highlighted.")}</div>
+            <strong>
+              {t("{0} matched · {1} need review", review.matched, review.unmatched)}
+            </strong>
           </Banner>
         ) : null}
-        <div className="grid-2">
-          <Field label={t("Channel")}>
-            <select className="select" value={channel} onChange={(e) => setChannel(e.target.value as OrderChannel)}>
-              {CHANNELS.map((c) => (
-                <option key={c} value={c}>
-                  {codeLabel(c)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <TextInput
-            label={t("External reference")}
-            value={ref}
-            onChange={(e) => setRef(e.target.value)}
-            hint={t("Order number from the website or app, if any.")}
-          />
+
+        <div className="flow-heading">
+          <span className="flow-step">1</span>
+          <div>
+            <strong>{t("Customer")}</strong>
+            <div className="tiny muted">{t("Choose the customer or enter their phone number.")}</div>
+          </div>
         </div>
         <div className="grid-2">
           <div className="col gap-8">
@@ -160,14 +199,21 @@ export function OrderEditor({
               {customer ? (
                 <div className="row">
                   <strong className="grow">{customer.name}</strong>
-                  <Button size="sm" onClick={() => setCustomer(null)}>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setCustomer(null);
+                      setSavedAddresses([]);
+                      setCustomerFallbackAddress("");
+                    }}
+                  >
                     {t("Remove")}
                   </Button>
                 </div>
               ) : (
                 <input
                   className="input"
-                  placeholder={t("Search by phone or name…")}
+                  placeholder={t("Search customer by name or phone…")}
                   value={cq}
                   onChange={(e) => setCq(e.target.value)}
                 />
@@ -176,45 +222,37 @@ export function OrderEditor({
             {!customer && custRows.length ? (
               <div className="card" style={{ maxHeight: 160, overflow: "auto" }}>
                 {custRows.map((c) => (
-                  <div
+                  <button
                     key={c.customer_id}
+                    type="button"
                     className="result-row"
                     onClick={() => {
                       setCustomer({ id: c.customer_id, name: c.name });
+                      setCustomerFallbackAddress(c.address ?? "");
+                      setSavedAddresses([]);
                       if (!phone && c.phone) setPhone(c.phone);
-                      if (!address && c.address) setAddress(c.address);
                       setCq("");
                     }}
                   >
                     <span className="grow">{c.name}</span>
                     <span className="tiny">{c.phone ?? ""}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : null}
           </div>
           <TextInput label={t("Phone")} value={phone} inputMode="tel" onChange={(e) => setPhone(e.target.value)} />
         </div>
-        <div className="grid-2">
-          <Field label={t("Payment")}>
-            <select className="select" value={pay} onChange={(e) => setPay(e.target.value as OrderPaymentState)}>
-              {PAY.map((p) => (
-                <option key={p} value={p}>
-                  {codeLabel(p)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="col gap-8">
-            <Checkbox label={t("Deliver this order")} checked={delivery} onChange={setDelivery} />
-            {delivery ? (
-              <TextInput label={t("Delivery address")} value={address} onChange={(e) => setAddress(e.target.value)} />
-            ) : null}
+
+        <div className="flow-heading">
+          <span className="flow-step">2</span>
+          <div>
+            <strong>{t("Items")}</strong>
+            <div className="tiny muted">{t("Add exactly what the customer wants.")}</div>
           </div>
         </div>
         <div className="col gap-8">
-          <h3>{t("Items")}</h3>
-          {lines.length === 0 ? <div className="muted small">{t("No items yet.")}</div> : null}
+          {lines.length === 0 ? <div className="muted small">{t("Add the products the customer wants.")}</div> : null}
           {lines.map((l, i) => (
             <div key={i} className="row" data-testid="order-line">
               <div className="grow">
@@ -245,15 +283,16 @@ export function OrderEditor({
           ))}
           <input
             className="input"
-            placeholder={t("Add a product: type a name, SKU or barcode…")}
+            placeholder={t("Search products by name, barcode or SKU…")}
             value={pq}
             onChange={(e) => setPq(e.target.value)}
           />
           {prodRows.length ? (
             <div className="card" style={{ maxHeight: 200, overflow: "auto" }}>
               {prodRows.map((p) => (
-                <div
+                <button
                   key={p.product_id}
+                  type="button"
                   className="result-row"
                   onClick={() => {
                     // Matching an unmatched line keeps its text; otherwise add a new line.
@@ -268,14 +307,88 @@ export function OrderEditor({
                   <span className="grow">{p.name}</span>
                   <span className="tiny">{p.sku}</span>
                   <span className="num">{p.price_minor === null ? "—" : formatMoney(p.price_minor)}</span>
-                </div>
+                </button>
               ))}
             </div>
           ) : null}
         </div>
-        <Field label={t("Note")}>
-          <textarea className="textarea" value={note} onChange={(e) => setNote(e.target.value)} />
-        </Field>
+
+        <div className="flow-heading">
+          <span className="flow-step">3</span>
+          <div>
+            <strong>{t("Delivery & payment")}</strong>
+            <div className="tiny muted">{t("Choose how the order is fulfilled and whether payment is still due.")}</div>
+          </div>
+        </div>
+        <div className="grid-2">
+          <Field label={t("Payment status")}>
+            <select className="select" value={pay} onChange={(e) => setPay(e.target.value as OrderPaymentState)}>
+              {PAY.map((p) => (
+                <option key={p} value={p}>
+                  {codeLabel(p)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="col gap-8">
+            <Checkbox label={t("Delivery")} checked={delivery} onChange={setDelivery} />
+            {delivery ? (
+              <>
+                {savedAddresses.length ? (
+                  <div>
+                    <div className="tiny muted">{t("Saved addresses")}</div>
+                    <div className="area-chips">
+                      {savedAddresses.map((a) => (
+                        <button
+                          key={a.address_id}
+                          type="button"
+                          className={`filter-chip ${address === a.address ? "active" : ""}`}
+                          onClick={() => setAddress(a.address)}
+                          title={[a.area, a.notes].filter(Boolean).join(" · ")}
+                        >
+                          {a.label}
+                          {a.is_default ? ` · ${t("Default")}` : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <TextInput
+                  label={t("Delivery address")}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  hint={t("Use a saved address or enter a different one.")}
+                />
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        <details className="progressive">
+          <summary>{t("More order details")}</summary>
+          <div className="col gap-16 progressive-body">
+            <div className="grid-2">
+              <Field label={t("Order source")}>
+                <select className="select" value={channel} onChange={(e) => setChannel(e.target.value as OrderChannel)}>
+                  {CHANNELS.map((c) => (
+                    <option key={c} value={c}>
+                      {codeLabel(c)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <TextInput
+                label={t("Reference (optional)")}
+                value={ref}
+                onChange={(e) => setRef(e.target.value)}
+                hint={t("Use the website or marketplace order number, if there is one.")}
+              />
+            </div>
+            <Field label={t("Order note (optional)")}>
+              <textarea className="textarea" value={note} onChange={(e) => setNote(e.target.value)} />
+            </Field>
+          </div>
+        </details>
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
     </Modal>
@@ -324,7 +437,7 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
     <div className="col gap-16">
       <div className="row wrap">
         {[
-          ["", t("Open")],
+          ["", t("Active")],
           ["converted", codeLabel("converted")],
           ["cancelled", codeLabel("cancelled")],
         ].map(([k, l]) => (
@@ -375,7 +488,7 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
                   {t("Edit")}
                 </Button>
                 <Button size="sm" variant="primary" onClick={() => act(() => api.orders.confirm(o.order_id))}>
-                  {t("Confirm")}
+                  {t("Ready for checkout")}
                 </Button>
               </>
             ) : null}
@@ -401,7 +514,7 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
             ) : null}
             {onConverted && o.status === "confirmed" ? (
               <Button size="sm" variant="primary" icon={<ShoppingCart size={14} />} onClick={() => void convert(o)}>
-                {t("Sell on this till")}
+                {t("Open in checkout")}
               </Button>
             ) : null}
           </div>

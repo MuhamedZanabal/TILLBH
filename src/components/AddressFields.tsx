@@ -140,19 +140,19 @@ export function AddressFields({
   return (
     <div className="addr-fields col gap-8">
       <div className="addr-row">
-        {cell("flat", t("Flat"))}
-        {cell("building", t("Building"), true)}
+        {cell("flat", t("Flat / unit"))}
+        {cell("building", t("Building / house"), true)}
         {cell("road", t("Road"))}
         {cell("block", t("Block"))}
       </div>
       <div className="field">
-        <label htmlFor={`${idPrefix}-line`}>{parts ? t("Landmark (optional)") : t("Address")}</label>
+        <label htmlFor={`${idPrefix}-line`}>{parts ? t("Landmark / directions (optional)") : t("Address")}</label>
         <input
           id={`${idPrefix}-line`}
           className="input"
           value={value.address}
           onChange={set("address")}
-          placeholder={parts ? t("Near the mosque, blue gate…") : t("Or type the address")}
+          placeholder={parts ? t("Near the mosque, blue gate…") : t("Building, road, block or landmark…")}
           data-testid={idPrefix === "send" ? "send-address" : `${idPrefix}-line`}
         />
       </div>
