@@ -41,6 +41,46 @@ impl SecretStore for MemorySecretStore {
     }
 }
 
+struct CompatSecretStore {
+    inner: Arc<dyn SecretStore>,
+}
+
+fn legacy_secret_key(key: &str) -> Option<&'static str> {
+    match key {
+        "tillbh.hub.master_secret" => Some(concat!("amwa", "pos.hub.master_secret")),
+        "tillbh.sync.device_key" => Some(concat!("amwa", "pos.sync.device_key")),
+        _ => None,
+    }
+}
+
+impl SecretStore for CompatSecretStore {
+    fn get(&self, key: &str) -> AppResult<Option<String>> {
+        if let Some(value) = self.inner.get(key)? {
+            return Ok(Some(value));
+        }
+        let Some(legacy_key) = legacy_secret_key(key) else {
+            return Ok(None);
+        };
+        let Some(value) = self.inner.get(legacy_key)? else {
+            return Ok(None);
+        };
+        self.inner.set(key, &value)?;
+        Ok(Some(value))
+    }
+
+    fn set(&self, key: &str, value: &str) -> AppResult<()> {
+        self.inner.set(key, value)
+    }
+
+    fn delete(&self, key: &str) -> AppResult<()> {
+        self.inner.delete(key)?;
+        if let Some(legacy_key) = legacy_secret_key(key) {
+            self.inner.delete(legacy_key)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DeviceIdentity {
     pub device_id: String,
@@ -62,6 +102,7 @@ pub struct AppCore {
 }
 
 pub const DB_FILE: &str = "tillbh.db";
+const LEGACY_DB_FILE: &str = concat!("amwa", "pos.db");
 pub const MARKER_FILE: &str = "store.marker";
 
 impl AppCore {
@@ -70,8 +111,26 @@ impl AppCore {
     /// startup fails with a recovery error instead of creating an empty store.
     pub fn open(data_dir: &Path, secrets: Arc<dyn SecretStore>) -> AppResult<AppCore> {
         std::fs::create_dir_all(data_dir)?;
-        let db_path = data_dir.join(DB_FILE);
+        let current_db = data_dir.join(DB_FILE);
+        let legacy_db = data_dir.join(LEGACY_DB_FILE);
         let marker = data_dir.join(MARKER_FILE);
+        let db_path = match (current_db.exists(), legacy_db.exists()) {
+            (true, false) => current_db,
+            (false, true) => legacy_db,
+            (false, false) => current_db,
+            (true, true) => {
+                return Err(AppError::new(
+                    ErrorCode::Conflict,
+                    "Two store databases were found in the data folder. Startup stopped rather than choose one and risk using stale financial data.",
+                )
+                .with_details(serde_json::json!({
+                    "data_dir": data_dir.to_string_lossy(),
+                    "current_db": current_db.to_string_lossy(),
+                    "legacy_db": legacy_db.to_string_lossy(),
+                    "recovery": true
+                })))
+            }
+        };
         let create = !db_path.exists() && !marker.exists();
         if !db_path.exists() && marker.exists() {
             return Err(AppError::new(
@@ -84,6 +143,7 @@ impl AppCore {
         let (db, migration) = Db::open(&db_path, create)?;
         db.write(|tx| crate::auth::seed_roles(tx))?;
         let device = db.read(load_device)?;
+        let secrets: Arc<dyn SecretStore> = Arc::new(CompatSecretStore { inner: secrets });
         Ok(AppCore {
             db,
             sessions: SessionStore::default(),
