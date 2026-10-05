@@ -207,7 +207,7 @@ impl AppCore {
 
     /// Refuse a command of an optional module whose feature flag is off.
     pub fn require_feature(&self, name: &str) -> AppResult<()> {
-        let f: crate::settings::FeatureFlags = self.db.read(|c| crate::settings::get::<settings::FeatureFlags>(c, crate::settings::KEY_FEATURES))?;
+        let f: crate::settings::FeatureFlags = self.db.read(|c| crate::settings::get(c, crate::settings::KEY_FEATURES))?;
         if f.is_on(name) {
             Ok(())
         } else {
