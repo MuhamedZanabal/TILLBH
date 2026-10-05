@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 use tillbh_core::channel::{aad, derive, device_keys, TerminalPairing};
+use tillbh_core::error::ErrorCode;
 use tillbh_core::service::{AppCore, MemorySecretStore, SecretStore, DB_FILE};
 use tillbh_core::sync::{SECRET_DEVICE_KEY, SECRET_HUB_MASTER};
 
@@ -30,12 +31,33 @@ fn existing_store_with_legacy_db_filename_still_opens() {
 }
 
 #[test]
+fn startup_refuses_to_guess_when_both_database_names_exist() {
+    let dir = tempfile::tempdir().unwrap();
+    let current = dir.path().join(DB_FILE);
+    let legacy = dir.path().join(concat!("amwa", "pos.db"));
+
+    {
+        let core = AppCore::open(dir.path(), Arc::new(MemorySecretStore::default())).unwrap();
+        assert!(core.db.schema_version().unwrap() > 0);
+    }
+    std::fs::copy(&current, &legacy).unwrap();
+
+    let err = AppCore::open(dir.path(), Arc::new(MemorySecretStore::default()))
+        .err()
+        .expect("two possible financial databases must fail closed");
+
+    assert_eq!(err.code, ErrorCode::Conflict);
+    assert!(current.exists());
+    assert!(legacy.exists());
+}
+
+#[test]
 fn hub_secret_is_recovered_from_legacy_credential_key() {
     let dir = tempfile::tempdir().unwrap();
     let secrets = Arc::new(MemorySecretStore::default());
     let core = AppCore::open(dir.path(), secrets.clone()).unwrap();
     core.setup_initialize(common::setup_request()).unwrap();
-    let owner = core.login_users().unwrap().remove(0);
+    let owner = core.login_users().unwrap().into_iter().next().unwrap();
     let token = core.login(&owner.user_id, common::OWNER_PIN).unwrap().token;
     core.sync_enable_hub(&token).unwrap();
 
