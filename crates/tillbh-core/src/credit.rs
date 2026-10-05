@@ -344,6 +344,15 @@ impl AppCore {
                     )?;
                 }
             }
+            // The default saved address is the customer's operational address everywhere else
+            // (POS Send, digital orders, receipts). Keep the legacy customer fields in sync so
+            // every existing flow gets the same default without learning a second address store.
+            if a.is_default {
+                tx.execute(
+                    "UPDATE customers SET address=?2, area=?3, flat=NULL, building=NULL, road=NULL, block=NULL, landmark=NULL, updated_at=?4 WHERE customer_id=?1",
+                    params![cid, address, a.area, now],
+                )?;
+            }
             Ok(())
         })?;
         self.customer_account(token, &cid)
