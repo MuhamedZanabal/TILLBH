@@ -62,6 +62,7 @@ pub struct AppCore {
 }
 
 pub const DB_FILE: &str = "tillbh.db";
+const LEGACY_DB_FILE: &str = concat!("amwa", "pos.db");
 pub const MARKER_FILE: &str = "store.marker";
 
 impl AppCore {
@@ -70,8 +71,26 @@ impl AppCore {
     /// startup fails with a recovery error instead of creating an empty store.
     pub fn open(data_dir: &Path, secrets: Arc<dyn SecretStore>) -> AppResult<AppCore> {
         std::fs::create_dir_all(data_dir)?;
-        let db_path = data_dir.join(DB_FILE);
+        let current_db = data_dir.join(DB_FILE);
+        let legacy_db = data_dir.join(LEGACY_DB_FILE);
         let marker = data_dir.join(MARKER_FILE);
+        let db_path = match (current_db.exists(), legacy_db.exists()) {
+            (true, false) => current_db,
+            (false, true) => legacy_db,
+            (false, false) => current_db,
+            (true, true) => {
+                return Err(AppError::new(
+                    ErrorCode::Conflict,
+                    "Two store databases were found in the data folder. Startup stopped rather than choose one and risk using stale financial data.",
+                )
+                .with_details(serde_json::json!({
+                    "data_dir": data_dir.to_string_lossy(),
+                    "current_db": current_db.to_string_lossy(),
+                    "legacy_db": legacy_db.to_string_lossy(),
+                    "recovery": true
+                })))
+            }
+        };
         let create = !db_path.exists() && !marker.exists();
         if !db_path.exists() && marker.exists() {
             return Err(AppError::new(
