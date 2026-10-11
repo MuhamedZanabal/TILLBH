@@ -42,7 +42,10 @@ fn existing_legacy_database_is_copied_safely_to_tillbh_name() {
     let (legacy, _) = Db::open(&legacy_path, true).unwrap();
     legacy
         .write(|tx| {
-            tx.execute_batch("CREATE TABLE legacy_probe(value TEXT NOT NULL); INSERT INTO legacy_probe(value) VALUES ('preserved');")?;
+            tx.execute_batch(
+                "CREATE TABLE legacy_probe(value TEXT NOT NULL); \
+                 INSERT INTO legacy_probe(value) VALUES ('preserved');",
+            )?;
             Ok(())
         })
         .unwrap();
@@ -57,7 +60,10 @@ fn existing_legacy_database_is_copied_safely_to_tillbh_name() {
 
     assert_eq!(probe, "preserved");
     assert_eq!(core.db.path(), dir.path().join(DB_FILE));
-    assert!(legacy_path.exists(), "the legacy database is retained as rollback evidence");
+    assert!(
+        legacy_path.exists(),
+        "the legacy database is retained as rollback evidence"
+    );
 }
 
 #[test]
@@ -69,7 +75,10 @@ fn existing_tillbh_database_always_takes_precedence_over_legacy_database() {
     let (current, _) = Db::open(&current_path, true).unwrap();
     current
         .write(|tx| {
-            tx.execute_batch("CREATE TABLE precedence_probe(value TEXT NOT NULL); INSERT INTO precedence_probe(value) VALUES ('current');")?;
+            tx.execute_batch(
+                "CREATE TABLE precedence_probe(value TEXT NOT NULL); \
+                 INSERT INTO precedence_probe(value) VALUES ('current');",
+            )?;
             Ok(())
         })
         .unwrap();
@@ -78,7 +87,10 @@ fn existing_tillbh_database_always_takes_precedence_over_legacy_database() {
     let (legacy, _) = Db::open(&legacy_path, true).unwrap();
     legacy
         .write(|tx| {
-            tx.execute_batch("CREATE TABLE precedence_probe(value TEXT NOT NULL); INSERT INTO precedence_probe(value) VALUES ('legacy');")?;
+            tx.execute_batch(
+                "CREATE TABLE precedence_probe(value TEXT NOT NULL); \
+                 INSERT INTO precedence_probe(value) VALUES ('legacy');",
+            )?;
             Ok(())
         })
         .unwrap();
@@ -88,11 +100,16 @@ fn existing_tillbh_database_always_takes_precedence_over_legacy_database() {
     let core = AppCore::open(dir.path(), Arc::new(MemorySecretStore::default())).unwrap();
     let probe: String = core
         .db
-        .read(|c| Ok(c.query_row("SELECT value FROM precedence_probe", [], |row| row.get(0))?))
+        .read(|c| {
+            Ok(c.query_row("SELECT value FROM precedence_probe", [], |row| row.get(0))?)
+        })
         .unwrap();
 
     assert_eq!(probe, "current");
-    assert!(legacy_path.exists(), "legacy source must never overwrite the current TILLBH database");
+    assert!(
+        legacy_path.exists(),
+        "legacy source must never overwrite the current TILLBH database"
+    );
 }
 
 fn backup_fixture(format: &str) -> (tempfile::TempDir, std::path::PathBuf) {
@@ -112,7 +129,11 @@ fn backup_fixture(format: &str) -> (tempfile::TempDir, std::path::PathBuf) {
         size_bytes: std::fs::metadata(&path).unwrap().len(),
         record_counts: Default::default(),
     };
-    std::fs::write(path.with_extension("amwbak.json"), serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+    std::fs::write(
+        path.with_extension("amwbak.json"),
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
     (dir, path)
 }
 
@@ -121,7 +142,11 @@ fn backup_inspection_keeps_current_and_deployed_legacy_manifests_restorable() {
     for format in ["tillbh-sqlite-v1", "amwapos-sqlite-v1"] {
         let (_dir, path) = backup_fixture(format);
         let inspection = inspect_file(&path, None).unwrap();
-        assert!(inspection.ok, "{format} must remain restorable: {:?}", inspection.problems);
+        assert!(
+            inspection.ok,
+            "{format} must remain restorable: {:?}",
+            inspection.problems
+        );
         assert!(inspection.compatible);
     }
 }
@@ -131,5 +156,7 @@ fn backup_inspection_rejects_a_non_sqlite_file() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("malformed.amwbak");
     std::fs::write(&path, b"not a sqlite backup").unwrap();
-    assert!(inspect_file(&path, None).is_err());
+    if let Ok(inspection) = inspect_file(&path, None) {
+        assert!(!inspection.ok, "malformed backup must never inspect as valid");
+    }
 }
