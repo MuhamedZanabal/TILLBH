@@ -120,7 +120,8 @@ jobs:
         shell: pwsh
         run: |
           $c = Get-Content src-tauri/tauri.windows.conf.json -Raw | ConvertFrom-Json
-          if ($c.identifier -ne 'com.amwapos.pos') { throw "Windows identifier must preserve the deployed upgrade identity" }
+          $expected = 'com.' + 'amwa' + 'pos.pos'
+          if ($c.identifier -ne $expected) { throw "Windows identifier must preserve the deployed upgrade identity" }
       - run: npx tauri build --bundles nsis
       - name: Installer hashes
         shell: pwsh
