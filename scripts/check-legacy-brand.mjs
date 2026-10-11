@@ -13,7 +13,6 @@ const AMWAJ = /\bamwaj\b/gi;
 // product-name occurrence outside this narrow list is a regression. Keep this
 // list explicit so adding a new compatibility surface requires code review.
 const COMPATIBILITY_FILES = new Set([
-  "crates/tillbh-core/src/backup.rs",
   "crates/tillbh-core/src/channel.rs",
   "crates/tillbh-core/src/service.rs",
   "crates/tillbh-core/tests/rename_compat.rs",
