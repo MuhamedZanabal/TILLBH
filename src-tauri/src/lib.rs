@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use tauri::Manager;
-use tillbh_core::service::{AppCore, LEGACY_DB_FILE, MARKER_FILE};
+use tillbh_core::service::{AppCore, DB_FILE, LEGACY_DB_FILE, MARKER_FILE};
 use tillbh_core::AppError;
 use tillbh_hub::Runtime;
 
@@ -31,17 +31,16 @@ async fn rpc(state: tauri::State<'_, AppState>, cmd: String, token: Option<Strin
     }
 }
 
-fn dir_has_entries(path: &Path) -> bool {
-    std::fs::read_dir(path).ok().and_then(|mut entries| entries.next()).is_some()
+fn current_store_present(path: &Path) -> bool {
+    path.join(DB_FILE).is_file() || path.join(MARKER_FILE).is_file()
 }
 
-/// Prefer an already-initialized TILLBH data folder. On an upgrade where the
-/// installer has only created an empty TILLBH folder, keep using the deployed
-/// AMWAPOS data folder when it contains a database or initialization marker.
-/// This preserves the entire data set (database, images and local backups)
-/// without a risky recursive move, while clean installs use the TILLBH path.
+/// Prefer a TILLBH folder only when it actually identifies an initialized or
+/// recovery-required TILLBH store. Installer-created or unrelated stray files
+/// must not hide a deployed AMWAPOS store. The current DB/marker always wins;
+/// otherwise an old DB/marker selects the legacy directory for safe migration.
 fn select_data_dir(current: PathBuf, legacy: PathBuf) -> PathBuf {
-    if dir_has_entries(&current) {
+    if current_store_present(&current) {
         return current;
     }
     if legacy.join(LEGACY_DB_FILE).is_file() || legacy.join(MARKER_FILE).is_file() {
@@ -154,7 +153,21 @@ mod tests {
     }
 
     #[test]
-    fn nonempty_tillbh_dir_always_takes_precedence() {
+    fn unrelated_current_file_does_not_hide_legacy_store() {
+        let base = root("stray-current-file");
+        let current = base.join("TILLBH").join("data");
+        let legacy = base.join("AMWAPOS").join("data");
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(current.join("partial-download.tmp"), b"stray").unwrap();
+        std::fs::write(legacy.join("amwapos.db"), b"legacy").unwrap();
+
+        assert_eq!(select_data_dir(current.clone(), legacy.clone()), legacy);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn current_tillbh_marker_always_takes_precedence() {
         let base = root("current-dir");
         let current = base.join("TILLBH").join("data");
         let legacy = base.join("AMWAPOS").join("data");
