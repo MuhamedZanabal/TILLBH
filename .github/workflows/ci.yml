@@ -145,3 +145,59 @@ jobs:
         with:
           name: installer-smoke-evidence
           path: installer-smoke/
+
+  windows-upgrade:
+    name: Windows predecessor → TILLBH upgrade
+    runs-on: windows-2022
+    needs: [windows]
+    steps:
+      - name: Checkout TILLBH
+        uses: actions/checkout@v4
+      - name: Checkout deployed predecessor baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 1a5d98a44721e4bebf727be09721b694caf1275e
+          path: legacy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: legacy
+      - name: Install current and predecessor JS dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          Push-Location legacy
+          npm ci
+          Pop-Location
+      - name: Bundle predecessor Tesseract
+        shell: pwsh
+        run: |
+          Push-Location legacy
+          ./scripts/bundle-tesseract.ps1
+          Pop-Location
+      - name: Build exact deployed predecessor NSIS installer
+        shell: pwsh
+        run: |
+          Push-Location legacy
+          npx tauri build --bundles nsis
+          Pop-Location
+      - name: Download current TILLBH installer
+        uses: actions/download-artifact@v4
+        with:
+          name: tillbh-windows-unsigned
+          path: current-installer
+      - name: Upgrade installed predecessor through TILLBH and verify persistence
+        shell: pwsh
+        run: |
+          $legacy = Get-ChildItem legacy/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          $current = Get-ChildItem current-installer/*.exe | Select-Object -First 1
+          ./scripts/upgrade-smoke.ps1 -LegacyInstaller $legacy.FullName -LegacyRepo "$PWD\legacy" -CurrentInstaller $current.FullName -Shots upgrade-smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upgrade-smoke-evidence
+          path: upgrade-smoke/
