@@ -4,6 +4,7 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/noto-sans-arabic";
 import "./styles/app.css";
 import "./styles/layout.css";
+import "./lib/legacyStorageInit";
 import App from "./App";
 import { applyDocumentLang } from "./i18n";
 
