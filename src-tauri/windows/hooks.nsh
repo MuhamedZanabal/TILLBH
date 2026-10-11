@@ -4,6 +4,12 @@
 ; legacy ProgramData directory while TILLBH opens them through compatibility code.
 
 !macro NSIS_HOOK_PREINSTALL
+  ; Preserve scratch registers used by the surrounding Tauri NSIS template.
+  Push $R5
+  Push $R6
+  Push $R7
+  Push $R8
+
   ; Tauri's stock NSIS identity uses PRODUCTNAME for its uninstall registry key
   ; and install directory. Because the visible product name changed, explicitly
   ; hand off a deployed predecessor install before copying TILLBH files.
@@ -45,6 +51,11 @@
 
     legacy_handoff_done:
   ${EndIf}
+
+  Pop $R8
+  Pop $R7
+  Pop $R6
+  Pop $R5
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
