@@ -25,6 +25,13 @@ use crate::system::DiagnosticItem;
 use crate::time;
 
 pub const EXT: &str = "amwbak";
+pub const FORMAT_CURRENT: &str = "tillbh-sqlite-v1";
+/// Compatibility-only manifest identifier emitted by deployed AMWAPOS builds.
+pub const FORMAT_LEGACY: &str = "amwapos-sqlite-v1";
+
+fn supported_format(format: &str) -> bool {
+    matches!(format, FORMAT_CURRENT | FORMAT_LEGACY)
+}
 
 pub fn free_space(p: &Path) -> Option<u64> {
     let mut probe = p.to_path_buf();
@@ -125,8 +132,27 @@ pub fn inspect_file(path: &Path, current_business: Option<&str>) -> AppResult<In
     }
     let size = std::fs::metadata(path)?.len();
     let sha = file_sha256(path)?;
-    let manifest: Option<BackupManifest> = std::fs::read_to_string(manifest_path(path)).ok().and_then(|s| serde_json::from_str(&s).ok());
     let mut problems = vec![];
+    let manifest_file = manifest_path(path);
+    let manifest: Option<BackupManifest> = match std::fs::read_to_string(&manifest_file) {
+        Ok(raw) => match serde_json::from_str(&raw) {
+            Ok(manifest) => Some(manifest),
+            Err(e) => {
+                problems.push(format!("The backup manifest is malformed: {e}"));
+                None
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            problems.push(format!("The backup manifest could not be read: {e}"));
+            None
+        }
+    };
+    if let Some(m) = &manifest {
+        if !supported_format(&m.format) {
+            problems.push(format!("Unsupported backup format '{}'.", m.format));
+        }
+    }
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
         .map_err(|e| AppError::validation(format!("This file is not a readable TILLBH backup: {e}")))?;
     let integrity: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap_or_else(|e| format!("unreadable: {e}"));
@@ -135,7 +161,7 @@ pub fn inspect_file(path: &Path, current_business: Option<&str>) -> AppResult<In
     }
     let schema: i64 = conn.query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0)).unwrap_or(0);
     if schema == 0 {
-        problems.push("This file does not contain an TILLBH database.".into());
+        problems.push("This file does not contain a TILLBH database.".into());
     }
     let latest = crate::db::latest_schema_version();
     if schema > latest {
@@ -236,7 +262,7 @@ impl AppCore {
                 ));
             }
             let m = BackupManifest {
-                format: "tillbh-sqlite-v1".into(),
+                format: FORMAT_CURRENT.into(),
                 app_version: audit::APP_VERSION.into(),
                 schema_version: insp.schema_version,
                 business_name: bname.clone(),
@@ -518,32 +544,3 @@ impl AppCore {
             (Some(_), None) => true,
             _ => false,
         };
-        let tz = self.db.read(|c| self.store_timezone(c)).unwrap_or_else(|_| "Asia/Bahrain".into());
-        let summary = match (&last_ok, failed_since) {
-            (_, true) => format!("Last backup attempt failed: {}", last_fail.as_ref().map(|f| f.1.as_str()).unwrap_or("")),
-            (Some(t), false) => format!("Last successful backup {}", time::display(t, &tz)),
-            (None, false) => "No successful backup yet".into(),
-        };
-        Ok(DiagnosticItem {
-            component: "Backup".into(),
-            state: if failed_since {
-                "error".into()
-            } else if overdue {
-                "warning".into()
-            } else {
-                "ok".into()
-            },
-            summary,
-            details: json!({
-                "last_success_at": last_ok, "last_failure": last_fail, "automatic": cfg.automatic,
-                "interval_hours": cfg.interval_hours, "directory": cfg.directory, "age_hours": age_hours, "overdue": overdue
-            }),
-        })
-    }
-
-    /// Backup state for the always-visible warning (any signed-in user).
-    pub fn backup_health(&self, token: &str) -> AppResult<DiagnosticItem> {
-        self.session(token)?;
-        self.backup_diagnostic()
-    }
-}
