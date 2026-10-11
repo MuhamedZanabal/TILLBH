@@ -44,7 +44,6 @@ await rpc(page, "products.price_update", {
   product_id: productId,
   amount_minor: 1375,
   reason: "upgrade-compatibility-marker",
-  effective_from: null,
 });
 await rpc(page, "inventory.adjust", {
   product_id: productId,
@@ -59,7 +58,6 @@ await rpc(page, "customers.save", {
     name: "Upgrade Customer",
     phone: "+97339000001",
     whatsapp: "+97339000001",
-    email: "upgrade-customer@example.invalid",
     area: "Amwaj",
   },
 });
@@ -67,8 +65,6 @@ await rpc(page, "suppliers.save", {
   supplier_id: null,
   supplier: {
     name: "Upgrade Supplier",
-    cr_number: "UPGRADE-CR-1",
-    vat_number: "200000000000003",
     contact_name: "Upgrade Contact",
     phone: "+97339000002",
   },
