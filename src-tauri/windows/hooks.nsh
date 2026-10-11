@@ -1,11 +1,13 @@
 ; TILLBH NSIS installer hooks.
-; Business data lives in %ProgramData%\TILLBH\data and is NEVER removed by
-; install, upgrade or uninstall. Only the program files are managed here.
+; Business data is NEVER removed by install, upgrade or uninstall. Clean installs
+; use %ProgramData%\TILLBH\data; deployed AMWAPOS stores may remain in their
+; legacy ProgramData directory while TILLBH opens them through compatibility code.
 
 !macro NSIS_HOOK_POSTINSTALL
-  ; Create the shared data directory up front with explicit permissions: the till
-  ; may be used under different Windows accounts, so local Users may modify files
-  ; inside it (inheritance disabled; SYSTEM and Administrators keep full control).
+  ; Create the shared TILLBH data directory up front with explicit permissions:
+  ; the till may be used under different Windows accounts, so local Users may
+  ; modify files inside it (inheritance disabled; SYSTEM and Administrators keep
+  ; full control). An empty directory does not hide a detected legacy store.
   ; Access to business functions is controlled by TILLBH staff PINs and roles.
   ; NSIS has no $COMMONAPPDATA constant: resolve %ProgramData% the same way
   ; the app does (src-tauri/src/lib.rs, data_dir), keeping $R9 intact.
@@ -14,6 +16,12 @@
   CreateDirectory "$R9\TILLBH\data"
   nsExec::Exec 'icacls "$R9\TILLBH" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)M"'
   Pop $R9
+
+  ; Remove deployed AMWAPOS rules before registering the renamed executable.
+  ; These names are compatibility-only identifiers and never recreate old rules.
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="AMWAPOS Hub"'
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="AMWAPOS Discovery"'
+
   ; One inbound rule only: the hub API (TCP 47800), private networks, bound to
   ; the TILLBH executable. Terminals join by entering the hub address shown on
   ; the hub's Sync page. WhatsApp runs inside TILLBH (outbound only) and OCR
@@ -27,8 +35,10 @@
 !macro NSIS_HOOK_PREUNINSTALL
   nsExec::Exec 'netsh advfirewall firewall delete rule name="TILLBH Hub"'
   nsExec::Exec 'netsh advfirewall firewall delete rule name="TILLBH Discovery"'
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="AMWAPOS Hub"'
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="AMWAPOS Discovery"'
   Push $R9
   ReadEnvStr $R9 PROGRAMDATA
-  DetailPrint "Business data in $R9\TILLBH is kept. Delete it manually only after taking a backup."
+  DetailPrint "Business data is kept. Delete TILLBH or legacy AMWAPOS data manually only after taking a backup."
   Pop $R9
 !macroend
