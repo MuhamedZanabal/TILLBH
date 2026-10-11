@@ -1,7 +1,38 @@
 ; TILLBH NSIS installer hooks.
 ; Business data is NEVER removed by install, upgrade or uninstall. Clean installs
-; use %ProgramData%\TILLBH\data; deployed AMWAPOS stores may remain in their
+; use %ProgramData%\TILLBH\data; deployed predecessor stores may remain in their
 ; legacy ProgramData directory while TILLBH opens them through compatibility code.
+
+!macro NSIS_HOOK_PREINSTALL
+  ; Tauri's stock NSIS identity uses PRODUCTNAME for its uninstall registry key
+  ; and install directory. Because the visible product name changed, explicitly
+  ; hand off a deployed predecessor install before copying TILLBH files.
+  ;
+  ; Security: do not execute an arbitrary UninstallString from the registry.
+  ; Read only the expected per-machine predecessor key, derive uninstall.exe from
+  ; its InstallLocation, require that exact file to exist, and fail closed if the
+  ; predecessor uninstaller does not complete successfully.
+  ReadRegStr $R7 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMWAPOS" "InstallLocation"
+  ${If} $R7 != ""
+    StrCpy $R8 "$R7\uninstall.exe"
+    IfFileExists "$R8" legacy_uninstaller_found legacy_uninstaller_missing
+
+    legacy_uninstaller_found:
+      DetailPrint "Migrating the previous installation to TILLBH..."
+      ExecWait '"$R8" /S' $R6
+      ${If} $R6 != 0
+        MessageBox MB_ICONSTOP "The previous installation could not be removed safely (exit code $R6). TILLBH installation has stopped; business data was not deleted."
+        Abort
+      ${EndIf}
+      Goto legacy_handoff_done
+
+    legacy_uninstaller_missing:
+      MessageBox MB_ICONSTOP "A previous installation was detected, but its expected uninstaller is missing. TILLBH installation has stopped to avoid leaving conflicting installs. Business data was not deleted."
+      Abort
+
+    legacy_handoff_done:
+  ${EndIf}
+!macroend
 
 !macro NSIS_HOOK_POSTINSTALL
   ; Create the shared TILLBH data directory up front with explicit permissions:
@@ -17,7 +48,7 @@
   nsExec::Exec 'icacls "$R9\TILLBH" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)M"'
   Pop $R9
 
-  ; Remove deployed AMWAPOS rules before registering the renamed executable.
+  ; Remove deployed predecessor rules before registering the renamed executable.
   ; These names are compatibility-only identifiers and never recreate old rules.
   nsExec::Exec 'netsh advfirewall firewall delete rule name="AMWAPOS Hub"'
   nsExec::Exec 'netsh advfirewall firewall delete rule name="AMWAPOS Discovery"'
@@ -39,6 +70,6 @@
   nsExec::Exec 'netsh advfirewall firewall delete rule name="AMWAPOS Discovery"'
   Push $R9
   ReadEnvStr $R9 PROGRAMDATA
-  DetailPrint "Business data is kept. Delete TILLBH or legacy AMWAPOS data manually only after taking a backup."
+  DetailPrint "Business data is kept. Delete TILLBH or legacy data manually only after taking a backup."
   Pop $R9
 !macroend
