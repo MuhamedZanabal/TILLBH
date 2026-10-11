@@ -26,8 +26,16 @@ pub type Key = [u8; 32];
 
 /// Header every protocol-2 request carries.
 pub const PROTOCOL_HEADER: &str = "x-amw-protocol";
-const ID_TERMINAL: &[u8] = b"tillbh-terminal";
-const ID_HUB: &[u8] = b"tillbh-hub";
+
+// Protocol v2 shipped before the product rename. These values are cryptographic
+// domain-separation identifiers, not user-visible branding. They MUST remain
+// stable for protocol v2 or already-paired AMWAPOS terminals/hubs cannot derive
+// the same keys or authenticate the same AAD. A future TILLBH domain requires a
+// new negotiated protocol version rather than changing these constants in place.
+const ID_TERMINAL: &[u8] = b"amwapos-terminal";
+const ID_HUB: &[u8] = b"amwapos-hub";
+const DEVICE_KDF_SALT_V2: &[u8] = b"amwapos/2/device";
+const AAD_DOMAIN_V2: &str = "amwapos/2";
 
 pub fn derive(ikm: &[u8], salt: &[u8], info: &str) -> Key {
     let mut out = [0u8; 32];
@@ -59,12 +67,12 @@ pub fn open(key: &Key, aad: &[u8], sealed: &[u8]) -> AppResult<Vec<u8>> {
 
 /// Direction keys for a paired device: (terminal→hub, hub→terminal).
 pub fn device_keys(device_key: &str) -> (Key, Key) {
-    (derive(device_key.as_bytes(), b"tillbh/2/device", "t2h"), derive(device_key.as_bytes(), b"tillbh/2/device", "h2t"))
+    (derive(device_key.as_bytes(), DEVICE_KDF_SALT_V2, "t2h"), derive(device_key.as_bytes(), DEVICE_KDF_SALT_V2, "h2t"))
 }
 
 /// Associated data for a request (`method != "RESPONSE"`) or its response.
 pub fn aad(kind: &str, path: &str, device_id: &str, ts: i64, nonce: &str) -> Vec<u8> {
-    format!("tillbh/2\n{kind}\n{path}\n{device_id}\n{ts}\n{nonce}").into_bytes()
+    format!("{AAD_DOMAIN_V2}\n{kind}\n{path}\n{device_id}\n{ts}\n{nonce}").into_bytes()
 }
 
 /// The SPAKE2 password is the SHA-256 of the pairing code, which is what the
