@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, "claude/**"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,7 +19,7 @@ env:
 
 jobs:
   frontend:
-    name: Frontend (types, lint, format, unit tests, build)
+    name: Frontend (brand guard, types, lint, format, unit tests, build)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +27,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - run: npm run legacy:check
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
@@ -34,7 +36,7 @@ jobs:
       - run: npx vite build
 
   rust:
-    name: Rust (fmt, clippy, tests)
+    name: Rust (fmt, check, clippy, tests)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +51,7 @@ jobs:
       # tauri's build script expects the frontend dist directory to exist.
       - run: mkdir -p dist && echo '<!doctype html>' > dist/index.html
       - run: cargo fmt --all -- --check
+      - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets -- -D warnings
       # The OCR worker test runs the real Tesseract with the bundled models.
       - run: cargo test --workspace
@@ -113,6 +116,11 @@ jobs:
         run: |
           $c = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           if ($c.bundle.windows.webviewInstallMode.type -ne 'embedBootstrapper') { throw "webviewInstallMode must be embedBootstrapper" }
+      - name: Preserve deployed Windows application identity
+        shell: pwsh
+        run: |
+          $c = Get-Content src-tauri/tauri.windows.conf.json -Raw | ConvertFrom-Json
+          if ($c.identifier -ne 'com.amwapos.pos') { throw "Windows identifier must preserve the deployed upgrade identity" }
       - run: npx tauri build --bundles nsis
       - name: Installer hashes
         shell: pwsh
