@@ -9,10 +9,19 @@
   ; hand off a deployed predecessor install before copying TILLBH files.
   ;
   ; Security: do not execute an arbitrary UninstallString from the registry.
-  ; Read only the expected per-machine predecessor key, derive uninstall.exe from
-  ; its InstallLocation, require that exact file to exist, and fail closed if the
-  ; predecessor uninstaller does not complete successfully.
-  ReadRegStr $R7 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMWAPOS" "InstallLocation"
+  ; Read only the predecessor's own per-machine product key, whose default value
+  ; is the unquoted install directory written by the deployed Tauri installer.
+  ; Derive uninstall.exe from that trusted location and fail closed when registry
+  ; metadata is inconsistent or the predecessor uninstaller cannot complete.
+  ReadRegStr $R7 HKLM "Software\AMWAPOS\AMWAPOS" ""
+  ReadRegStr $R5 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMWAPOS" "UninstallString"
+
+  ${If} $R7 == ""
+  ${AndIf} $R5 != ""
+    MessageBox MB_ICONSTOP "A previous installation is registered, but its trusted install-location metadata is missing. TILLBH installation has stopped to avoid leaving conflicting installs. Business data was not deleted."
+    Abort
+  ${EndIf}
+
   ${If} $R7 != ""
     StrCpy $R8 "$R7\uninstall.exe"
     IfFileExists "$R8" legacy_uninstaller_found legacy_uninstaller_missing
@@ -24,6 +33,10 @@
         MessageBox MB_ICONSTOP "The previous installation could not be removed safely (exit code $R6). TILLBH installation has stopped; business data was not deleted."
         Abort
       ${EndIf}
+      ; The stock predecessor uninstaller can leave its product-location metadata.
+      ; Remove that installer-only key after successful uninstall; never touch the
+      ; predecessor ProgramData directory or credential store here.
+      DeleteRegKey HKLM "Software\AMWAPOS\AMWAPOS"
       Goto legacy_handoff_done
 
     legacy_uninstaller_missing:
