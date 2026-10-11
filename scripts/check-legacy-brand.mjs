@@ -17,6 +17,7 @@ const COMPATIBILITY_FILES = new Set([
   "crates/tillbh-core/src/channel.rs",
   "crates/tillbh-core/src/service.rs",
   "crates/tillbh-core/tests/rename_compat.rs",
+  "scripts/upgrade-smoke.ps1",
   "src-tauri/src/lib.rs",
   "src-tauri/src/secrets.rs",
   "src-tauri/tauri.windows.conf.json",
