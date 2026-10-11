@@ -67,6 +67,7 @@ await rpc(page, "suppliers.save", {
     name: "Upgrade Supplier",
     contact_name: "Upgrade Contact",
     phone: "+97339000002",
+    active: true,
   },
 });
 const backup = await rpc(page, "settings.get", { key: "local.backup" });
