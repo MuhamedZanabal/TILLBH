@@ -8,8 +8,9 @@
 use std::sync::Arc;
 
 use tempfile::tempdir;
+use tillbh_core::backup::{file_sha256, inspect_file, BackupManifest, FORMAT_CURRENT, FORMAT_LEGACY};
 use tillbh_core::channel::{aad, device_keys};
-use tillbh_core::db::Db;
+use tillbh_core::db::{latest_schema_version, Db};
 use tillbh_core::service::{AppCore, MemorySecretStore, DB_FILE, MARKER_FILE};
 
 #[test]
@@ -92,4 +93,48 @@ fn existing_tillbh_database_always_takes_precedence_over_legacy_database() {
 
     assert_eq!(probe, "current");
     assert!(legacy_path.exists(), "legacy source must never overwrite the current TILLBH database");
+}
+
+fn backup_fixture(format: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("fixture.amwbak");
+    let (db, _) = Db::open(&path, true).unwrap();
+    drop(db);
+    let manifest = BackupManifest {
+        format: format.to_string(),
+        app_version: "test".into(),
+        schema_version: latest_schema_version(),
+        business_name: None,
+        business_id: None,
+        device_code: None,
+        created_at: "2026-10-11T00:00:00Z".into(),
+        sha256: file_sha256(&path).unwrap(),
+        size_bytes: std::fs::metadata(&path).unwrap().len(),
+        record_counts: Default::default(),
+    };
+    std::fs::write(path.with_extension("amwbak.json"), serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+    (dir, path)
+}
+
+#[test]
+fn backup_inspection_accepts_current_and_deployed_legacy_formats() {
+    for format in [FORMAT_CURRENT, FORMAT_LEGACY] {
+        let (_dir, path) = backup_fixture(format);
+        let inspection = inspect_file(&path, None).unwrap();
+        assert!(inspection.ok, "{format} must remain restorable: {:?}", inspection.problems);
+        assert!(inspection.compatible);
+    }
+}
+
+#[test]
+fn backup_inspection_rejects_unknown_and_malformed_manifests() {
+    let (_dir, path) = backup_fixture("unknown-sqlite-v99");
+    let unknown = inspect_file(&path, None).unwrap();
+    assert!(!unknown.ok);
+    assert!(unknown.problems.iter().any(|p| p.contains("Unsupported backup format")));
+
+    std::fs::write(path.with_extension("amwbak.json"), b"{not-json").unwrap();
+    let malformed = inspect_file(&path, None).unwrap();
+    assert!(!malformed.ok);
+    assert!(malformed.problems.iter().any(|p| p.contains("manifest is malformed")));
 }
