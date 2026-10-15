@@ -6,10 +6,10 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use serde_json::{json, Value};
 use tillbh_core::commands;
 use tillbh_core::sync::{PairRequest, DEFAULT_PORT};
 use tillbh_core::{AppCore, AppError, AppResult};
-use serde_json::{json, Value};
 use tokio::task::JoinHandle;
 
 use crate::ocr_worker::{OcrPaths, OcrWorker};
@@ -677,13 +677,11 @@ impl Runtime {
                 let c = cmd.to_string();
                 let res = blocking(move || match c.as_str() {
                     "sync.enable_hub" => {
-                        let t =
-                            token.as_deref().ok_or_else(|| AppError::new(tillbh_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                        let t = token.as_deref().ok_or_else(|| AppError::new(tillbh_core::ErrorCode::Unauthenticated, "Please log in."))?;
                         core.sync_enable_hub(t)
                     }
                     "sync.unblock" => {
-                        let t =
-                            token.as_deref().ok_or_else(|| AppError::new(tillbh_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                        let t = token.as_deref().ok_or_else(|| AppError::new(tillbh_core::ErrorCode::Unauthenticated, "Please log in."))?;
                         core.sync_unblock(t, args.get("accept_new_hub").and_then(|v| v.as_bool()).unwrap_or(false))
                     }
                     _ => commands::dispatch(&core, &c, token.as_deref(), args),

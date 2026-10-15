@@ -20,9 +20,6 @@ use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 
-use tillbh_core::channel::{self, PairKeys, PROTOCOL_HEADER};
-use tillbh_core::sync::{self, Heartbeat, NonceCache, PairRequest, PullRequest, PushRequest, PROTOCOL_VERSION};
-use tillbh_core::{AppCore, AppError, AppResult, ErrorCode};
 use axum::body::Bytes;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
@@ -30,6 +27,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use serde::{Deserialize, Serialize};
+use tillbh_core::channel::{self, PairKeys, PROTOCOL_HEADER};
+use tillbh_core::sync::{self, Heartbeat, NonceCache, PairRequest, PullRequest, PushRequest, PROTOCOL_VERSION};
+use tillbh_core::{AppCore, AppError, AppResult, ErrorCode};
 
 pub struct HubState {
     pub core: Arc<AppCore>,

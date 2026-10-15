@@ -25,10 +25,10 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tillbh_core::product_images::{normalize, AutoImageJob, AutoOutcome, ImageSearchSettings, Normalized, MAX_SOURCE_BYTES};
-use tillbh_core::{AppCore, AppError, AppResult};
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use tillbh_core::product_images::{normalize, AutoImageJob, AutoOutcome, ImageSearchSettings, Normalized, MAX_SOURCE_BYTES};
+use tillbh_core::{AppCore, AppError, AppResult};
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 
