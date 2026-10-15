@@ -20,9 +20,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde_json::{json, Value};
 use tillbh_core::ai::{AiConnection, AiSettings, AiTurn};
 use tillbh_core::{AppError, AppResult, ErrorCode};
-use serde_json::{json, Value};
 
 use crate::ai_stream::{emit, Emit};
 

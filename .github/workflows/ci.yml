@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main, "claude/**", "fix/tillbh-post-rename-validation"]
   pull_request:
   workflow_dispatch:
 

@@ -12,18 +12,18 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use tillbh_core::catalog::{ProductCreate, ProductInput};
-use tillbh_core::product_images::ImageSearchSettings;
-use tillbh_core::service::{AppCore, MemorySecretStore};
-use tillbh_hub::image_worker::{
-    process_one, BingImages, Candidate, ImageSearchProvider, ImageWorker, OpenFoodFacts, SafeFetcher, SearchError, SearchQuery,
-};
 use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use serde_json::json;
+use tillbh_core::catalog::{ProductCreate, ProductInput};
+use tillbh_core::product_images::ImageSearchSettings;
+use tillbh_core::service::{AppCore, MemorySecretStore};
+use tillbh_hub::image_worker::{
+    process_one, BingImages, Candidate, ImageSearchProvider, ImageWorker, OpenFoodFacts, SafeFetcher, SearchError, SearchQuery,
+};
 
 #[derive(Clone)]
 struct Fixture {
