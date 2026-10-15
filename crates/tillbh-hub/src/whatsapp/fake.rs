@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tillbh_core::messaging::Inbound;
 use async_trait::async_trait;
+use tillbh_core::messaging::Inbound;
 use tokio::sync::{oneshot, Notify};
 
 use super::adapter::*;

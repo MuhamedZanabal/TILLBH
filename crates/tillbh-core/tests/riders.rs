@@ -2,14 +2,14 @@
 //! drawer) until a cashier counts it in at a hand-over.
 mod common;
 
+use common::*;
+use serde_json::json;
 use tillbh_core::auth::{ROLE_CASHIER, ROLE_DELIVERY};
 use tillbh_core::pricing::TenderInput;
 use tillbh_core::riders::HandoverRequest;
 use tillbh_core::sales::{FinalizeRequest, Fulfilment};
 use tillbh_core::tickets::RecordPayment;
 use tillbh_core::ErrorCode;
-use common::*;
-use serde_json::json;
 
 fn count(e: &Env, sql: &str) -> i64 {
     e.core.db.read(|c| Ok(c.query_row(sql, [], |r| r.get(0))?)).unwrap()

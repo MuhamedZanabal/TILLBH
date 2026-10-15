@@ -9,11 +9,11 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use tillbh_hub::image_worker::{ProxyPolicy, SafeFetcher};
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
+use tillbh_hub::image_worker::{ProxyPolicy, SafeFetcher};
 
 fn png() -> Vec<u8> {
     let img = image::RgbaImage::from_pixel(80, 80, image::Rgba([255, 255, 255, 255]));

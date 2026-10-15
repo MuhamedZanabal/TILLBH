@@ -16,12 +16,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tillbh_core::{AppCore, AppError, AppResult, ErrorCode};
 use base64::Engine;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use tillbh_core::{AppCore, AppError, AppResult, ErrorCode};
 
 pub const BUILT_IN_PUBKEY: Option<&str> = option_env!("TILLBH_UPDATE_PUBKEY");
 const MAX_INSTALLER: u64 = 500 * 1024 * 1024;

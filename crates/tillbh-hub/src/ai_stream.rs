@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tillbh_core::{AppError, AppResult};
 use serde_json::{json, Value};
+use tillbh_core::{AppError, AppResult};
 
 /// Sends one event (a JSON object with at least `type`).
 pub type Emit = Arc<dyn Fn(Value) + Send + Sync>;

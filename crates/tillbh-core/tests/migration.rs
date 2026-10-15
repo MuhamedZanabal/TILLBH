@@ -1,9 +1,9 @@
 //! Migration: read → detect → preview (no writes) → apply through normal commands.
 mod common;
 
-use tillbh_core::migration::{TableRequest, UploadFile};
 use common::*;
 use serde_json::{json, Value};
+use tillbh_core::migration::{TableRequest, UploadFile};
 
 fn count(e: &Env, sql: &str) -> i64 {
     e.core.db.read(|c| Ok(c.query_row(sql, [], |r| r.get(0))?)).unwrap()

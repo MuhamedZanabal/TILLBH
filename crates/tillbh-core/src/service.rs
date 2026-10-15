@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::audit::Actor;
@@ -62,7 +62,82 @@ pub struct AppCore {
 }
 
 pub const DB_FILE: &str = "tillbh.db";
+/// Compatibility-only source filename used by deployed AMWAPOS installations.
+pub const LEGACY_DB_FILE: &str = "amwapos.db";
 pub const MARKER_FILE: &str = "store.marker";
+
+/// Copy a deployed legacy database into the TILLBH filename using SQLite's
+/// online backup API. The legacy source is deliberately retained as rollback
+/// evidence. A pre-existing TILLBH database always wins and is never replaced.
+fn migrate_legacy_database(data_dir: &Path) -> AppResult<()> {
+    let current = data_dir.join(DB_FILE);
+    if current.exists() {
+        return Ok(());
+    }
+    let legacy = data_dir.join(LEGACY_DB_FILE);
+    if !legacy.is_file() {
+        return Ok(());
+    }
+
+    let tmp = data_dir.join(format!("{DB_FILE}.migrating"));
+    if tmp.exists() {
+        std::fs::remove_file(&tmp).map_err(|e| {
+            AppError::new(
+                ErrorCode::Io,
+                format!("A previous database migration could not be cleaned up at {}: {e}", tmp.display()),
+            )
+        })?;
+    }
+
+    let result: AppResult<()> = (|| {
+        let source = Connection::open_with_flags(&legacy, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+        let source_check: String = source.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+        if source_check != "ok" {
+            return Err(AppError::new(
+                ErrorCode::DatabaseCorrupt,
+                "The legacy store database failed its integrity check. It was not migrated or modified.",
+            )
+            .with_details(serde_json::json!({ "quick_check": source_check, "legacy_path": legacy.to_string_lossy() })));
+        }
+
+        let mut destination = Connection::open(&tmp)?;
+        {
+            let backup = rusqlite::backup::Backup::new(&source, &mut destination)?;
+            match backup.step(-1)? {
+                rusqlite::backup::StepResult::Done => {}
+                other => {
+                    return Err(AppError::new(
+                        ErrorCode::DatabaseBusy,
+                        format!("The legacy database snapshot did not complete ({other:?}). No destination database was installed."),
+                    ));
+                }
+            }
+        }
+        destination.execute_batch("PRAGMA journal_mode=DELETE;")?;
+        let destination_check: String = destination.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+        if destination_check != "ok" {
+            return Err(AppError::new(
+                ErrorCode::DatabaseCorrupt,
+                "The migrated database copy failed its integrity check. The legacy source remains unchanged.",
+            )
+            .with_details(serde_json::json!({ "quick_check": destination_check })));
+        }
+        drop(destination);
+
+        std::fs::rename(&tmp, &current).map_err(|e| {
+            AppError::new(
+                ErrorCode::Io,
+                format!("The verified legacy database copy could not be installed at {}: {e}", current.display()),
+            )
+        })?;
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
 
 impl AppCore {
     /// Open the store in `data_dir`. A missing database is created only when
@@ -70,6 +145,7 @@ impl AppCore {
     /// startup fails with a recovery error instead of creating an empty store.
     pub fn open(data_dir: &Path, secrets: Arc<dyn SecretStore>) -> AppResult<AppCore> {
         std::fs::create_dir_all(data_dir)?;
+        migrate_legacy_database(data_dir)?;
         let db_path = data_dir.join(DB_FILE);
         let marker = data_dir.join(MARKER_FILE);
         let create = !db_path.exists() && !marker.exists();
