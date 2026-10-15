@@ -6,8 +6,8 @@ use std::net::{Ipv4Addr, SocketAddr, UdpSocket as StdUdp};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tillbh_core::AppCore;
 use serde::{Deserialize, Serialize};
+use tillbh_core::AppCore;
 use tokio::net::UdpSocket;
 
 pub const DISCOVERY_PORT: u16 = 47801;

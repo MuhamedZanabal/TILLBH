@@ -10,9 +10,6 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tillbh_core::service::{AppCore, SecretStore};
-use tillbh_core::{AppError, AppResult};
-use tillbh_hub::Runtime;
 use axum::extract::State;
 use axum::http::{header, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
@@ -20,6 +17,9 @@ use axum::routing::post;
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tillbh_core::service::{AppCore, SecretStore};
+use tillbh_core::{AppError, AppResult};
+use tillbh_hub::Runtime;
 
 /// Development-only secret store: a plain JSON file next to the data directory,
 /// so hub/terminal credentials survive devserver restarts. The desktop app uses

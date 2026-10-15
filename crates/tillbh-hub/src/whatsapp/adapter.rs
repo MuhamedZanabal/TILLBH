@@ -11,9 +11,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use tillbh_core::messaging::Inbound;
 pub use tillbh_core::wa_contacts::WaContact;
-use async_trait::async_trait;
 
 /// Resolves when the client's run loop has ended (stop, logout, crash).
 pub type ExitFuture = Pin<Box<dyn Future<Output = Exit> + Send>>;

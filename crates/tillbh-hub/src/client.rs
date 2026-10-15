@@ -3,13 +3,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use tillbh_core::channel::{self, PROTOCOL_HEADER};
 use tillbh_core::sync::{
     self, Change, HubInfo, PairRequest, PairResponse, PullRequest, PullResponse, PushRequest, PushResponse, PROTOCOL_VERSION,
 };
 use tillbh_core::{AppCore, AppError, AppResult, ErrorCode};
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 
 fn http() -> AppResult<reqwest::Client> {
     let mut headers = reqwest::header::HeaderMap::new();
@@ -275,7 +275,8 @@ pub async fn sync_cycle(core: Arc<AppCore>) -> AppResult<CycleReport> {
             let (changes, scanned) = blocking(move || c2.terminal_collect_push(1000)).await?;
             if changes.is_empty() {
                 let c2 = core.clone();
-                blocking(move || c2.terminal_record_push(scanned, &PushResponse { accepted: 0, rejected: vec![], up_to_seq: 0 }, &[])).await?;
+                blocking(move || c2.terminal_record_push(scanned, &PushResponse { accepted: 0, rejected: vec![], up_to_seq: 0 }, &[]))
+                    .await?;
                 break;
             }
             let n = changes.len();

@@ -66,6 +66,14 @@ pub const DB_FILE: &str = "tillbh.db";
 pub const LEGACY_DB_FILE: &str = "amwapos.db";
 pub const MARKER_FILE: &str = "store.marker";
 
+fn publish_legacy_snapshot(snapshot: tempfile::NamedTempFile, current: &Path) -> AppResult<()> {
+    // persist_noclobber performs the final existence check in the filesystem
+    // operation itself; a plain rename can overwrite a newly created DB on Unix.
+    snapshot.persist_noclobber(current).map(|_| ()).map_err(|e| {
+        AppError::new(ErrorCode::Io, format!("The verified legacy database copy could not be installed at {}: {e}", current.display()))
+    })
+}
+
 /// Copy a deployed legacy database into the TILLBH filename using SQLite's
 /// online backup API. The legacy source is deliberately retained as rollback
 /// evidence. A pre-existing TILLBH database always wins and is never replaced.
@@ -79,64 +87,54 @@ fn migrate_legacy_database(data_dir: &Path) -> AppResult<()> {
         return Ok(());
     }
 
-    let tmp = data_dir.join(format!("{DB_FILE}.migrating"));
-    if tmp.exists() {
-        std::fs::remove_file(&tmp).map_err(|e| {
-            AppError::new(
-                ErrorCode::Io,
-                format!("A previous database migration could not be cleaned up at {}: {e}", tmp.display()),
-            )
-        })?;
+    // Each attempt owns a securely created temporary file; concurrent starts
+    // and stale files cannot redirect or delete another attempt's snapshot.
+    let snapshot = tempfile::Builder::new().prefix("tillbh-migration-").tempfile_in(data_dir)?;
+
+    let source = Connection::open_with_flags(&legacy, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+    let source_check: String = source.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if source_check != "ok" {
+        return Err(AppError::new(
+            ErrorCode::DatabaseCorrupt,
+            "The legacy store database failed its integrity check. It was not migrated or modified.",
+        )
+        .with_details(serde_json::json!({ "quick_check": source_check, "legacy_path": legacy.to_string_lossy() })));
+    }
+    // SQLite reports an empty file as healthy. Do not mistake a truncated
+    // predecessor database (or an unrelated SQLite file) for a new store.
+    let schema = source.query_row("SELECT MAX(version) FROM schema_migrations", [], |row| row.get::<_, Option<i64>>(0));
+    if !matches!(schema, Ok(Some(version)) if version > 0) {
+        return Err(AppError::new(
+            ErrorCode::DatabaseCorrupt,
+            "The legacy file does not contain an initialized store database. No blank store was created; restore a verified backup.",
+        ));
     }
 
-    let result: AppResult<()> = (|| {
-        let source = Connection::open_with_flags(&legacy, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
-        let source_check: String = source.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
-        if source_check != "ok" {
-            return Err(AppError::new(
-                ErrorCode::DatabaseCorrupt,
-                "The legacy store database failed its integrity check. It was not migrated or modified.",
-            )
-            .with_details(serde_json::json!({ "quick_check": source_check, "legacy_path": legacy.to_string_lossy() })));
-        }
-
-        let mut destination = Connection::open(&tmp)?;
-        {
-            let backup = rusqlite::backup::Backup::new(&source, &mut destination)?;
-            match backup.step(-1)? {
-                rusqlite::backup::StepResult::Done => {}
-                other => {
-                    return Err(AppError::new(
-                        ErrorCode::DatabaseBusy,
-                        format!("The legacy database snapshot did not complete ({other:?}). No destination database was installed."),
-                    ));
-                }
+    let mut destination = Connection::open(snapshot.path())?;
+    {
+        let backup = rusqlite::backup::Backup::new(&source, &mut destination)?;
+        match backup.step(-1)? {
+            rusqlite::backup::StepResult::Done => {}
+            other => {
+                return Err(AppError::new(
+                    ErrorCode::DatabaseBusy,
+                    format!("The legacy database snapshot did not complete ({other:?}). No destination database was installed."),
+                ));
             }
         }
-        destination.execute_batch("PRAGMA journal_mode=DELETE;")?;
-        let destination_check: String = destination.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
-        if destination_check != "ok" {
-            return Err(AppError::new(
-                ErrorCode::DatabaseCorrupt,
-                "The migrated database copy failed its integrity check. The legacy source remains unchanged.",
-            )
-            .with_details(serde_json::json!({ "quick_check": destination_check })));
-        }
-        drop(destination);
-
-        std::fs::rename(&tmp, &current).map_err(|e| {
-            AppError::new(
-                ErrorCode::Io,
-                format!("The verified legacy database copy could not be installed at {}: {e}", current.display()),
-            )
-        })?;
-        Ok(())
-    })();
-
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
     }
-    result
+    destination.execute_batch("PRAGMA journal_mode=DELETE;")?;
+    let destination_check: String = destination.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if destination_check != "ok" {
+        return Err(AppError::new(
+            ErrorCode::DatabaseCorrupt,
+            "The migrated database copy failed its integrity check. The legacy source remains unchanged.",
+        )
+        .with_details(serde_json::json!({ "quick_check": destination_check })));
+    }
+    drop(destination);
+
+    publish_legacy_snapshot(snapshot, &current)
 }
 
 impl AppCore {
@@ -270,5 +268,21 @@ pub(crate) fn load_device(c: &Connection) -> AppResult<Option<DeviceIdentity>> {
     match v {
         Some(v) => Ok(Some(serde_json::from_value(v)?)),
         None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod migration_publication_tests {
+    #[test]
+    fn destination_created_while_snapshotting_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let snapshot = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
+        std::fs::write(snapshot.path(), b"legacy snapshot").unwrap();
+        // A destination appeared after discovery and before publication.
+        let current = dir.path().join(super::DB_FILE);
+        std::fs::write(&current, b"new current store").unwrap();
+
+        assert!(super::publish_legacy_snapshot(snapshot, &current).is_err());
+        assert_eq!(std::fs::read(current).unwrap(), b"new current store");
     }
 }

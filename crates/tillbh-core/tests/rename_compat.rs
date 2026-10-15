@@ -12,13 +12,13 @@ use tillbh_core::backup::{file_sha256, inspect_file, BackupManifest};
 use tillbh_core::channel::{aad, device_keys};
 use tillbh_core::db::{latest_schema_version, Db};
 use tillbh_core::service::{AppCore, MemorySecretStore, DB_FILE, MARKER_FILE};
+use tillbh_core::ErrorCode;
 
 #[test]
 fn protocol_v2_preserves_deployed_crypto_domain() {
     let request_aad = aad("POST", "/sync/push", "device-1", 123, "nonce-1");
     assert_eq!(
-        request_aad,
-        b"amwapos/2\nPOST\n/sync/push\ndevice-1\n123\nnonce-1",
+        request_aad, b"amwapos/2\nPOST\n/sync/push\ndevice-1\n123\nnonce-1",
         "protocol v2 AAD is a deployed cryptographic compatibility constant",
     );
 
@@ -53,17 +53,11 @@ fn existing_legacy_database_is_copied_safely_to_tillbh_name() {
     std::fs::write(dir.path().join(MARKER_FILE), b"legacy initialized\n").unwrap();
 
     let core = AppCore::open(dir.path(), Arc::new(MemorySecretStore::default())).unwrap();
-    let probe: String = core
-        .db
-        .read(|c| Ok(c.query_row("SELECT value FROM legacy_probe", [], |row| row.get(0))?))
-        .unwrap();
+    let probe: String = core.db.read(|c| Ok(c.query_row("SELECT value FROM legacy_probe", [], |row| row.get(0))?)).unwrap();
 
     assert_eq!(probe, "preserved");
     assert_eq!(core.db.path(), dir.path().join(DB_FILE));
-    assert!(
-        legacy_path.exists(),
-        "the legacy database is retained as rollback evidence"
-    );
+    assert!(legacy_path.exists(), "the legacy database is retained as rollback evidence");
 }
 
 #[test]
@@ -98,18 +92,24 @@ fn existing_tillbh_database_always_takes_precedence_over_legacy_database() {
     std::fs::write(dir.path().join(MARKER_FILE), b"initialized\n").unwrap();
 
     let core = AppCore::open(dir.path(), Arc::new(MemorySecretStore::default())).unwrap();
-    let probe: String = core
-        .db
-        .read(|c| {
-            Ok(c.query_row("SELECT value FROM precedence_probe", [], |row| row.get(0))?)
-        })
-        .unwrap();
+    let probe: String = core.db.read(|c| Ok(c.query_row("SELECT value FROM precedence_probe", [], |row| row.get(0))?)).unwrap();
 
     assert_eq!(probe, "current");
-    assert!(
-        legacy_path.exists(),
-        "legacy source must never overwrite the current TILLBH database"
-    );
+    assert!(legacy_path.exists(), "legacy source must never overwrite the current TILLBH database");
+}
+
+#[test]
+fn empty_legacy_database_never_becomes_a_blank_store() {
+    let dir = tempdir().unwrap();
+    let legacy_path = dir.path().join("amwapos.db");
+    std::fs::write(&legacy_path, []).unwrap();
+    std::fs::write(dir.path().join(MARKER_FILE), b"legacy initialized\n").unwrap();
+
+    let result = AppCore::open(dir.path(), Arc::new(MemorySecretStore::default()));
+    let error = result.err().expect("an empty predecessor file must fail closed");
+    assert_eq!(error.code, ErrorCode::DatabaseCorrupt);
+    assert!(!dir.path().join(DB_FILE).exists(), "no blank TILLBH database may be published");
+    assert_eq!(std::fs::metadata(legacy_path).unwrap().len(), 0);
 }
 
 fn backup_fixture(format: &str) -> (tempfile::TempDir, std::path::PathBuf) {
@@ -129,11 +129,7 @@ fn backup_fixture(format: &str) -> (tempfile::TempDir, std::path::PathBuf) {
         size_bytes: std::fs::metadata(&path).unwrap().len(),
         record_counts: Default::default(),
     };
-    std::fs::write(
-        path.with_extension("amwbak.json"),
-        serde_json::to_vec_pretty(&manifest).unwrap(),
-    )
-    .unwrap();
+    std::fs::write(path.with_extension("amwbak.json"), serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
     (dir, path)
 }
 
@@ -142,11 +138,7 @@ fn backup_inspection_keeps_current_and_deployed_legacy_manifests_restorable() {
     for format in ["tillbh-sqlite-v1", "amwapos-sqlite-v1"] {
         let (_dir, path) = backup_fixture(format);
         let inspection = inspect_file(&path, None).unwrap();
-        assert!(
-            inspection.ok,
-            "{format} must remain restorable: {:?}",
-            inspection.problems
-        );
+        assert!(inspection.ok, "{format} must remain restorable: {:?}", inspection.problems);
         assert!(inspection.compatible);
     }
 }

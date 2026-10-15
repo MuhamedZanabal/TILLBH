@@ -5,9 +5,9 @@ use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use serde_json::{json, Value};
 use tillbh_core::service::{AppCore, MemorySecretStore};
 use tillbh_hub::Runtime;
-use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -132,9 +132,23 @@ async fn nothing_sensitive_crosses_the_lan_in_clear() {
     )
     .await;
     let r = call(&term, "sync.run_now", Some(&tt), json!({})).await;
-    assert!(r["pushed"].as_u64().unwrap() >= 3, "{r}");
+    // The real background loop may have uploaded the sale before run_now.
+    // Verify complete hub state instead of attributing its rows to one cycle.
+    assert_eq!(r["rejected"], 0, "{r}");
+    assert_eq!(r["pull_failed"], 0, "{r}");
     let hub_sales: i64 = h.core.db.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM sales", [], |r| r.get(0))?)).unwrap();
     assert_eq!(hub_sales, 1, "sync worked through the proxy");
+    let (sold_qty, paid): (i64, i64) = h
+        .core
+        .db
+        .read(|c| {
+            Ok((
+                c.query_row("SELECT COALESCE(SUM(qty_milli),0) FROM sale_items", [], |r| r.get(0))?,
+                c.query_row("SELECT COALESCE(SUM(amount_minor),0) FROM payments", [], |r| r.get(0))?,
+            ))
+        })
+        .unwrap();
+    assert_eq!((sold_qty, paid), (1000, 4750), "sale lines and payment arrived exactly once");
 
     let wire = wire.lock().unwrap().clone();
     assert!(wire.len() > 10_000, "the proxy saw the traffic ({} bytes)", wire.len());

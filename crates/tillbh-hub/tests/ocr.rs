@@ -7,10 +7,10 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde_json::{json, Value};
 use tillbh_core::service::{AppCore, MemorySecretStore};
 use tillbh_hub::ocr_worker::OcrPaths;
 use tillbh_hub::Runtime;
-use serde_json::{json, Value};
 
 async fn call(rt: &Arc<Runtime>, cmd: &str, token: Option<&str>, args: Value) -> Value {
     match rt.dispatch(cmd, token.map(|t| t.to_string()), args).await {

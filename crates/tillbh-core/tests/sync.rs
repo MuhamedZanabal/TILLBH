@@ -2,12 +2,12 @@ mod common;
 
 use std::sync::Arc;
 
+use common::*;
 use tillbh_core::pricing::TenderInput;
 use tillbh_core::sales::FinalizeRequest;
 use tillbh_core::service::{AppCore, MemorySecretStore};
 use tillbh_core::sync::{self, NonceCache, PairRequest, PullRequest, PushRequest};
 use tillbh_core::ErrorCode;
-use common::*;
 
 struct Term {
     _dir: tempfile::TempDir,

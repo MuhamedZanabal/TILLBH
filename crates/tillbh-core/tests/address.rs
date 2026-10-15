@@ -2,14 +2,14 @@
 //! address; the block fills the area (the shop's own drops first).
 mod common;
 
+use common::*;
+use serde_json::json;
 use tillbh_core::address::AddressParts;
 use tillbh_core::auth::ROLE_CASHIER;
 use tillbh_core::pricing::TenderInput;
 use tillbh_core::sales::{FinalizeRequest, Fulfilment};
 use tillbh_core::tickets::TicketFilter;
 use tillbh_core::ErrorCode;
-use common::*;
-use serde_json::json;
 
 fn parts(flat: &str, bldg: &str, road: &str, block: &str) -> AddressParts {
     let o = |s: &str| (!s.is_empty()).then(|| s.to_string());
