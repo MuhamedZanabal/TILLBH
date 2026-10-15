@@ -137,22 +137,6 @@ fn migrate_legacy_database(data_dir: &Path) -> AppResult<()> {
     publish_legacy_snapshot(snapshot, &current)
 }
 
-#[cfg(test)]
-mod migration_publication_tests {
-    #[test]
-    fn destination_created_while_snapshotting_is_never_overwritten() {
-        let dir = tempfile::tempdir().unwrap();
-        let snapshot = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
-        std::fs::write(snapshot.path(), b"legacy snapshot").unwrap();
-        // A destination appeared after discovery and before publication.
-        let current = dir.path().join(super::DB_FILE);
-        std::fs::write(&current, b"new current store").unwrap();
-
-        assert!(super::publish_legacy_snapshot(snapshot, &current).is_err());
-        assert_eq!(std::fs::read(current).unwrap(), b"new current store");
-    }
-}
-
 impl AppCore {
     /// Open the store in `data_dir`. A missing database is created only when
     /// the data folder has never been initialized (no marker file); otherwise
@@ -284,5 +268,21 @@ pub(crate) fn load_device(c: &Connection) -> AppResult<Option<DeviceIdentity>> {
     match v {
         Some(v) => Ok(Some(serde_json::from_value(v)?)),
         None => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod migration_publication_tests {
+    #[test]
+    fn destination_created_while_snapshotting_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let snapshot = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
+        std::fs::write(snapshot.path(), b"legacy snapshot").unwrap();
+        // A destination appeared after discovery and before publication.
+        let current = dir.path().join(super::DB_FILE);
+        std::fs::write(&current, b"new current store").unwrap();
+
+        assert!(super::publish_legacy_snapshot(snapshot, &current).is_err());
+        assert_eq!(std::fs::read(current).unwrap(), b"new current store");
     }
 }

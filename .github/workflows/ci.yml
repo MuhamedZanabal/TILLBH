@@ -83,9 +83,16 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npx vite build
+      - name: HTTP checkout and persistence smoke
+        run: |
+          cargo build -p tillbh-devserver --locked
+          python scripts/rpc-smoke.py --server target/debug/tillbh-devserver --static dist
       - run: npx playwright test
       - uses: actions/upload-artifact@v4
         if: failure()
