@@ -8,12 +8,12 @@
 mod hello;
 mod secrets;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde_json::Value;
 use tauri::Manager;
-use tillbh_core::service::AppCore;
+use tillbh_core::service::{AppCore, DB_FILE, LEGACY_DB_FILE, MARKER_FILE};
 use tillbh_core::AppError;
 use tillbh_hub::Runtime;
 
@@ -31,9 +31,29 @@ async fn rpc(state: tauri::State<'_, AppState>, cmd: String, token: Option<Strin
     }
 }
 
+fn current_store_present(path: &Path) -> bool {
+    path.join(DB_FILE).is_file() || path.join(MARKER_FILE).is_file()
+}
+
+/// Prefer a TILLBH folder only when it actually identifies an initialized or
+/// recovery-required TILLBH store. Installer-created or unrelated stray files
+/// must not hide a deployed AMWAPOS store. The current DB/marker always wins;
+/// otherwise an old DB/marker selects the legacy directory for safe migration.
+fn select_data_dir(current: PathBuf, legacy: PathBuf) -> PathBuf {
+    if current_store_present(&current) {
+        return current;
+    }
+    if legacy.join(LEGACY_DB_FILE).is_file() || legacy.join(MARKER_FILE).is_file() {
+        return legacy;
+    }
+    current
+}
+
 /// Store data outside the install folder so upgrades and uninstalls never
-/// touch business records. Windows: %ProgramData%\TILLBH\data (shared by all
-/// Windows users of the POS computer). Override with TILLBH_DATA_DIR.
+/// touch business records. Clean Windows installs use %ProgramData%\TILLBH\data.
+/// Existing AMWAPOS installs retain their legacy data directory until an
+/// explicit, separately verified directory migration is performed. Override
+/// both behaviors with TILLBH_DATA_DIR.
 fn data_dir(app: &tauri::App) -> PathBuf {
     if let Ok(d) = std::env::var("TILLBH_DATA_DIR") {
         return PathBuf::from(d);
@@ -41,7 +61,8 @@ fn data_dir(app: &tauri::App) -> PathBuf {
     #[cfg(windows)]
     {
         if let Ok(pd) = std::env::var("PROGRAMDATA") {
-            return PathBuf::from(pd).join("TILLBH").join("data");
+            let root = PathBuf::from(pd);
+            return select_data_dir(root.join("TILLBH").join("data"), root.join("AMWAPOS").join("data"));
         }
     }
     app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("tillbh-data")).join("data")
@@ -106,3 +127,56 @@ pub fn run() {
 }
 
 struct LogGuard(#[allow(dead_code)] Option<tracing_appender::non_blocking::WorkerGuard>);
+
+#[cfg(test)]
+mod tests {
+    use super::select_data_dir;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn root(name: &str) -> PathBuf {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        std::env::temp_dir().join(format!("tillbh-{name}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn empty_installer_created_current_dir_does_not_hide_legacy_store() {
+        let base = root("legacy-dir");
+        let current = base.join("TILLBH").join("data");
+        let legacy = base.join("AMWAPOS").join("data");
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("amwapos.db"), b"legacy").unwrap();
+
+        assert_eq!(select_data_dir(current.clone(), legacy.clone()), legacy);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn unrelated_current_file_does_not_hide_legacy_store() {
+        let base = root("stray-current-file");
+        let current = base.join("TILLBH").join("data");
+        let legacy = base.join("AMWAPOS").join("data");
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(current.join("partial-download.tmp"), b"stray").unwrap();
+        std::fs::write(legacy.join("amwapos.db"), b"legacy").unwrap();
+
+        assert_eq!(select_data_dir(current.clone(), legacy.clone()), legacy);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn current_tillbh_marker_always_takes_precedence() {
+        let base = root("current-dir");
+        let current = base.join("TILLBH").join("data");
+        let legacy = base.join("AMWAPOS").join("data");
+        std::fs::create_dir_all(&current).unwrap();
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(current.join("store.marker"), b"current").unwrap();
+        std::fs::write(legacy.join("amwapos.db"), b"legacy").unwrap();
+
+        assert_eq!(select_data_dir(current.clone(), legacy), current);
+        let _ = std::fs::remove_dir_all(base);
+    }
+}
