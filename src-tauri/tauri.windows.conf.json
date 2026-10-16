@@ -1,4 +1,5 @@
 {
+  "identifier": "com.amwapos.pos",
   "bundle": {
     "resources": {
       "resources/tesseract/": "tesseract/",

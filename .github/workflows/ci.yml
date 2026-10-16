@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, "claude/**"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,7 +19,7 @@ env:
 
 jobs:
   frontend:
-    name: Frontend (types, lint, format, unit tests, build)
+    name: Frontend (brand guard, types, lint, format, unit tests, build)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +27,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - run: npm run legacy:check
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
@@ -34,7 +36,7 @@ jobs:
       - run: npx vite build
 
   rust:
-    name: Rust (fmt, clippy, tests)
+    name: Rust (fmt, check, clippy, tests)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +51,7 @@ jobs:
       # tauri's build script expects the frontend dist directory to exist.
       - run: mkdir -p dist && echo '<!doctype html>' > dist/index.html
       - run: cargo fmt --all -- --check
+      - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets -- -D warnings
       # The OCR worker test runs the real Tesseract with the bundled models.
       - run: cargo test --workspace
@@ -113,6 +116,12 @@ jobs:
         run: |
           $c = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           if ($c.bundle.windows.webviewInstallMode.type -ne 'embedBootstrapper') { throw "webviewInstallMode must be embedBootstrapper" }
+      - name: Preserve deployed Windows application identity
+        shell: pwsh
+        run: |
+          $c = Get-Content src-tauri/tauri.windows.conf.json -Raw | ConvertFrom-Json
+          $expected = 'com.' + 'amwa' + 'pos.pos'
+          if ($c.identifier -ne $expected) { throw "Windows identifier must preserve the deployed upgrade identity" }
       - run: npx tauri build --bundles nsis
       - name: Installer hashes
         shell: pwsh
@@ -136,3 +145,62 @@ jobs:
         with:
           name: installer-smoke-evidence
           path: installer-smoke/
+
+  windows-upgrade:
+    name: Windows predecessor → TILLBH upgrade
+    runs-on: windows-2022
+    needs: [windows]
+    steps:
+      - name: Checkout TILLBH
+        uses: actions/checkout@v4
+      - name: Checkout deployed predecessor baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 1a5d98a44721e4bebf727be09721b694caf1275e
+          path: legacy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: legacy
+      - name: Install current and predecessor JS dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          Push-Location legacy
+          npm ci
+          Pop-Location
+      - name: Bundle predecessor Tesseract
+        shell: pwsh
+        run: |
+          Push-Location legacy
+          ./scripts/bundle-tesseract.ps1
+          Pop-Location
+      - name: Build exact deployed predecessor NSIS installer
+        shell: pwsh
+        run: |
+          Push-Location legacy
+          npx tauri build --bundles nsis
+          Pop-Location
+      - name: Download current TILLBH installer
+        uses: actions/download-artifact@v4
+        with:
+          name: tillbh-windows-unsigned
+          path: current-installer
+      - name: Upgrade installed predecessor through TILLBH and verify persistence
+        shell: pwsh
+        run: |
+          $legacy = Get-ChildItem legacy/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          $current = Get-ChildItem current-installer/*.exe | Select-Object -First 1
+          ./scripts/upgrade-smoke.ps1 -LegacyInstaller $legacy.FullName -LegacyRepo "$PWD\legacy" -CurrentInstaller $current.FullName -Shots upgrade-smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upgrade-smoke-evidence
+          path: upgrade-smoke/
