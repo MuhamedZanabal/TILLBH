@@ -5,6 +5,7 @@ import { ApiError } from "../api/transport";
 import type { PosConfig, Session, SetupStatus } from "../api/types";
 import { configureMoney } from "../lib/money";
 import { configureTimezone } from "../lib/time";
+import { setLangScope } from "../i18n";
 
 export type Mode = "cashier" | "admin";
 
@@ -69,6 +70,7 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
     setToken(null);
     sessionStorage.removeItem(TOKEN_KEY);
     setSession(null);
+    setLangScope(null);
     setLocked(false);
     setModeState("cashier");
   }, []);
@@ -81,6 +83,7 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
     api.auth
       .session()
       .then(async (s) => {
+        setLangScope(s.user_id);
         setSession(s);
         setLocked(s.locked);
         await reloadConfig();
@@ -93,6 +96,7 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
       const r = await api.auth.login(userId, pin);
       setToken(r.token);
       sessionStorage.setItem(TOKEN_KEY, r.token);
+      setLangScope(r.session.user_id);
       setSession(r.session);
       setLocked(false);
       lastActivity.current = Date.now();
@@ -121,6 +125,7 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
 
   const unlock = useCallback(async (pin: string) => {
     const s = await api.auth.unlock(pin);
+    setLangScope(s.user_id);
     setSession(s);
     setLocked(false);
     lastActivity.current = Date.now();
@@ -193,7 +198,10 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
       unlock,
       switchUser,
       reloadConfig,
-      setSessionData: setSession,
+      setSessionData: (s) => {
+        setLangScope(s.user_id);
+        setSession(s);
+      },
       handleAuthError,
     }),
     [
