@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { api } from "./api";
 import type { SetupStatus } from "./api/types";
 import { ApprovalProvider } from "./components/approval";
@@ -11,12 +11,14 @@ import { LockScreen } from "./screens/login/LockScreen";
 import { CashierMode } from "./screens/pos/CashierMode";
 import { AdminShell } from "./screens/admin/AdminShell";
 import { DeliveryDesk } from "./screens/pos/DeliveryDesk";
-import { t } from "./i18n";
+import { getLang, subscribeLang, t } from "./i18n";
 
 type Boot =
   { phase: "loading"; stage: string } | { phase: "failed"; error: unknown } | { phase: "ready"; status: SetupStatus };
 
 export default function App() {
+  // Subscribe above the preserved provider tree; locale changes only re-render React.
+  useSyncExternalStore(subscribeLang, getLang, getLang);
   const [boot, setBoot] = useState<Boot>({ phase: "loading", stage: t("Opening database") });
   const start = useCallback(async () => {
     setBoot({ phase: "loading", stage: t("Opening database") });

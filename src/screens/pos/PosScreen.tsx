@@ -5,8 +5,8 @@ import {
   Bot,
   DoorClosed,
   Inbox,
-  Languages,
   ListRestart,
+  Languages,
   Lock,
   LogOut,
   MoreHorizontal,
@@ -69,6 +69,7 @@ import { RefundFlow } from "./RefundFlow";
 import { ShiftClose } from "./ShiftScreens";
 import { getLang, switchLang, t, tb } from "../../i18n";
 import { BackupPill } from "../../components/BackupAlert";
+import { LanguageToggle } from "../../components/LanguageToggle";
 
 type ModalState =
   | { kind: "none" }
@@ -644,6 +645,7 @@ export function PosScreen({
         <span className="clock num" aria-label={t("Time")}>
           {clock}
         </span>
+        <LanguageToggle />
         <button
           type="button"
           className={`top-btn icon-only ${railOpen ? "on" : ""}`}

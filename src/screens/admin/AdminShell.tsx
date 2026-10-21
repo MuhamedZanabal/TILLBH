@@ -90,7 +90,7 @@ interface NavItem {
   feature?: FeatureName;
 }
 
-const NAV: { group: string; items: NavItem[] }[] = [
+const buildNav = (): { group: string; items: NavItem[] }[] => [
   {
     group: t("OVERVIEW"),
     items: [
@@ -348,6 +348,8 @@ export function AdminShell() {
 }
 
 function Shell() {
+  // Recompute module navigation labels on every locale update.
+  const NAV = buildNav();
   const { session, has, setMode, lock, logout, config, status } = useSession();
   // At 1024 the nav is a 64 px icon rail; the menu button opens the labelled nav as a flyout (tap, not hover).
   const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1200);

@@ -1151,3 +1151,37 @@ details.tech pre {
     animation: none;
   }
 }
+
+/* Always-visible, session-local language selector; logical alignment works in RTL. */
+.lang-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-2);
+  direction: ltr;
+  isolation: isolate;
+}
+.lang-switch button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.lang-switch button.active {
+  background: var(--brand);
+  color: white;
+}
+.lang-switch button:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 1px;
+}
