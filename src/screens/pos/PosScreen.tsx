@@ -6,6 +6,7 @@ import {
   DoorClosed,
   Inbox,
   ListRestart,
+  Languages,
   Lock,
   LogOut,
   MoreHorizontal,
@@ -66,7 +67,7 @@ import { OrdersList } from "../orders";
 import { useFeature } from "../../components/FeatureGate";
 import { RefundFlow } from "./RefundFlow";
 import { ShiftClose } from "./ShiftScreens";
-import { t, tb } from "../../i18n";
+import { getLang, switchLang, t, tb } from "../../i18n";
 import { BackupPill } from "../../components/BackupAlert";
 import { LanguageToggle } from "../../components/LanguageToggle";
 
@@ -529,6 +530,12 @@ export function PosScreen({
 
   const moreItems: { label: string; show: boolean | undefined; icon?: React.ReactNode; run: () => void }[] = [
     { label: t("Admin"), show: has("admin.access"), icon: <Settings2 size={20} />, run: () => setMode("admin") },
+    {
+      label: getLang() === "ar" ? "English" : "العربية",
+      show: true,
+      icon: <Languages size={20} />,
+      run: () => switchLang(getLang() === "ar" ? "en" : "ar"),
+    },
     { label: t("Lock terminal"), show: true, icon: <Lock size={20} />, run: () => void lock() },
     {
       label: t("Delivery for last sale"),
