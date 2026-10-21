@@ -11,7 +11,9 @@ function CheckoutInProgress() {
     <div>
       <span data-testid="locale">{locale}</span>
       <input aria-label="Scan" value={scan} onChange={(event) => setScan(event.target.value)} />
-      <span data-testid="cart">{cart.id}:{cart.amountMinor}</span>
+      <span data-testid="cart">
+        {cart.id}:{cart.amountMinor}
+      </span>
       <button onClick={() => switchLang(locale === "en" ? "ar" : "en")}>Switch language</button>
     </div>
   );
