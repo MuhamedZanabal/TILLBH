@@ -1,0 +1,54 @@
+name: PostgreSQL authority schema
+on:
+  pull_request:
+    paths:
+      - "services/shop-server/**"
+      - ".github/workflows/postgres-authority.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/shop-server/**"
+      - ".github/workflows/postgres-authority.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  schema:
+    name: PostgreSQL 16 migrations and transactional smoke
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tillbh_root
+          POSTGRES_PASSWORD: ci_root_ephemeral
+          POSTGRES_DB: tillbh_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tillbh_root -d tillbh_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Apply additive authority migrations on disposable database
+        env:
+          PGPASSWORD: ci_root_ephemeral
+        run: |
+          psql -h 127.0.0.1 -U tillbh_root -d tillbh_ci -v ON_ERROR_STOP=1 -f services/shop-server/migrations/0001_authority_core.sql
+          psql -h 127.0.0.1 -U tillbh_root -d tillbh_ci -v ON_ERROR_STOP=1 -f services/shop-server/migrations/0002_sale_transaction_guard.sql
+          psql -h 127.0.0.1 -U tillbh_root -d tillbh_ci -v ON_ERROR_STOP=1 -c "CREATE ROLE tillbh_app LOGIN PASSWORD 'ci_app_ephemeral'"
+          psql -h 127.0.0.1 -U tillbh_root -d tillbh_ci -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA tillbh_authority TO tillbh_app"
+          psql -h 127.0.0.1 -U tillbh_root -d tillbh_ci -v ON_ERROR_STOP=1 -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA tillbh_authority TO tillbh_app"
+          psql -h 127.0.0.1 -U tillbh_root -d tillbh_ci -v ON_ERROR_STOP=1 -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA tillbh_authority TO tillbh_app"
+      - name: Verify exact BHD accounting, idempotency, immutable rows and RLS
+        env:
+          PGPASSWORD: ci_app_ephemeral
+        run: |
+          psql -h 127.0.0.1 -U tillbh_app -d tillbh_ci -v ON_ERROR_STOP=1 -f services/shop-server/tests/0001_authority_smoke.sql
