@@ -1,20 +1,13 @@
-import { Languages } from "lucide-react";
 import { getLang, switchLang } from "../i18n";
-import { Button } from "./ui";
 
-/** English ⇄ العربية. Per computer; the page reloads and the session is kept. */
+/** Compact locale selector. Language selection does not reload, navigate or mutate cart state. */
 export function LanguageToggle() {
-  const ar = getLang() === "ar";
+  const active = getLang();
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      icon={<Languages size={15} />}
-      onClick={() => switchLang(ar ? "en" : "ar")}
-      data-testid="lang-toggle"
-      lang={ar ? "en" : "ar"}
-    >
-      {ar ? "English" : "العربية"}
-    </Button>
+    <div className="lang-switch" role="group" aria-label="Language" data-testid="lang-toggle">
+      <button type="button" lang="en" aria-pressed={active === "en"} className={active === "en" ? "active" : ""} onClick={() => switchLang("en")}>EN</button>
+      <span aria-hidden="true">|</span>
+      <button type="button" lang="ar" aria-pressed={active === "ar"} className={active === "ar" ? "active" : ""} onClick={() => switchLang("ar")}>AR</button>
+    </div>
   );
 }
