@@ -3,7 +3,9 @@
 import { AR } from "./ar";
 
 export type Lang = "en" | "ar";
-const KEY = "tillbh.lang";
+const KEY = "tillbh.lang"; // Local device default; never synchronized between terminals.
+let userScope: string | null = null;
+const userKey = (id: string) => `${KEY}.user.${encodeURIComponent(id)}`;
 
 function initial(): Lang {
   try {
@@ -29,7 +31,7 @@ export function setLang(next: Lang) {
   if (next === lang) return;
   lang = next;
   try {
-    localStorage.setItem(KEY, next);
+    localStorage.setItem(userScope ? userKey(userScope) : KEY, next);
   } catch {
     /* storage unavailable: language lasts for this session */
   }
@@ -37,10 +39,28 @@ export function setLang(next: Lang) {
   listeners.forEach((fn) => fn());
 }
 
-/** Switch language and reload so every screen (and module-level label) re-renders. */
+/** Change the language without unloading React or discarding an unfinished workflow. */
 export function switchLang(next: Lang) {
   setLang(next);
-  location.reload();
+}
+
+/** Select a per-user preference with a terminal-local fallback. No server/shared setting is changed. */
+export function setLangScope(userId: string | null) {
+  if (userScope === userId) return;
+  userScope = userId;
+  let next: Lang = "en";
+  try {
+    const stored = (userId ? localStorage.getItem(userKey(userId)) : null) ?? localStorage.getItem(KEY);
+    next = stored === "ar" ? "ar" : "en";
+  } catch {
+    // A restricted storage context still supports changing the current session language.
+    next = lang;
+  }
+  if (next !== lang) {
+    lang = next;
+    applyDocumentLang();
+    listeners.forEach((fn) => fn());
+  }
 }
 
 export function subscribeLang(fn: () => void) {
