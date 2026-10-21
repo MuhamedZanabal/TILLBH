@@ -262,7 +262,7 @@ const buildNav = (): { group: string; items: NavItem[] }[] => [
       { path: "updates", label: t("Updates"), icon: Database, perm: "settings.manage", element: UpdatesPage },
     ],
   },
- ];
+];
 
 const EXTRA: { path: string; perm?: string | string[]; element: ComponentType }[] = [
   { path: "products/new", perm: "products.manage", element: ProductEditorPage },
