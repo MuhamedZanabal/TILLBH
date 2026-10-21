@@ -81,6 +81,30 @@ BEGIN
     RAISE EXCEPTION 'immutable sale was modified';
   EXCEPTION WHEN SQLSTATE '55000' THEN NULL;
   END;
+
+  -- Deferred triggers are now IMMEDIATE: a committed-looking sale without
+  -- matching lines, tenders and stock must be rejected.
+  BEGIN
+    INSERT INTO sales(sale_id,tenant_id,branch_id,terminal_id,operation_id,payload_sha256,
+      receipt_number,gross_minor,discount_minor,net_minor,vat_minor,total_minor)
+    VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      '33333333-3333-4333-8333-333333333333',
+      'ffffffff-ffff-4fff-8fff-ffffffffffff',
+      'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+      'T01-0000003',100,0,100,0,100);
+    RAISE EXCEPTION 'incomplete sale was accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  BEGIN
+    INSERT INTO gl_journals(tenant_id,journal_id)
+    VALUES ('11111111-1111-4111-8111-111111111111',
+            'eeeeeeee-eeee-4eee-8eee-111111111111');
+    RAISE EXCEPTION 'empty general-ledger journal was accepted';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
 END;
 $test$;
 
