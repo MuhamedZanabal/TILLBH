@@ -1,12 +1,12 @@
 mod common;
 
+use common::*;
 use tillbh_core::auth::ROLE_CASHIER;
 use tillbh_core::pricing::TenderInput;
 use tillbh_core::refunds::{RefundLineInput, RefundRequest};
 use tillbh_core::sales::FinalizeRequest;
 use tillbh_core::shifts::{CashEventRequest, ShiftCloseRequest};
 use tillbh_core::ErrorCode;
-use common::*;
 
 fn cash(a: i64) -> TenderInput {
     TenderInput { method: "cash".into(), amount_minor: a, reference: None }
