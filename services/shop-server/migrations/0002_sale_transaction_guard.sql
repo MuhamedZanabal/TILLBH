@@ -8,7 +8,7 @@ ALTER TABLE sales
   ADD COLUMN origin_xid bigint NOT NULL DEFAULT txid_current();
 
 -- Derive the ID inside the database: application input may not spoof origin_xid.
-CREATE FUNCTION stamp_sale_origin_xid() RETURNS trigger LANGUAGE plpgsql AS $fn$
+CREATE FUNCTION stamp_sale_origin_xid() RETURNS trigger LANGUAGE plpgsql SET search_path = tillbh_authority, pg_catalog AS $fn$
 BEGIN
   NEW.origin_xid := txid_current();
   RETURN NEW;
@@ -17,7 +17,7 @@ $fn$;
 CREATE TRIGGER sale_origin_xid BEFORE INSERT ON sales
   FOR EACH ROW EXECUTE FUNCTION stamp_sale_origin_xid();
 
-CREATE FUNCTION enforce_sale_child_origin() RETURNS trigger LANGUAGE plpgsql AS $fn$
+CREATE FUNCTION enforce_sale_child_origin() RETURNS trigger LANGUAGE plpgsql SET search_path = tillbh_authority, pg_catalog AS $fn$
 DECLARE parent_sale_id uuid;
 BEGIN
   IF TG_TABLE_NAME = 'stock_movements' THEN
