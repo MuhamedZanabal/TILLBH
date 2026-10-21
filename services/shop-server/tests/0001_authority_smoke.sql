@@ -1,5 +1,6 @@
 -- Run only against an empty disposable PostgreSQL 15+ test database:
 --   psql -v ON_ERROR_STOP=1 -f services/shop-server/migrations/0001_authority_core.sql
+--   psql -v ON_ERROR_STOP=1 -f services/shop-server/migrations/0002_sale_transaction_guard.sql
 --   psql -v ON_ERROR_STOP=1 -f services/shop-server/tests/0001_authority_smoke.sql
 -- This is a transactional smoke fixture and intentionally rolls back its data.
 \set ON_ERROR_STOP on
