@@ -178,7 +178,7 @@ CREATE TABLE server_outbox (
 );
 
 -- Server must reject all UPDATE/DELETE attempts on committed financial history.
-CREATE FUNCTION forbid_financial_mutation() RETURNS trigger LANGUAGE plpgsql AS $fn$
+CREATE FUNCTION forbid_financial_mutation() RETURNS trigger LANGUAGE plpgsql SET search_path = tillbh_authority, pg_catalog AS $fn$
 BEGIN
   RAISE EXCEPTION 'immutable financial record: %', TG_TABLE_NAME USING ERRCODE = '55000';
 END;
@@ -191,7 +191,7 @@ CREATE TRIGGER gl_journals_append_only BEFORE UPDATE OR DELETE ON gl_journals FO
 CREATE TRIGGER gl_entries_append_only BEFORE UPDATE OR DELETE ON gl_entries FOR EACH ROW EXECUTE FUNCTION forbid_financial_mutation();
 
 -- A sale's snapshot, tenders, and stock movements must agree at COMMIT.
-CREATE FUNCTION assert_sale_consistent() RETURNS trigger LANGUAGE plpgsql AS $fn$
+CREATE FUNCTION assert_sale_consistent() RETURNS trigger LANGUAGE plpgsql SET search_path = tillbh_authority, pg_catalog AS $fn$
 DECLARE
   values_total record;
   tender_total bigint;
@@ -231,7 +231,7 @@ CREATE CONSTRAINT TRIGGER sale_commit_invariant
   FOR EACH ROW EXECUTE FUNCTION assert_sale_consistent();
 
 -- A journal must be balanced when the transaction commits.
-CREATE FUNCTION assert_journal_balanced() RETURNS trigger LANGUAGE plpgsql AS $fn$
+CREATE FUNCTION assert_journal_balanced() RETURNS trigger LANGUAGE plpgsql SET search_path = tillbh_authority, pg_catalog AS $fn$
 DECLARE debits bigint; credits bigint;
 BEGIN
   SELECT coalesce(sum(debit_minor), 0), coalesce(sum(credit_minor), 0)
