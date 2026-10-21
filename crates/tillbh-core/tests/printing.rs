@@ -1,9 +1,9 @@
 mod common;
 
-use tillbh_core::pricing::TenderInput;
-use tillbh_core::sales::FinalizeRequest;
 use common::*;
 use serde_json::json;
+use tillbh_core::pricing::TenderInput;
+use tillbh_core::sales::FinalizeRequest;
 
 fn sell(e: &Env, barcode: &str) -> tillbh_core::sales::SaleResult {
     let t = &e.owner_token;

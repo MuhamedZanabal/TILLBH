@@ -7,10 +7,10 @@ mod common;
 
 use std::time::{Duration, Instant};
 
+use common::*;
 use tillbh_core::importer::ImportRequest;
 use tillbh_core::pricing::TenderInput;
 use tillbh_core::sales::FinalizeRequest;
-use common::*;
 
 fn p95(mut v: Vec<Duration>) -> Duration {
     v.sort();

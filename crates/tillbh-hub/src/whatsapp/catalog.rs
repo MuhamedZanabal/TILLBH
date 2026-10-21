@@ -20,9 +20,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use serde::Serialize;
 use tillbh_core::wa_catalog::{account_key, CatalogAction, CatalogJob, CatalogOutcome};
 use tillbh_core::{AppError, AppResult};
-use serde::Serialize;
 
 use super::adapter::*;
 use super::service::WhatsAppService;

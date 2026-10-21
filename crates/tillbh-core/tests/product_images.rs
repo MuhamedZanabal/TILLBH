@@ -9,13 +9,13 @@ mod common;
 
 use std::io::Cursor;
 
+use base64::Engine;
+use common::*;
+use serde_json::json;
 use tillbh_core::auth::ROLE_CASHIER;
 use tillbh_core::catalog::{ProductCreate, ProductInput};
 use tillbh_core::product_images::{normalize, AutoOutcome};
 use tillbh_core::ErrorCode;
-use base64::Engine;
-use common::*;
-use serde_json::json;
 
 fn png(w: u32, h: u32, rgb: [u8; 3]) -> Vec<u8> {
     let mut img = image::RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));

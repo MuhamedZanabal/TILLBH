@@ -4,11 +4,11 @@
 //! retries, deletion and remote-missing semantics, and permissions.
 mod common;
 
+use common::*;
+use serde_json::json;
 use tillbh_core::auth::ROLE_CASHIER;
 use tillbh_core::wa_catalog::{CatalogAction, CatalogOutcome, MAX_ATTEMPTS};
 use tillbh_core::ErrorCode;
-use common::*;
-use serde_json::json;
 
 const ACC: &str = "97330000000@s.whatsapp.net";
 const ACC2: &str = "97339999999@s.whatsapp.net";

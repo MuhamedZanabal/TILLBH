@@ -9,12 +9,12 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::Engine;
+use serde_json::{json, Value};
 use tillbh_core::auth::ROLE_CASHIER;
 use tillbh_core::service::{AppCore, MemorySecretStore};
 use tillbh_hub::whatsapp::{CatalogCapability, CatalogProduct, FakeAdapter};
 use tillbh_hub::Runtime;
-use base64::Engine;
-use serde_json::{json, Value};
 
 const ACC: &str = "97330000000@s.whatsapp.net";
 const ACC2: &str = "97339999999@s.whatsapp.net";
