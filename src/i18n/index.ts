@@ -48,7 +48,7 @@ export function switchLang(next: Lang) {
 export function setLangScope(userId: string | null) {
   if (userScope === userId) return;
   userScope = userId;
-  let next: Lang = "en";
+  let next: Lang;
   try {
     const stored = (userId ? localStorage.getItem(userKey(userId)) : null) ?? localStorage.getItem(KEY);
     next = stored === "ar" ? "ar" : "en";
