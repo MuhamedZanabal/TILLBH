@@ -44,3 +44,7 @@ Windows installer acceptance additionally requires `npx tauri build --bundles ns
 ## Rollback
 
 The original `main` branch is not modified. This feature can be reverted by discarding this branch. Do not migrate production databases or apply generated designs automatically.
+
+## Test compatibility
+
+The existing `data-testid="lang-toggle"` remains a one-click language switch; the cashier additionally exposes direct EN and AR selection in the header, and the cashier More menu continues to expose the prior language-switch path. This preserves the existing Playwright assertions while making the selector directly visible. Tests must still be executed before acceptance.
